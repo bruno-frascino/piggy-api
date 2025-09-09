@@ -1,15 +1,251 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Piggy - Stock Portfolio Database Schema
+// This is your Prisma schema file for the stock portfolio management app
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// User model (for future multi-user support)
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  positions Position[]
+  
+  @@map("users")
+}
+
+// Stock exchanges (NYSE, NASDAQ, LSE, etc.)
+model Exchange {
+  id          String   @id @default(cuid())
+  code        String   @unique // NYSE, NASDAQ, LSE
+  name        String   // New York Stock Exchange
+  country     String   // US, UK, etc.
+  timezone    String   // America/New_York
+  currency    String   // USD, GBP, EUR
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  stocks Stock[]
+  
+  @@map("exchanges")
+}
+
+// Individual stocks/securities
+model Stock {
+  id          String   @id @default(cuid())
+  symbol      String   // AAPL, TSLA, MSFT
+  name        String   // Apple Inc., Tesla Inc.
+  sector      String?  // Technology, Energy, etc.
+  industry    String?  // Consumer Electronics, etc.
+  marketCap   Decimal? @db.Decimal(20, 2)
+  exchangeId  String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  exchange     Exchange   @relation(fields: [exchangeId], references: [id])
+  positions    Position[]
+  priceHistory PriceHistory[]
+  
+  // Composite unique constraint
+  @@unique([symbol, exchangeId])
+  @@map("stocks")
+}
+
+// Price history for stocks (for charts and analysis)
+model PriceHistory {
+  id        String   @id @default(cuid())
+  stockId   String
+  date      DateTime
+  open      Decimal  @db.Decimal(10, 4)
+  high      Decimal  @db.Decimal(10, 4)
+  low       Decimal  @db.Decimal(10, 4)
+  close     Decimal  @db.Decimal(10, 4)
+  volume    BigInt?
+  createdAt DateTime @default(now())
+
+  // Relations
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  
+  // Composite unique constraint (one record per stock per date)
+  @@unique([stockId, date])
+  @@map("price_history")
+}
+
+// Individual trading positions (each buy order = separate position)
+// This allows granular control over each entry with its own stop loss/take profit
+model Position {
+  id                    String           @id @default(cuid())
+  userId                String
+  stockId               String
+  
+  // Position identification (unique combination)
+  openDate              DateTime         // When this specific position was opened
+  entryPrice            Decimal          @db.Decimal(10, 4) // Exact entry price
+  quantity              Int              // Number of shares in this position
+  
+  // Position details
+  positionType          PositionType     @default(LONG) // LONG or SHORT
+  status                PositionStatus   @default(OPEN) // OPEN, CLOSED, PARTIAL
+  
+  // Entry details
+  totalBuyValue         Decimal          @db.Decimal(12, 2) // quantity * entryPrice
+  buyFees               Decimal          @default(0) @db.Decimal(8, 2)
+  
+  // Exit details (for closed positions)
+  closeDate             DateTime?
+  exitPrice             Decimal?         @db.Decimal(10, 4) // Exact exit price
+  totalSellValue        Decimal?         @db.Decimal(12, 2)
+  sellFees              Decimal?         @default(0) @db.Decimal(8, 2)
+  
+  // Individual risk management (per position)
+  stopLossPrice         Decimal?         @db.Decimal(10, 4)
+  takeProfitPrice       Decimal?         @db.Decimal(10, 4)
+  
+  // Risk metrics for this specific position
+  riskAmount            Decimal?         @db.Decimal(12, 2) // $ amount at risk
+  riskPercentage        Decimal?         @db.Decimal(5, 2)  // % of portfolio at risk
+  
+  // Position sizing
+  capitalAllocated      Decimal          @db.Decimal(12, 2) // $ amount invested
+  portfolioWeight       Decimal?         @db.Decimal(5, 2)  // % of total portfolio
+  
+  // Trading rationale
+  openReason            String           // Why this position was opened
+  strategy              String?          // Trading strategy used
+  setupType             String?          // Breakout, pullback, reversal, etc.
+  timeframe             String?          // Day trade, swing, position
+  tags                  String[]         // Tags for categorization
+  notes                 String?          // Additional notes
+  
+  // Performance metrics (calculated or updated)
+  unrealizedPnL         Decimal?         @db.Decimal(12, 2) // For open positions
+  realizedPnL           Decimal?         @db.Decimal(12, 2) // For closed positions
+  returnPercentage      Decimal?         @db.Decimal(8, 4)  // % return on this position
+  
+  // Trade quality assessment (post-trade analysis)
+  tradeGrade            String?          // A, B, C, D, F
+  lessonsLearned        String?          // What went well/wrong
+  
+  // Timestamps
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  // Relations
+  user         User          @relation(fields: [userId], references: [id])
+  stock        Stock         @relation(fields: [stockId], references: [id])
+  transactions Transaction[] // Entry and exit transactions for this position
+  
+  // Composite unique constraint for position identification
+  // Same stock can have multiple positions with different entry prices/dates
+  @@unique([userId, stockId, openDate, entryPrice])
+  @@map("positions")
+}
+
+// Individual buy/sell transactions (linked to specific positions)
+model Transaction {
+  id            String          @id @default(cuid())
+  positionId    String
+  
+  // Transaction details
+  type          TransactionType // BUY (entry), SELL (exit), DIVIDEND, SPLIT
+  date          DateTime
+  quantity      Int             // Number of shares (should match position quantity for BUY)
+  price         Decimal         @db.Decimal(10, 4) // Price per share
+  totalValue    Decimal         @db.Decimal(12, 2) // quantity * price
+  fees          Decimal         @default(0) @db.Decimal(8, 2)
+  
+  // Execution details
+  executionTime DateTime?       // Exact time of execution
+  brokerRef     String?         // Broker reference/order ID
+  orderType     String?         // Market, Limit, Stop, etc.
+  
+  // Metadata
+  notes         String?
+  
+  // Timestamps
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Relations
+  position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  
+  @@map("transactions")
+}
+
+// Portfolio snapshots for performance tracking
+model PortfolioSnapshot {
+  id                String   @id @default(cuid())
+  userId            String
+  date              DateTime
+  
+  // Portfolio metrics
+  totalValue        Decimal  @db.Decimal(15, 2)
+  totalInvested     Decimal  @db.Decimal(15, 2)
+  totalPnL          Decimal  @db.Decimal(15, 2)
+  totalReturnPct    Decimal  @db.Decimal(8, 4)
+  
+  // Risk metrics
+  portfolioRisk     Decimal? @db.Decimal(8, 4)
+  maxDrawdown       Decimal? @db.Decimal(8, 4)
+  sharpeRatio       Decimal? @db.Decimal(8, 4)
+  
+  // Cash position
+  availableCash     Decimal  @default(0) @db.Decimal(12, 2)
+  
+  createdAt         DateTime @default(now())
+  
+  @@unique([userId, date])
+  @@map("portfolio_snapshots")
+}
+
+// Watchlist for stocks to monitor
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  stockId   String
+  
+  // Watchlist details
+  name      String?  // Custom name for the watchlist item
+  notes     String?  // Why this stock is being watched
+  targetPrice Decimal? @db.Decimal(10, 4) // Price alert target
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([userId, stockId])
+  @@map("watchlist")
+}
+
+// Enums
+enum PositionType {
+  LONG
+  SHORT
+}
+
+enum PositionStatus {
+  OPEN      // Position is currently open
+  CLOSED    // Position is fully closed
+  PARTIAL   // Position is partially closed
+}
+
+enum TransactionType {
+  BUY
+  SELL
+  DIVIDEND  // Dividend received
+  SPLIT     // Stock split adjustment
+  BONUS     // Bonus shares
 }
