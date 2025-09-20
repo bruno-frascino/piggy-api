@@ -2,16 +2,16 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import morgan from 'morgan'
-import { createExpressMiddleware } from '@trpc/server/adapters/express'
-import { appRouter } from './routers/index.js'
-import { createTRPCContext } from './lib/trpc.js'
 import dotenv from 'dotenv'
+import apiRoutes from './controllers/index.js'
+import { errorHandler } from './middleware/validation.js'
+import { specs, swaggerUi } from './lib/swagger.js'
 
 // Load environment variables
 dotenv.config()
 
 const app = express()
-const port = process.env.PORT || 3000
+const port = process.env.PORT || 4000
 
 // Middleware
 app.use(helmet())
@@ -23,46 +23,56 @@ app.use(
 )
 app.use(morgan('combined'))
 app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0',
+  })
 })
 
-// tRPC API routes
+// API documentation
 app.use(
-  '/api/trpc',
-  createExpressMiddleware({
-    router: appRouter,
-    createContext: createTRPCContext,
-    onError: ({ error, type, path, input, ctx, req }) => {
-      console.error(
-        `❌ tRPC failed on ${path ?? '<no-path>'}: ${error.message}`
-      )
-      if (process.env.NODE_ENV === 'development') {
-        console.error(error.stack)
-      }
-    },
+  '/api/docs',
+  swaggerUi.serve,
+  swaggerUi.setup(specs, {
+    explorer: true,
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'Piggy API Documentation',
   })
 )
+
+// API routes
+app.use('/api', apiRoutes)
 
 // API info endpoint
 app.get('/api', (req, res) => {
   res.json({
     name: 'Piggy API',
     version: '1.0.0',
-    description: 'Stock Portfolio Management API built with tRPC',
+    description:
+      'Stock Portfolio Management REST API built with Express and Prisma',
+    documentation: '/api/docs',
     endpoints: {
-      trpc: '/api/trpc',
       health: '/health',
+      users: '/api/users',
+      exchanges: '/api/exchanges',
+      stocks: '/api/stocks',
+      positions: '/api/positions',
+      transactions: '/api/transactions',
+      watchlist: '/api/watchlist',
     },
-    routers: [
-      'user',
-      'exchange',
-      'stock',
-      'position',
-      'transaction',
-      'watchlist',
+    features: [
+      'User Management',
+      'Exchange Management',
+      'Stock Management with Price History',
+      'Portfolio Position Tracking',
+      'Transaction Logging',
+      'Watchlist with Price Alerts',
+      'OpenAPI Documentation',
     ],
   })
 })
@@ -70,37 +80,22 @@ app.get('/api', (req, res) => {
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
+    success: false,
     error: 'Not Found',
     message: `Route ${req.originalUrl} not found`,
-    availableRoutes: ['/api', '/health', '/api/trpc'],
+    availableRoutes: ['/api', '/health', '/api/docs'],
   })
 })
 
 // Error handler
-app.use(
-  (
-    err: any,
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction
-  ) => {
-    console.error('❌ Unhandled error:', err)
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message:
-        process.env.NODE_ENV === 'development'
-          ? err.message
-          : 'Something went wrong',
-    })
-  }
-)
+app.use(errorHandler)
 
 // Start server
 app.listen(port, () => {
   console.log(`🚀 Piggy API server running on port ${port}`)
-  console.log(`📊 tRPC endpoint: http://localhost:${port}/api/trpc`)
+  console.log(`� API Documentation: http://localhost:${port}/api/docs`)
   console.log(`🏥 Health check: http://localhost:${port}/health`)
-  console.log(`📖 API info: http://localhost:${port}/api`)
+  console.log(`� API info: http://localhost:${port}/api`)
 })
 
 export { app }
