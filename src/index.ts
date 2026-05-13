@@ -6,6 +6,7 @@ import dotenv from 'dotenv'
 import apiRoutes from './controllers/index.js'
 import { errorHandler } from './middleware/validation.js'
 import { specs, swaggerUi } from './lib/swagger.js'
+import { prisma } from './lib/prisma.js'
 
 // Load environment variables
 dotenv.config()
@@ -78,7 +79,7 @@ app.get('/api', (req, res) => {
 })
 
 // 404 handler
-app.use('*', (req, res) => {
+app.use((req, res) => {
   res.status(404).json({
     success: false,
     error: 'Not Found',
@@ -90,12 +91,35 @@ app.use('*', (req, res) => {
 // Error handler
 app.use(errorHandler)
 
-// Start server
-app.listen(port, () => {
-  console.log(`🚀 Piggy API server running on port ${port}`)
-  console.log(`� API Documentation: http://localhost:${port}/api/docs`)
-  console.log(`🏥 Health check: http://localhost:${port}/health`)
-  console.log(`� API info: http://localhost:${port}/api`)
-})
+async function verifyDatabaseConnection() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      'DATABASE_URL is missing. Add it to your environment or .env file before starting the API.'
+    )
+  }
+
+  await prisma.$queryRaw`SELECT 1`
+}
+
+async function startServer() {
+  try {
+    await verifyDatabaseConnection()
+
+    app.listen(port, () => {
+      console.log(`🚀 Piggy API server running on port ${port}`)
+      console.log(`� API Documentation: http://localhost:${port}/api/docs`)
+      console.log(`🏥 Health check: http://localhost:${port}/health`)
+      console.log(`� API info: http://localhost:${port}/api`)
+    })
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Unknown startup error'
+
+    console.error('Failed to start Piggy API:', message)
+    process.exit(1)
+  }
+}
+
+void startServer()
 
 export { app }
