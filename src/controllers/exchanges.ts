@@ -13,27 +13,25 @@ const router = Router()
 const createExchangeValidation = [
   body('code').isString().trim().isLength({ min: 1, max: 10 }),
   body('name').isString().trim().isLength({ min: 1 }),
-  body('country').isString().trim().isLength({ min: 1 }),
-  body('timezone').isString().trim().isLength({ min: 1 }),
-  body('currency').isString().trim().isLength({ min: 3, max: 3 }),
-  body('isActive').optional().isBoolean(),
+  body('countryName').isString().trim().isLength({ min: 1 }),
+  body('countryCode').isString().trim().isLength({ min: 2, max: 2 }),
+  body('symbolSuffix').optional().isString().trim(),
+  body('delay').optional().isString().trim(),
   handleValidationErrors,
 ]
 
 const updateExchangeValidation = [
   param('id').isString(),
   body('name').optional().isString().trim().isLength({ min: 1 }),
-  body('country').optional().isString().trim().isLength({ min: 1 }),
-  body('timezone').optional().isString().trim().isLength({ min: 1 }),
-  body('currency').optional().isString().trim().isLength({ min: 3, max: 3 }),
-  body('isActive').optional().isBoolean(),
+  body('countryName').optional().isString().trim().isLength({ min: 1 }),
+  body('countryCode').optional().isString().trim().isLength({ min: 2, max: 2 }),
+  body('symbolSuffix').optional().isString().trim(),
+  body('delay').optional().isString().trim(),
   handleValidationErrors,
 ]
 
 const getExchangesValidation = [
-  query('isActive').optional().isBoolean().toBoolean(),
-  query('country').optional().isString(),
-  query('currency').optional().isString(),
+  query('countryCode').optional().isString(),
   handleValidationErrors,
 ]
 
@@ -54,26 +52,24 @@ const getExchangesValidation = [
  *             required:
  *               - code
  *               - name
- *               - country
- *               - timezone
- *               - currency
+ *               - countryName
+ *               - countryCode
  *             properties:
  *               code:
  *                 type: string
  *                 maxLength: 10
  *               name:
  *                 type: string
- *               country:
+ *               countryName:
  *                 type: string
- *               timezone:
+ *               countryCode:
  *                 type: string
- *               currency:
+ *                 minLength: 2
+ *                 maxLength: 2
+ *               symbolSuffix:
  *                 type: string
- *                 minLength: 3
- *                 maxLength: 3
- *               isActive:
- *                 type: boolean
- *                 default: true
+ *               delay:
+ *                 type: string
  *     responses:
  *       201:
  *         description: Exchange created successfully
@@ -84,23 +80,17 @@ router.post(
   '/',
   createExchangeValidation,
   asyncHandler(async (req: Request, res: Response) => {
-    const {
-      code,
-      name,
-      country,
-      timezone,
-      currency,
-      isActive = true,
-    } = req.body
+    const { code, name, countryName, countryCode, symbolSuffix, delay } =
+      req.body
 
     const exchange = await prisma.exchange.create({
       data: {
         code: code.toUpperCase(),
         name,
-        country,
-        timezone,
-        currency,
-        isActive,
+        countryName,
+        countryCode: countryCode.toUpperCase(),
+        symbolSuffix: symbolSuffix ?? null,
+        delay: delay ?? null,
       },
     })
 
@@ -116,17 +106,10 @@ router.post(
  *     tags: [Exchanges]
  *     parameters:
  *       - in: query
- *         name: isActive
- *         schema:
- *           type: boolean
- *       - in: query
- *         name: country
+ *         name: countryCode
  *         schema:
  *           type: string
- *       - in: query
- *         name: currency
- *         schema:
- *           type: string
+ *         description: Filter by ISO country code (e.g. US, GB)
  *     responses:
  *       200:
  *         description: List of exchanges
@@ -135,23 +118,19 @@ router.get(
   '/',
   getExchangesValidation,
   asyncHandler(async (req: Request, res: Response) => {
-    const { isActive, country, currency } = req.query
+    const { countryCode } = req.query
 
     const where: {
-      isActive?: boolean
-      country?: string
-      currency?: string
+      countryCode?: string
     } = {}
-    if (isActive !== undefined) where.isActive = Boolean(isActive)
-    if (country) where.country = String(country)
-    if (currency) where.currency = String(currency)
+    if (countryCode) where.countryCode = String(countryCode).toUpperCase()
 
     const exchanges = await prisma.exchange.findMany({
       where,
       include: {
         _count: {
           select: {
-            stocks: true,
+            assets: true,
           },
         },
       },
@@ -189,13 +168,13 @@ router.get(
     const exchange = await prisma.exchange.findUnique({
       where: { id },
       include: {
-        stocks: {
+        assets: {
           take: 10,
           orderBy: { symbol: 'asc' },
         },
         _count: {
           select: {
-            stocks: true,
+            assets: true,
           },
         },
       },
@@ -240,7 +219,7 @@ router.get(
       include: {
         _count: {
           select: {
-            stocks: true,
+            assets: true,
           },
         },
       },
@@ -277,14 +256,14 @@ router.get(
  *             properties:
  *               name:
  *                 type: string
- *               country:
+ *               countryName:
  *                 type: string
- *               timezone:
+ *               countryCode:
  *                 type: string
- *               currency:
+ *               symbolSuffix:
  *                 type: string
- *               isActive:
- *                 type: boolean
+ *               delay:
+ *                 type: string
  *     responses:
  *       200:
  *         description: Exchange updated successfully
@@ -297,20 +276,21 @@ router.put(
   updateExchangeValidation,
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params
-    const { name, country, timezone, currency, isActive } = req.body
+    const { name, countryName, countryCode, symbolSuffix, delay } = req.body
 
     const updateData: {
       name?: string
-      country?: string
-      timezone?: string
-      currency?: string
-      isActive?: boolean
+      countryName?: string
+      countryCode?: string
+      symbolSuffix?: string | null
+      delay?: string | null
     } = {}
     if (name) updateData.name = name
-    if (country) updateData.country = country
-    if (timezone) updateData.timezone = timezone
-    if (currency) updateData.currency = currency
-    if (isActive !== undefined) updateData.isActive = isActive
+    if (countryName) updateData.countryName = countryName
+    if (countryCode) updateData.countryCode = countryCode.toUpperCase()
+    if (symbolSuffix !== undefined)
+      updateData.symbolSuffix = symbolSuffix || null
+    if (delay !== undefined) updateData.delay = delay || null
 
     const exchange = await prisma.exchange.update({
       where: { id },
@@ -348,14 +328,14 @@ router.delete(
     const { id } = req.params
 
     // Check if exchange has any stocks
-    const stockCount = await prisma.stock.count({
+    const assetCount = await prisma.asset.count({
       where: { exchangeId: id },
     })
 
-    if (stockCount > 0) {
+    if (assetCount > 0) {
       return res.status(400).json({
         success: false,
-        error: 'Cannot delete exchange with existing stocks',
+        error: 'Cannot delete exchange with existing assets',
       })
     }
 

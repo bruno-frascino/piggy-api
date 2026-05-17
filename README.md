@@ -33,12 +33,13 @@ A comprehensive stock portfolio management API built with tRPC, Prisma, and Type
    ```bash
    cp .env.example .env
    # Edit .env with your database URL
+   # No market-data API key required for symbol search
    ```
 
 3. **Set up database**:
 
    ```bash
-   yarn prisma migrate dev
+   yarn db:migrate:dev
    yarn prisma generate
    ```
 
@@ -58,6 +59,10 @@ The API will be available at `http://localhost:3000`
 ### API Information
 
 - `GET /api` - API information and available routers
+
+### Stock Search
+
+- `GET /api/stocks/search?q=NASDAQ` - Search stock symbols globally (free provider)
 
 ### tRPC Endpoints
 
@@ -153,10 +158,20 @@ The API uses a comprehensive database schema designed for stock portfolio manage
 
 ### Database Commands
 
-- `yarn prisma migrate dev` - Create and apply migration
+- `yarn db:migrate:dev` - Create/apply local migrations during development
+- `yarn db:migrate:deploy` - Apply pending checked-in migrations
 - `yarn prisma generate` - Generate Prisma client
 - `yarn prisma studio` - Open Prisma Studio
 - `yarn prisma migrate reset` - Reset database
+- `yarn db:seed:exchanges` - Fetch and upsert exchanges from Financial Modeling Prep
+- `yarn db:sql:exchanges` - Manually create only the exchanges table from SQL fallback script
+
+### Recommended Development DB Workflow
+
+1. Keep all schema changes in `prisma/schema.prisma`.
+2. Create migrations with `yarn db:migrate:dev` and commit files under `prisma/migrations`.
+3. On startup, the API auto-runs `prisma migrate deploy` when `NODE_ENV` is not `production` and `DB_AUTO_MIGRATE` is not `false`.
+4. Use `prisma/sql/001_create_exchanges_table.sql` only as a temporary fallback when you need to bootstrap quickly.
 
 ## Type Safety
 

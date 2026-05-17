@@ -22,6 +22,17 @@ export default [
         require: 'readonly',
         global: 'readonly',
         globalThis: 'readonly',
+        // Web-standard globals available in Node 18+
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        fetch: 'readonly',
+        Headers: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
       },
     },
     plugins: {
