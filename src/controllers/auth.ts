@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { body } from 'express-validator'
 import bcrypt from 'bcryptjs'
+import crypto from 'crypto'
 import { prisma } from '../lib/prisma.js'
 import {
   signAccessToken,
@@ -135,24 +136,20 @@ router.post(
     try {
       payload = verifyRefreshToken(refreshToken)
     } catch {
-      return res
-        .status(401)
-        .json({
-          error: 'Unauthorized',
-          message: 'Invalid or expired refresh token',
-        })
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid or expired refresh token',
+      })
     }
 
     const stored = await prisma.refreshToken.findUnique({
       where: { token: refreshToken },
     })
     if (!stored || stored.expiresAt < new Date()) {
-      return res
-        .status(401)
-        .json({
-          error: 'Unauthorized',
-          message: 'Refresh token revoked or expired',
-        })
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Refresh token revoked or expired',
+      })
     }
 
     // Rotate: delete old, issue new pair
@@ -187,6 +184,90 @@ router.post(
       await prisma.refreshToken.deleteMany({ where: { token: refreshToken } })
     }
     res.json({ success: true, message: 'Logged out successfully' })
+  })
+)
+
+// POST /api/auth/forgot-password
+router.post(
+  '/forgot-password',
+  [
+    body('email')
+      .isEmail()
+      .normalizeEmail()
+      .withMessage('Must be a valid email'),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.body
+
+    const user = await prisma.user.findUnique({ where: { email } })
+
+    // Always respond with 200 to avoid leaking whether email is registered
+    if (!user) {
+      return res.json({
+        success: true,
+        message: 'If that email is registered you will receive a reset link.',
+      })
+    }
+
+    // Invalidate any existing reset tokens for this user
+    await prisma.passwordResetToken.deleteMany({ where: { userId: user.id } })
+
+    const rawToken = crypto.randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+
+    await prisma.passwordResetToken.create({
+      data: { userId: user.id, token: rawToken, expiresAt },
+    })
+
+    // TODO: send email with reset link containing `rawToken`
+    // For development the token is returned directly in the response.
+    res.json({
+      success: true,
+      message: 'If that email is registered you will receive a reset link.',
+      ...(process.env.NODE_ENV !== 'production' && { resetToken: rawToken }),
+    })
+  })
+)
+
+// POST /api/auth/reset-password
+router.post(
+  '/reset-password',
+  [
+    body('token').notEmpty().withMessage('Reset token is required'),
+    body('password')
+      .isLength({ min: 8 })
+      .withMessage('Password must be at least 8 characters'),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const { token, password } = req.body
+
+    const stored = await prisma.passwordResetToken.findUnique({
+      where: { token },
+    })
+
+    if (!stored || stored.expiresAt < new Date()) {
+      return res
+        .status(400)
+        .json({
+          error: 'Bad Request',
+          message: 'Invalid or expired reset token',
+        })
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12)
+
+    await prisma.user.update({
+      where: { id: stored.userId },
+      data: { passwordHash },
+    })
+
+    // Invalidate the used token and all refresh tokens for this user
+    await prisma.passwordResetToken.delete({ where: { token } })
+    await prisma.refreshToken.deleteMany({ where: { userId: stored.userId } })
+
+    res.json({ success: true, message: 'Password updated successfully' })
   })
 )
 

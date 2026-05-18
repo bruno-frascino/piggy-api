@@ -22,6 +22,7 @@ model User {
   positions          Position[]
   portfolioSnapshots PortfolioSnapshot[]
   refreshTokens      RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
   watchlist          Watchlist[]
 
   @@map("users")
@@ -37,6 +38,18 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
 }
 
 // ─── Exchanges ───────────────────────────────────────────────────────────────
