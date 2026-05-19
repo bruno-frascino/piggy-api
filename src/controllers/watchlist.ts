@@ -12,8 +12,20 @@ const router = Router()
 router.use(authenticateToken)
 
 // ─── GET /api/watchlist ───────────────────────────────────────────────────────
-
-router.get(
+/**
+ * @swagger
+ * /api/watchlist:
+ *   get:
+ *     summary: Get all watchlist items for the authenticated user
+ *     tags: [Watchlist]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Array of watchlist items with asset and exchange details
+ *       401:
+ *         description: Unauthorized
+ */ router.get(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
     const items = await prisma.watchlist.findMany({
@@ -26,8 +38,53 @@ router.get(
 )
 
 // ─── POST /api/watchlist ──────────────────────────────────────────────────────
-
-router.post(
+/**
+ * @swagger
+ * /api/watchlist:
+ *   post:
+ *     summary: Add a symbol to the watchlist
+ *     tags: [Watchlist]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - symbol
+ *               - exchangeCode
+ *             properties:
+ *               symbol:
+ *                 type: string
+ *                 example: TSLA
+ *               exchangeCode:
+ *                 type: string
+ *                 example: NASDAQ
+ *               assetName:
+ *                 type: string
+ *               assetType:
+ *                 type: string
+ *                 enum: [EQUITY, ETF, CRYPTO]
+ *                 default: EQUITY
+ *               name:
+ *                 type: string
+ *                 description: Custom label for this watchlist entry
+ *               notes:
+ *                 type: string
+ *               targetPrice:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Item added to watchlist
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Exchange not found
+ */ router.post(
   '/',
   [
     body('symbol')
@@ -64,12 +121,10 @@ router.post(
       where: { code: normalizedExchange },
     })
     if (!exchange) {
-      return res
-        .status(404)
-        .json({
-          error: 'Not Found',
-          message: `Exchange '${normalizedExchange}' not found`,
-        })
+      return res.status(404).json({
+        error: 'Not Found',
+        message: `Exchange '${normalizedExchange}' not found`,
+      })
     }
 
     let asset = await prisma.asset.findUnique({
@@ -108,6 +163,40 @@ router.post(
 
 // ─── PATCH /api/watchlist/:id ─────────────────────────────────────────────────
 
+/**
+ * @swagger
+ * /api/watchlist/{id}:
+ *   patch:
+ *     summary: Update notes, label, or target price for a watchlist item
+ *     tags: [Watchlist]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               notes:
+ *                 type: string
+ *               targetPrice:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Watchlist item updated
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Watchlist item not found
+ */
 router.patch(
   '/:id',
   [
@@ -145,8 +234,28 @@ router.patch(
 )
 
 // ─── DELETE /api/watchlist/:id ────────────────────────────────────────────────
-
-router.delete(
+/**
+ * @swagger
+ * /api/watchlist/{id}:
+ *   delete:
+ *     summary: Remove an item from the watchlist
+ *     tags: [Watchlist]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Removed from watchlist
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Watchlist item not found
+ */ router.delete(
   '/:id',
   [param('id').isString(), handleValidationErrors],
   asyncHandler(async (req: Request, res: Response) => {

@@ -27,6 +27,14 @@ const options = {
       },
     ],
     components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Enter the access token returned by /api/auth/login',
+        },
+      },
       schemas: {
         User: {
           type: 'object',
@@ -132,8 +140,13 @@ const options = {
     },
     tags: [
       {
+        name: 'Auth',
+        description:
+          'Authentication — register, login, token refresh, password reset',
+      },
+      {
         name: 'Users',
-        description: 'User management operations',
+        description: 'User profile management',
       },
       {
         name: 'Exchanges',
@@ -141,19 +154,19 @@ const options = {
       },
       {
         name: 'Stocks',
-        description: 'Stock management operations',
+        description: 'Symbol search via Yahoo Finance',
       },
       {
         name: 'Positions',
-        description: 'Trading position operations',
+        description: 'Trading position lifecycle (open, update, close, delete)',
       },
       {
-        name: 'Transactions',
-        description: 'Transaction management operations',
+        name: 'Portfolio',
+        description: 'Portfolio summary, history snapshots',
       },
       {
         name: 'Watchlist',
-        description: 'Watchlist operations',
+        description: 'Per-user watchlist management',
       },
     ],
   },

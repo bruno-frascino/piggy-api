@@ -14,6 +14,39 @@ const router = Router()
 router.use(authenticateToken)
 
 // GET /api/users/me
+/**
+ * @swagger
+ * /api/users/me:
+ *   get:
+ *     summary: Get the authenticated user's profile
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get(
   '/me',
   asyncHandler(async (req: Request, res: Response) => {
@@ -38,6 +71,59 @@ router.get(
 )
 
 // PATCH /api/users/me
+/**
+ * @swagger
+ * /api/users/me:
+ *   patch:
+ *     summary: Update the authenticated user's profile or password
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               baseCurrency:
+ *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 3
+ *                 example: USD
+ *               currentPassword:
+ *                 type: string
+ *                 description: Required when changing password
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 8
+ *                 description: Must be at least 8 characters
+ *     responses:
+ *       200:
+ *         description: Profile updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: currentPassword is required when setting a new password
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Current password incorrect or not authenticated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.patch(
   '/me',
   [
@@ -60,12 +146,10 @@ router.patch(
 
     if (newPassword) {
       if (!currentPassword) {
-        return res
-          .status(400)
-          .json({
-            error: 'Bad Request',
-            message: 'currentPassword is required to set a new password',
-          })
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'currentPassword is required to set a new password',
+        })
       }
       const user = await prisma.user.findUnique({
         where: { id: req.user!.userId },
@@ -74,12 +158,10 @@ router.patch(
         !user ||
         !(await bcrypt.compare(currentPassword, user.passwordHash))
       ) {
-        return res
-          .status(401)
-          .json({
-            error: 'Unauthorized',
-            message: 'Current password is incorrect',
-          })
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Current password is incorrect',
+        })
       }
       updateData.passwordHash = await bcrypt.hash(newPassword, 12)
     }

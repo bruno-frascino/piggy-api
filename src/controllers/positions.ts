@@ -52,6 +52,44 @@ async function findOrCreateAsset(
 
 // ─── GET /api/positions ───────────────────────────────────────────────────────
 
+/**
+ * @swagger
+ * /api/positions:
+ *   get:
+ *     summary: List all positions for the authenticated user
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [OPEN, CLOSED, PARTIAL]
+ *       - in: query
+ *         name: assetType
+ *         schema:
+ *           type: string
+ *           enum: [EQUITY, ETF, CRYPTO]
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 50
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *     responses:
+ *       200:
+ *         description: Paginated list of positions
+ *       401:
+ *         description: Unauthorized
+ */
 router.get(
   '/',
   [
@@ -87,6 +125,84 @@ router.get(
 
 // ─── POST /api/positions ──────────────────────────────────────────────────────
 
+/**
+ * @swagger
+ * /api/positions:
+ *   post:
+ *     summary: Open a new position
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - symbol
+ *               - exchangeCode
+ *               - openDate
+ *               - entryPrice
+ *               - quantity
+ *               - capitalAllocated
+ *               - openReason
+ *             properties:
+ *               symbol:
+ *                 type: string
+ *                 example: AAPL
+ *               exchangeCode:
+ *                 type: string
+ *                 example: NASDAQ
+ *               assetName:
+ *                 type: string
+ *               assetType:
+ *                 type: string
+ *                 enum: [EQUITY, ETF, CRYPTO]
+ *                 default: EQUITY
+ *               openDate:
+ *                 type: string
+ *                 format: date-time
+ *               entryPrice:
+ *                 type: number
+ *               quantity:
+ *                 type: integer
+ *                 minimum: 1
+ *               capitalAllocated:
+ *                 type: number
+ *               openReason:
+ *                 type: string
+ *               positionType:
+ *                 type: string
+ *                 enum: [LONG, SHORT]
+ *                 default: LONG
+ *               buyFees:
+ *                 type: number
+ *                 default: 0
+ *               stopLossPrice:
+ *                 type: number
+ *               takeProfitPrice:
+ *                 type: number
+ *               strategy:
+ *                 type: string
+ *               setupType:
+ *                 type: string
+ *               timeframe:
+ *                 type: string
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Position opened
+ *       400:
+ *         description: Validation error or exchange not found
+ *       401:
+ *         description: Unauthorized
+ */
 router.post(
   '/',
   [
@@ -190,6 +306,28 @@ router.post(
 
 // ─── GET /api/positions/:id ───────────────────────────────────────────────────
 
+/**
+ * @swagger
+ * /api/positions/{id}:
+ *   get:
+ *     summary: Get a single position by ID
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Position with asset and transactions
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Position not found
+ */
 router.get(
   '/:id',
   [param('id').isString(), handleValidationErrors],
@@ -212,6 +350,28 @@ router.get(
 
 // ─── GET /api/positions/:id/transactions ─────────────────────────────────────
 
+/**
+ * @swagger
+ * /api/positions/{id}/transactions:
+ *   get:
+ *     summary: List all buy/sell transactions for a position
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of transactions ordered by date
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Position not found
+ */
 router.get(
   '/:id/transactions',
   [param('id').isString(), handleValidationErrors],
@@ -234,6 +394,57 @@ router.get(
 
 // ─── PATCH /api/positions/:id ─────────────────────────────────────────────────
 
+/**
+ * @swagger
+ * /api/positions/{id}:
+ *   patch:
+ *     summary: Update metadata on an open position
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               stopLossPrice:
+ *                 type: number
+ *               takeProfitPrice:
+ *                 type: number
+ *               strategy:
+ *                 type: string
+ *               setupType:
+ *                 type: string
+ *               timeframe:
+ *                 type: string
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               notes:
+ *                 type: string
+ *               tradeGrade:
+ *                 type: string
+ *                 enum: [A, B, C, D, F]
+ *               lessonsLearned:
+ *                 type: string
+ *               unrealizedPnL:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Position updated
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Position not found
+ */
 router.patch(
   '/:id',
   [
@@ -301,6 +512,54 @@ router.patch(
 
 // ─── POST /api/positions/:id/close ───────────────────────────────────────────
 
+/**
+ * @swagger
+ * /api/positions/{id}/close:
+ *   post:
+ *     summary: Close (or partially close) an open position
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - closeDate
+ *               - exitPrice
+ *             properties:
+ *               closeDate:
+ *                 type: string
+ *                 format: date-time
+ *               exitPrice:
+ *                 type: number
+ *               quantity:
+ *                 type: integer
+ *                 minimum: 1
+ *                 description: Omit to close the full position
+ *               fees:
+ *                 type: number
+ *                 default: 0
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Position closed (or partially closed — status becomes PARTIAL)
+ *       400:
+ *         description: Position is already closed
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Position not found
+ */
 router.post(
   '/:id/close',
   [
@@ -372,6 +631,28 @@ router.post(
 
 // ─── DELETE /api/positions/:id ────────────────────────────────────────────────
 
+/**
+ * @swagger
+ * /api/positions/{id}:
+ *   delete:
+ *     summary: Permanently delete a position and all its transactions
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Position deleted
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Position not found
+ */
 router.delete(
   '/:id',
   [param('id').isString(), handleValidationErrors],

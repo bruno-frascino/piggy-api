@@ -7,8 +7,45 @@ const router = Router()
 router.use(authenticateToken)
 
 // ─── GET /api/portfolio/summary ───────────────────────────────────────────────
-
-router.get(
+/**
+ * @swagger
+ * /api/portfolio/summary:
+ *   get:
+ *     summary: Get a real-time portfolio summary for the authenticated user
+ *     tags: [Portfolio]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Portfolio summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     openPositions:
+ *                       type: integer
+ *                     closedPositions:
+ *                       type: integer
+ *                     totalInvested:
+ *                       type: number
+ *                     totalUnrealizedPnL:
+ *                       type: number
+ *                     totalRealizedPnL:
+ *                       type: number
+ *                     totalPnL:
+ *                       type: number
+ *                     byAssetType:
+ *                       type: object
+ *                       description: Breakdown by EQUITY / ETF / CRYPTO
+ *       401:
+ *         description: Unauthorized
+ */ router.get(
   '/summary',
   asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user!.userId
@@ -69,6 +106,20 @@ router.get(
 
 // ─── GET /api/portfolio/history ───────────────────────────────────────────────
 
+/**
+ * @swagger
+ * /api/portfolio/history:
+ *   get:
+ *     summary: Get historical portfolio snapshots (for charting equity curve)
+ *     tags: [Portfolio]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Array of daily portfolio snapshots ordered by date ascending
+ *       401:
+ *         description: Unauthorized
+ */
 router.get(
   '/history',
   asyncHandler(async (req: Request, res: Response) => {
@@ -81,8 +132,21 @@ router.get(
 )
 
 // ─── POST /api/portfolio/snapshot ────────────────────────────────────────────
-
-router.post(
+/**
+ * @swagger
+ * /api/portfolio/snapshot:
+ *   post:
+ *     summary: Create or update today's portfolio snapshot
+ *     description: Upserts a single daily snapshot row. Call this at end-of-day to record the equity curve.
+ *     tags: [Portfolio]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Snapshot created or updated for today
+ *       401:
+ *         description: Unauthorized
+ */ router.post(
   '/snapshot',
   asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user!.userId
