@@ -5,7 +5,7 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Piggy API',
+      title: 'Truffles API',
       version: '1.0.0',
       description:
         'A comprehensive stock portfolio management API built with Express and Prisma',

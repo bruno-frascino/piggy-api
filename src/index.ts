@@ -44,7 +44,7 @@ app.use(
   swaggerUi.setup(specs, {
     explorer: true,
     customCss: '.swagger-ui .topbar { display: none }',
-    customSiteTitle: 'Piggy API Documentation',
+    customSiteTitle: 'Truffles API Documentation',
   })
 )
 
@@ -150,7 +150,7 @@ async function startServer() {
     await bootstrapExchanges()
 
     app.listen(port, () => {
-      console.log(`Piggy API server running on port ${port}`)
+      console.log(`Truffles API server running on port ${port}`)
       console.log(`API Documentation: http://localhost:${port}/api/docs`)
       console.log(`Health check: http://localhost:${port}/health`)
       console.log(`API info: http://localhost:${port}/api`)
@@ -159,7 +159,7 @@ async function startServer() {
     const message =
       error instanceof Error ? error.message : 'Unknown startup error'
 
-    console.error('Failed to start Piggy API:', message)
+    console.error('Failed to start Truffles API:', message)
     process.exit(1)
   }
 }

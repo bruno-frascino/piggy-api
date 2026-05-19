@@ -1,4 +1,4 @@
-// Piggy - Stock Portfolio Database Schema
+// Truffles - Stock Portfolio Database Schema
 
 generator client {
   provider = "prisma-client-js"
