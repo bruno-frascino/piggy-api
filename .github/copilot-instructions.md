@@ -119,6 +119,17 @@ For validation errors:
 - Form-level errors on the frontend: use PrimeReact `<Message severity="error" text={...} />`.
 - Global mutation feedback (success/error): use PrimeReact `<Toast>` via a context provider. Expose a `useToast()` hook that components can call to trigger toasts without prop-drilling the ref.
 
+### API Documentation
+
+- Swagger UI is served at `http://localhost:4000/api/docs` (swagger-jsdoc + swagger-ui-express).
+- **Always keep Swagger docs in sync with the code.** Any backend change that affects the API surface must include a matching documentation update:
+  - New route → add a `@swagger` JSDoc comment directly above the `router.METHOD(...)` call in the controller file.
+  - Deleted route → remove its JSDoc comment.
+  - Changed request body, query params, path params, or response shape → update the relevant `@swagger` block.
+  - New tag or security scheme → update the `tags` / `securitySchemes` sections in `src/lib/swagger.ts`.
+- All routes that require authentication must include `security: [{ bearerAuth: [] }]` in their JSDoc.
+- JSDoc comments follow the OpenAPI 3.0 format; see existing routes in `src/controllers/` for examples.
+
 ---
 
 ## Coding Standards & Preferences
