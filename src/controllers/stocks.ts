@@ -70,16 +70,39 @@ function toCountryCode(region?: string): string | null {
   return map[normalized] ?? null
 }
 
+// Maps Yahoo Finance exchDisp display names to our exchange codes
+const YAHOO_EXCHANGE_MAP: Record<string, string> = {
+  Australian: 'ASX',
+  NasdaqGS: 'NASDAQ',
+  NasdaqCM: 'NASDAQ',
+  NasdaqGM: 'NASDAQ',
+  Nasdaq: 'NASDAQ',
+  NYSE: 'NYSE',
+  'NYSE MKT': 'NYSE',
+  'NYSE American': 'NYSE',
+  'NYSE Arca': 'NYSE',
+  'São Paulo': 'B3',
+  'Sao Paulo': 'B3',
+  London: 'LSE',
+  Toronto: 'TSX',
+  TSX: 'TSX',
+  TSXV: 'TSX',
+}
+
 function mapQuote(quote: YahooQuoteResult) {
   const symbol = quote.symbol?.trim()
   if (!symbol) {
     return null
   }
 
+  const rawExchange =
+    quote.exchDisp?.trim() || quote.exchange?.trim() || 'Unknown'
+  const exchange = YAHOO_EXCHANGE_MAP[rawExchange] ?? rawExchange
+
   return {
     symbol: normalizeSymbol(symbol),
     name: quote.longname?.trim() || quote.shortname?.trim() || symbol,
-    exchange: quote.exchDisp?.trim() || quote.exchange?.trim() || 'Unknown',
+    exchange,
     type: quote.typeDisp?.trim() || quote.quoteType?.trim() || 'Unknown',
     countryCode: toCountryCode(quote.region),
   }

@@ -60,6 +60,9 @@ const getExchangesValidation = [
  *                 maxLength: 10
  *               name:
  *                 type: string
+ *               currency:
+ *                 type: string
+ *                 description: ISO 4217 currency code (e.g. USD, AUD, GBP)
  *               countryName:
  *                 type: string
  *               countryCode:
@@ -80,13 +83,21 @@ router.post(
   '/',
   createExchangeValidation,
   asyncHandler(async (req: Request, res: Response) => {
-    const { code, name, countryName, countryCode, symbolSuffix, delay } =
-      req.body
+    const {
+      code,
+      name,
+      currency,
+      countryName,
+      countryCode,
+      symbolSuffix,
+      delay,
+    } = req.body
 
     const exchange = await prisma.exchange.create({
       data: {
         code: code.toUpperCase(),
         name,
+        currency: currency ? String(currency).toUpperCase() : 'USD',
         countryName,
         countryCode: countryCode.toUpperCase(),
         symbolSuffix: symbolSuffix ?? null,
@@ -256,6 +267,9 @@ router.get(
  *             properties:
  *               name:
  *                 type: string
+ *               currency:
+ *                 type: string
+ *                 description: ISO 4217 currency code (e.g. USD, AUD, GBP)
  *               countryName:
  *                 type: string
  *               countryCode:
@@ -276,16 +290,19 @@ router.put(
   updateExchangeValidation,
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params
-    const { name, countryName, countryCode, symbolSuffix, delay } = req.body
+    const { name, currency, countryName, countryCode, symbolSuffix, delay } =
+      req.body
 
     const updateData: {
       name?: string
+      currency?: string
       countryName?: string
       countryCode?: string
       symbolSuffix?: string | null
       delay?: string | null
     } = {}
     if (name) updateData.name = name
+    if (currency) updateData.currency = String(currency).toUpperCase()
     if (countryName) updateData.countryName = countryName
     if (countryCode) updateData.countryCode = countryCode.toUpperCase()
     if (symbolSuffix !== undefined)

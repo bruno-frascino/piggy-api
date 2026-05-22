@@ -58,6 +58,7 @@ model Exchange {
   id           String   @id @default(cuid())
   code         String   @unique // NASDAQ, NYSE, BINANCE
   name         String   // NASDAQ Stock Market
+  currency     String   @default("USD") // ISO 4217 currency code
   countryName  String   // United States of America
   countryCode  String   // US
   symbolSuffix String?  // .AX, .SA, etc.

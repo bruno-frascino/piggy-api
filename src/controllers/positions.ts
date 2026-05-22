@@ -72,6 +72,11 @@ async function findOrCreateAsset(
  *           type: string
  *           enum: [EQUITY, ETF, CRYPTO]
  *       - in: query
+ *         name: exchangeCode
+ *         schema:
+ *           type: string
+ *         description: Filter by exchange code (e.g. NYSE, ASX)
+ *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
@@ -95,18 +100,24 @@ router.get(
   [
     query('status').optional().isIn(['OPEN', 'CLOSED', 'PARTIAL']),
     query('assetType').optional().isIn(['EQUITY', 'ETF', 'CRYPTO']),
+    query('exchangeCode').optional().isString().trim().toUpperCase(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
     query('offset').optional().isInt({ min: 0 }).toInt(),
     handleValidationErrors,
   ],
   asyncHandler(async (req: Request, res: Response) => {
-    const { status, assetType } = req.query
+    const { status, assetType, exchangeCode } = req.query
     const limit = Number(req.query.limit) || 50
     const offset = Number(req.query.offset) || 0
 
     const where: Record<string, unknown> = { userId: req.user!.userId }
     if (status) where.status = status
-    if (assetType) where.asset = { assetType }
+    if (assetType || exchangeCode) {
+      where.asset = {
+        ...(assetType ? { assetType } : {}),
+        ...(exchangeCode ? { exchange: { code: exchangeCode } } : {}),
+      }
+    }
 
     const [positions, total] = await Promise.all([
       prisma.position.findMany({

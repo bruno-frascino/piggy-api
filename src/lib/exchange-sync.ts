@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 type SeedExchange = {
   code: string
   name: string
+  currency: string
   countryName: string
   countryCode: string
   symbolSuffix?: string | null
@@ -21,6 +22,7 @@ const CORE_EXCHANGES: SeedExchange[] = [
   {
     code: 'NASDAQ',
     name: 'NASDAQ Stock Market',
+    currency: 'USD',
     countryName: 'United States of America',
     countryCode: 'US',
     symbolSuffix: null,
@@ -29,6 +31,7 @@ const CORE_EXCHANGES: SeedExchange[] = [
   {
     code: 'NYSE',
     name: 'New York Stock Exchange',
+    currency: 'USD',
     countryName: 'United States of America',
     countryCode: 'US',
     symbolSuffix: null,
@@ -37,6 +40,7 @@ const CORE_EXCHANGES: SeedExchange[] = [
   {
     code: 'ASX',
     name: 'Australian Securities Exchange',
+    currency: 'AUD',
     countryName: 'Australia',
     countryCode: 'AU',
     symbolSuffix: '.AX',
@@ -45,6 +49,7 @@ const CORE_EXCHANGES: SeedExchange[] = [
   {
     code: 'B3',
     name: 'B3 - Brasil Bolsa Balcao',
+    currency: 'BRL',
     countryName: 'Brazil',
     countryCode: 'BR',
     symbolSuffix: '.SA',
@@ -53,6 +58,7 @@ const CORE_EXCHANGES: SeedExchange[] = [
   {
     code: 'LSE',
     name: 'London Stock Exchange',
+    currency: 'GBP',
     countryName: 'United Kingdom',
     countryCode: 'GB',
     symbolSuffix: '.L',
@@ -61,6 +67,7 @@ const CORE_EXCHANGES: SeedExchange[] = [
   {
     code: 'TSX',
     name: 'Toronto Stock Exchange',
+    currency: 'CAD',
     countryName: 'Canada',
     countryCode: 'CA',
     symbolSuffix: '.TO',
@@ -70,6 +77,7 @@ const CORE_EXCHANGES: SeedExchange[] = [
   {
     code: 'BINANCE',
     name: 'Binance',
+    currency: 'USD',
     countryName: 'Global',
     countryCode: 'XX',
     symbolSuffix: null,
@@ -78,6 +86,7 @@ const CORE_EXCHANGES: SeedExchange[] = [
   {
     code: 'COINBASE',
     name: 'Coinbase Exchange',
+    currency: 'USD',
     countryName: 'United States of America',
     countryCode: 'US',
     symbolSuffix: null,
@@ -86,6 +95,7 @@ const CORE_EXCHANGES: SeedExchange[] = [
   {
     code: 'KRAKEN',
     name: 'Kraken',
+    currency: 'AUD',
     countryName: 'United States of America',
     countryCode: 'US',
     symbolSuffix: null,
@@ -117,6 +127,7 @@ async function upsertExchange(
     create: {
       code: normalizedCode,
       name: exchange.name.trim(),
+      currency: exchange.currency.trim().toUpperCase(),
       countryName: exchange.countryName.trim(),
       countryCode: exchange.countryCode.trim().toUpperCase(),
       symbolSuffix: exchange.symbolSuffix?.trim() || null,
@@ -124,6 +135,7 @@ async function upsertExchange(
     },
     update: {
       name: exchange.name.trim(),
+      currency: exchange.currency.trim().toUpperCase(),
       countryName: exchange.countryName.trim(),
       countryCode: exchange.countryCode.trim().toUpperCase(),
       symbolSuffix: exchange.symbolSuffix?.trim() || null,
@@ -156,9 +168,7 @@ export async function ensureCoreExchanges(
   }
 }
 
-export async function seedExchangesIfEmpty(
-  prisma: PrismaClient
-): Promise<{
+export async function seedExchangesIfEmpty(prisma: PrismaClient): Promise<{
   attempted: boolean
   seeded: boolean
   reason: string
