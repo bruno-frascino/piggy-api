@@ -17,7 +17,8 @@ async function findOrCreateAsset(
   symbol: string,
   exchangeCode: string,
   name?: string,
-  assetType?: string
+  assetType?: string,
+  industry?: string
 ) {
   const normalizedSymbol = symbol.trim().toUpperCase()
   const normalizedExchange = exchangeCode.trim().toUpperCase()
@@ -38,13 +39,23 @@ async function findOrCreateAsset(
       symbol_exchangeId: { symbol: normalizedSymbol, exchangeId: exchange.id },
     },
   })
-  if (existing) return existing
+  if (existing) {
+    const normalizedIndustry = industry?.trim() || null
+    if (normalizedIndustry && existing.industry !== normalizedIndustry) {
+      return prisma.asset.update({
+        where: { id: existing.id },
+        data: { industry: normalizedIndustry },
+      })
+    }
+    return existing
+  }
 
   return prisma.asset.create({
     data: {
       symbol: normalizedSymbol,
       name: name?.trim() || normalizedSymbol,
       assetType: (assetType as AssetType) || 'EQUITY',
+      industry: industry?.trim() || null,
       exchangeId: exchange.id,
     },
   })
@@ -171,6 +182,8 @@ router.get(
  *                 type: string
  *                 enum: [EQUITY, ETF, CRYPTO]
  *                 default: EQUITY
+ *               industry:
+ *                 type: string
  *               openDate:
  *                 type: string
  *                 format: date-time
@@ -225,6 +238,7 @@ router.post(
     body('exchangeCode').isString().trim().toUpperCase(),
     body('assetName').optional().isString().trim(),
     body('assetType').optional().isIn(['EQUITY', 'ETF', 'CRYPTO']),
+    body('industry').optional().isString().trim(),
     body('openDate').isISO8601().toDate(),
     body('entryPrice').isFloat({ min: 0.0001 }).toFloat(),
     body('quantity').isInt({ min: 1 }).toInt(),
@@ -254,6 +268,7 @@ router.post(
       exchangeCode,
       assetName,
       assetType,
+      industry,
       openDate,
       entryPrice,
       quantity,
@@ -274,7 +289,8 @@ router.post(
       symbol,
       exchangeCode,
       assetName,
-      assetType
+      assetType,
+      industry
     )
     const totalBuyValue = entryPrice * quantity
 
@@ -636,6 +652,134 @@ router.post(
       },
     })
 
+    res.json({ success: true, data: updated })
+  })
+)
+
+// ─── PATCH /api/positions/:id/closed-trade ───────────────────────────────────
+
+/**
+ * @swagger
+ * /api/positions/{id}/closed-trade:
+ *   patch:
+ *     summary: Update editable fields on a closed (or partially-closed) position
+ *     description: |
+ *       Allows correcting close-side details after the fact.
+ *       When `exitPrice` or `sellFees` are supplied, `totalSellValue`,
+ *       `realizedPnL` and `returnPercentage` are automatically recalculated.
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               closeDate:
+ *                 type: string
+ *                 format: date-time
+ *               exitPrice:
+ *                 type: number
+ *               sellFees:
+ *                 type: number
+ *               notes:
+ *                 type: string
+ *               tradeGrade:
+ *                 type: string
+ *                 enum: [A, B, C, D, F]
+ *               lessonsLearned:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Closed position updated
+ *       400:
+ *         description: Position is not closed
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Position not found
+ */
+router.patch(
+  '/:id/closed-trade',
+  [
+    param('id').isString(),
+    body('closeDate').optional().isISO8601().toDate(),
+    body('exitPrice').optional().isFloat({ min: 0.0001 }).toFloat(),
+    body('sellFees').optional().isFloat({ min: 0 }).toFloat(),
+    body('notes').optional().isString().trim(),
+    body('tradeGrade').optional().isIn(['A', 'B', 'C', 'D', 'F']),
+    body('lessonsLearned').optional().isString().trim(),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const existing = await prisma.position.findFirst({
+      where: { id: req.params.id, userId: req.user!.userId },
+    })
+    if (!existing) {
+      return res
+        .status(404)
+        .json({ error: 'Not Found', message: 'Position not found' })
+    }
+    if (existing.status === 'OPEN') {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Position is not closed — use PATCH /positions/:id instead',
+      })
+    }
+
+    const {
+      closeDate,
+      exitPrice,
+      sellFees,
+      notes,
+      tradeGrade,
+      lessonsLearned,
+    } = req.body
+
+    // Recalculate financials if close-side numbers change
+    const resolvedExitPrice =
+      exitPrice !== undefined ? exitPrice : Number(existing.exitPrice ?? 0)
+    const resolvedSellFees =
+      sellFees !== undefined ? sellFees : Number(existing.sellFees ?? 0)
+    const totalSellValue = resolvedExitPrice * existing.quantity
+    const totalBuyValue = Number(existing.totalBuyValue)
+    const buyFees = Number(existing.buyFees)
+    const realizedPnL =
+      totalSellValue - resolvedSellFees - totalBuyValue - buyFees
+    const returnPercentage =
+      totalBuyValue + buyFees > 0
+        ? (realizedPnL / (totalBuyValue + buyFees)) * 100
+        : 0
+
+    const updated = await prisma.position.update({
+      where: { id: req.params.id },
+      data: {
+        ...(closeDate !== undefined && { closeDate }),
+        ...(exitPrice !== undefined && {
+          exitPrice,
+          totalSellValue,
+          realizedPnL,
+          returnPercentage,
+        }),
+        ...(sellFees !== undefined &&
+          !exitPrice && {
+            sellFees: resolvedSellFees,
+            realizedPnL,
+            returnPercentage,
+          }),
+        ...(notes !== undefined && { notes }),
+        ...(tradeGrade !== undefined && { tradeGrade }),
+        ...(lessonsLearned !== undefined && { lessonsLearned }),
+      },
+      include: { asset: { include: { exchange: true } } },
+    })
     res.json({ success: true, data: updated })
   })
 )

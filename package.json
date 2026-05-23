@@ -38,7 +38,8 @@
     "pg": "^8.20.0",
     "prisma": "^7.8.0",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "yahoo-finance2": "^3.14.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

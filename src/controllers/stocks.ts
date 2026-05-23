@@ -1,9 +1,13 @@
 import { Router, Request, Response } from 'express'
 import { query } from 'express-validator'
+import YahooFinance from 'yahoo-finance2'
 import {
   asyncHandler,
   handleValidationErrors,
 } from '../middleware/validation.js'
+import { authenticateToken } from '../middleware/auth.js'
+
+const yahooFinance = new YahooFinance()
 
 const router = Router()
 
@@ -195,6 +199,117 @@ router.get(
         provider: 'yahoo-finance-search',
       },
     })
+  })
+)
+
+// ─── GET /api/stocks/quotes ───────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/stocks/quotes:
+ *   get:
+ *     summary: Fetch live quotes for a list of symbols
+ *     description: |
+ *       Returns the current market price, day change and day change % for each
+ *       symbol via Yahoo Finance (no API key required). Symbols must use the
+ *       Yahoo Finance format — include exchange suffix where applicable
+ *       (e.g. BHP.AX for ASX, VOD.L for LSE). Maximum 50 symbols per request.
+ *     tags: [Stocks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: symbols
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of symbols (e.g. AAPL,BHP.AX,BTC-USD)
+ *     responses:
+ *       200:
+ *         description: Quote data — symbols that could not be resolved are omitted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       symbol:
+ *                         type: string
+ *                       price:
+ *                         type: number
+ *                         nullable: true
+ *                       change:
+ *                         type: number
+ *                         nullable: true
+ *                       changePercent:
+ *                         type: number
+ *                         nullable: true
+ *                       currency:
+ *                         type: string
+ *                         nullable: true
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/quotes',
+  [
+    authenticateToken,
+    query('symbols').isString().trim().isLength({ min: 1, max: 500 }),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const rawSymbols = String(req.query.symbols || '').trim()
+    const symbols = rawSymbols
+      .split(',')
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean)
+      .slice(0, 50)
+
+    if (!symbols.length) {
+      return res.json({ success: true, data: [] })
+    }
+
+    const results = await Promise.allSettled(
+      symbols.map((s) => yahooFinance.quote(s))
+    )
+
+    const data = results
+      .map((r, i) => {
+        if (r.status === 'rejected') return null
+        const q = r.value as Record<string, unknown>
+        const price =
+          typeof q['regularMarketPrice'] === 'number'
+            ? (q['regularMarketPrice'] as number)
+            : null
+        if (price === null) return null
+        return {
+          symbol: symbols[i],
+          price,
+          change:
+            typeof q['regularMarketChange'] === 'number'
+              ? (q['regularMarketChange'] as number)
+              : null,
+          changePercent:
+            typeof q['regularMarketChangePercent'] === 'number'
+              ? (q['regularMarketChangePercent'] as number)
+              : null,
+          currency:
+            typeof q['currency'] === 'string'
+              ? (q['currency'] as string)
+              : null,
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+
+    res.json({ success: true, data })
   })
 )
 
