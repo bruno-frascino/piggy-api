@@ -3,3 +3,6 @@ node_modules
 .env
 
 /generated/prisma
+
+# Local VS Code workspace file
+piggy-app.code-workspace
