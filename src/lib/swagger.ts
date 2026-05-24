@@ -168,6 +168,10 @@ const options = {
         name: 'Watchlist',
         description: 'Per-user watchlist management',
       },
+      {
+        name: 'Accounts',
+        description: 'Trading accounts per exchange (multi-account support)',
+      },
     ],
   },
   apis: ['./src/controllers/*.ts'], // Path to the API docs

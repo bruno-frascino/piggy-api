@@ -61,6 +61,29 @@ async function findOrCreateAsset(
   })
 }
 
+async function resolveTradingAccount(
+  userId: string,
+  exchangeId: string,
+  accountName?: string
+) {
+  const normalizedName = (accountName?.trim() || 'Main').slice(0, 80)
+  return prisma.tradingAccount.upsert({
+    where: {
+      userId_exchangeId_name: {
+        userId,
+        exchangeId,
+        name: normalizedName,
+      },
+    },
+    create: {
+      userId,
+      exchangeId,
+      name: normalizedName,
+    },
+    update: {},
+  })
+}
+
 // ─── GET /api/positions ───────────────────────────────────────────────────────
 
 /**
@@ -88,6 +111,11 @@ async function findOrCreateAsset(
  *           type: string
  *         description: Filter by exchange code (e.g. NYSE, ASX)
  *       - in: query
+ *         name: accountId
+ *         schema:
+ *           type: string
+ *         description: Filter by trading account ID
+ *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
@@ -112,17 +140,19 @@ router.get(
     query('status').optional().isIn(['OPEN', 'CLOSED', 'PARTIAL']),
     query('assetType').optional().isIn(['EQUITY', 'ETF', 'CRYPTO']),
     query('exchangeCode').optional().isString().trim().toUpperCase(),
+    query('accountId').optional().isString().trim(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
     query('offset').optional().isInt({ min: 0 }).toInt(),
     handleValidationErrors,
   ],
   asyncHandler(async (req: Request, res: Response) => {
-    const { status, assetType, exchangeCode } = req.query
+    const { status, assetType, exchangeCode, accountId } = req.query
     const limit = Number(req.query.limit) || 50
     const offset = Number(req.query.offset) || 0
 
     const where: Record<string, unknown> = { userId: req.user!.userId }
     if (status) where.status = status
+    if (accountId) where.accountId = accountId
     if (assetType || exchangeCode) {
       where.asset = {
         ...(assetType ? { assetType } : {}),
@@ -133,7 +163,7 @@ router.get(
     const [positions, total] = await Promise.all([
       prisma.position.findMany({
         where,
-        include: { asset: { include: { exchange: true } } },
+        include: { account: true, asset: { include: { exchange: true } } },
         orderBy: { openDate: 'desc' },
         take: limit,
         skip: offset,
@@ -184,6 +214,9 @@ router.get(
  *                 default: EQUITY
  *               industry:
  *                 type: string
+ *               accountName:
+ *                 type: string
+ *                 description: Trading account name (defaults to Main)
  *               openDate:
  *                 type: string
  *                 format: date-time
@@ -239,6 +272,11 @@ router.post(
     body('assetName').optional().isString().trim(),
     body('assetType').optional().isIn(['EQUITY', 'ETF', 'CRYPTO']),
     body('industry').optional().isString().trim(),
+    body('accountName')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ min: 1, max: 80 }),
     body('openDate').isISO8601().toDate(),
     body('entryPrice').isFloat({ min: 0.0001 }).toFloat(),
     body('quantity').isInt({ min: 1 }).toInt(),
@@ -269,6 +307,7 @@ router.post(
       assetName,
       assetType,
       industry,
+      accountName,
       openDate,
       entryPrice,
       quantity,
@@ -292,12 +331,18 @@ router.post(
       assetType,
       industry
     )
+    const account = await resolveTradingAccount(
+      req.user!.userId,
+      asset.exchangeId,
+      accountName
+    )
     const totalBuyValue = entryPrice * quantity
 
     const position = await prisma.position.create({
       data: {
         userId: req.user!.userId,
         assetId: asset.id,
+        accountId: account.id,
         openDate,
         entryPrice,
         quantity,
@@ -324,7 +369,11 @@ router.post(
           },
         },
       },
-      include: { asset: { include: { exchange: true } }, transactions: true },
+      include: {
+        account: true,
+        asset: { include: { exchange: true } },
+        transactions: true,
+      },
     })
 
     res.status(201).json({ success: true, data: position })
@@ -362,6 +411,7 @@ router.get(
     const position = await prisma.position.findFirst({
       where: { id: req.params.id, userId: req.user!.userId },
       include: {
+        account: true,
         asset: { include: { exchange: true } },
         transactions: { orderBy: { date: 'asc' } },
       },
