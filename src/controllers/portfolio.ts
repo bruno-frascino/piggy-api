@@ -1,6 +1,10 @@
 import { Router, Request, Response } from 'express'
+import { body, query } from 'express-validator'
 import { prisma } from '../lib/prisma.js'
-import { asyncHandler } from '../middleware/validation.js'
+import {
+  asyncHandler,
+  handleValidationErrors,
+} from '../middleware/validation.js'
 import { authenticateToken } from '../middleware/auth.js'
 
 const router = Router()
@@ -122,9 +126,30 @@ router.use(authenticateToken)
  */
 router.get(
   '/history',
+  [
+    query('accountId').isString().trim(),
+    query('exchangeCode').isString().trim().toUpperCase(),
+    handleValidationErrors,
+  ],
   asyncHandler(async (req: Request, res: Response) => {
+    const accountId = String(req.query.accountId)
+    const exchangeCode = String(req.query.exchangeCode)
+
+    const exchange = await prisma.exchange.findUnique({
+      where: { code: exchangeCode },
+      select: { id: true },
+    })
+
+    if (!exchange) {
+      return res.json({ success: true, data: [] })
+    }
+
     const snapshots = await prisma.portfolioSnapshot.findMany({
-      where: { userId: req.user!.userId },
+      where: {
+        userId: req.user!.userId,
+        accountId,
+        exchangeId: exchange.id,
+      },
       orderBy: { date: 'asc' },
     })
     res.json({ success: true, data: snapshots })
@@ -148,16 +173,58 @@ router.get(
  *         description: Unauthorized
  */ router.post(
   '/snapshot',
+  [
+    body('accountId').isString().trim(),
+    body('exchangeCode').isString().trim().toUpperCase(),
+    handleValidationErrors,
+  ],
   asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user!.userId
+    const accountId = String(req.body.accountId)
+    const exchangeCode = String(req.body.exchangeCode)
+
+    const [account, exchange] = await Promise.all([
+      prisma.tradingAccount.findFirst({
+        where: { id: accountId, userId },
+        select: { id: true },
+      }),
+      prisma.exchange.findUnique({
+        where: { code: exchangeCode },
+        select: { id: true },
+      }),
+    ])
+
+    if (!account) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Trading account not found',
+      })
+    }
+
+    if (!exchange) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: `Exchange '${exchangeCode}' not found`,
+      })
+    }
 
     const [openPositions, closedPositions] = await Promise.all([
       prisma.position.findMany({
-        where: { userId, status: { in: ['OPEN', 'PARTIAL'] } },
+        where: {
+          userId,
+          accountId: account.id,
+          status: { in: ['OPEN', 'PARTIAL'] },
+          asset: { exchangeId: exchange.id },
+        },
         select: { capitalAllocated: true, unrealizedPnL: true },
       }),
       prisma.position.findMany({
-        where: { userId, status: 'CLOSED' },
+        where: {
+          userId,
+          accountId: account.id,
+          status: 'CLOSED',
+          asset: { exchangeId: exchange.id },
+        },
         select: { realizedPnL: true },
       }),
     ])
@@ -183,9 +250,18 @@ router.get(
     today.setHours(0, 0, 0, 0)
 
     const snapshot = await prisma.portfolioSnapshot.upsert({
-      where: { userId_date: { userId, date: today } },
+      where: {
+        userId_accountId_exchangeId_date: {
+          userId,
+          accountId: account.id,
+          exchangeId: exchange.id,
+          date: today,
+        },
+      },
       create: {
         userId,
+        accountId: account.id,
+        exchangeId: exchange.id,
         date: today,
         totalValue,
         totalInvested,

@@ -79,6 +79,14 @@ prisma/
 
 ## Frontend & Backend Integration Rules
 
+### Portfolio UX Behavior
+
+- The dashboard is **account-first** and **position-first**.
+- Users can create a position without preselecting an exchange.
+- Exchange selection is derived from the selected stock symbol search result and should not require a separate manual "Add Exchange" step.
+- Exchanges shown on the dashboard are discovered from the user positions for the selected account.
+- When defining or implementing solutions, prefer patterns that are appropriate for a Progressive Web App: responsive layouts, touch-friendly interactions, lightweight flows, resilient offline-aware behavior where relevant, and UI patterns that work well on both mobile and desktop.
+
 ### HTTP & API Client
 
 - All frontend HTTP calls must go through the shared Axios instance in `src/lib/api-client.ts`.
@@ -137,6 +145,7 @@ For validation errors:
 - Use **async/await** over raw Promise chains.
 - Use **functional React components** with hooks only — no class components.
 - Strict TypeScript: no `any`, use `unknown` + type guards at boundaries.
+- Do not leave the codebase with any compilation errors after making changes.
 - React Query hooks live in `src/hooks/api.ts`; raw Axios calls live in `src/lib/api-client.ts`.
 - Backend route handlers must be wrapped with `asyncHandler()` from `src/middleware/validation.ts`.
 - All protected backend routes must use the `authenticateToken` middleware from `src/middleware/auth.ts`.
