@@ -146,6 +146,8 @@ For validation errors:
 - Use **functional React components** with hooks only — no class components.
 - Strict TypeScript: no `any`, use `unknown` + type guards at boundaries.
 - Do not leave the codebase with any compilation errors after making changes.
+- For every new feature, bug fix, or behavior change, create or update unit tests in the same change set.
+- Consider the task incomplete until relevant unit tests exist and pass for the modified behavior.
 - React Query hooks live in `src/hooks/api.ts`; raw Axios calls live in `src/lib/api-client.ts`.
 - Backend route handlers must be wrapped with `asyncHandler()` from `src/middleware/validation.ts`.
 - All protected backend routes must use the `authenticateToken` middleware from `src/middleware/auth.ts`.
