@@ -62,19 +62,13 @@ app.get('/api', (req, res) => {
     endpoints: {
       health: '/health',
       users: '/api/users',
-      exchanges: '/api/exchanges',
       stocks: '/api/stocks',
       positions: '/api/positions',
-      transactions: '/api/transactions',
-      watchlist: '/api/watchlist',
     },
     features: [
       'User Management',
-      'Exchange Management',
       'Stock Management with Price History',
       'Portfolio Position Tracking',
-      'Transaction Logging',
-      'Watchlist with Price Alerts',
       'OpenAPI Documentation',
     ],
   })

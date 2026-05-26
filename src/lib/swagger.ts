@@ -149,10 +149,6 @@ const options = {
         description: 'User profile management',
       },
       {
-        name: 'Exchanges',
-        description: 'Stock exchange operations',
-      },
-      {
         name: 'Stocks',
         description: 'Symbol search via Yahoo Finance',
       },
@@ -163,10 +159,6 @@ const options = {
       {
         name: 'Portfolio',
         description: 'Portfolio summary, history snapshots',
-      },
-      {
-        name: 'Watchlist',
-        description: 'Per-user watchlist management',
       },
       {
         name: 'Accounts',

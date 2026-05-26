@@ -86,6 +86,8 @@ prisma/
 - Exchange selection is derived from the selected stock symbol search result and should not require a separate manual "Add Exchange" step.
 - Exchanges shown on the dashboard are discovered from the user positions for the selected account.
 - When defining or implementing solutions, prefer patterns that are appropriate for a Progressive Web App: responsive layouts, touch-friendly interactions, lightweight flows, resilient offline-aware behavior where relevant, and UI patterns that work well on both mobile and desktop.
+- When a new feature is discussed or implemented, complete it end to end: create or update the backend and frontend together when both sides are involved.
+- When a feature is removed or changed, keep both sides aligned so there are no stale or half-finished integrations.
 
 ### HTTP & API Client
 
@@ -148,6 +150,7 @@ For validation errors:
 - Do not leave the codebase with any compilation errors after making changes.
 - For every new feature, bug fix, or behavior change, create or update unit tests in the same change set.
 - Consider the task incomplete until relevant unit tests exist and pass for the modified behavior.
+- Do not suggest partial solutions; if a solution is proposed, implement it end to end rather than leaving disconnected backend or frontend pieces behind.
 - React Query hooks live in `src/hooks/api.ts`; raw Axios calls live in `src/lib/api-client.ts`.
 - Backend route handlers must be wrapped with `asyncHandler()` from `src/middleware/validation.ts`.
 - All protected backend routes must use the `authenticateToken` middleware from `src/middleware/auth.ts`.
