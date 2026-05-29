@@ -9,7 +9,6 @@ A comprehensive stock portfolio management API built with tRPC, Prisma, and Type
 - **Stock Management**: Add and manage stocks with price history
 - **Position Tracking**: Detailed position management with entry/exit tracking
 - **Transaction History**: Complete transaction logging
-- **Watchlist**: Monitor stocks of interest with price alerts
 - **Portfolio Analytics**: Performance tracking and metrics
 
 ## Tech Stack
@@ -121,18 +120,6 @@ All business logic is handled through tRPC at `/api/trpc/[router].[procedure]`
    - `delete` - Delete transaction
    - `createBulk` - Bulk create transactions
 
-6. **Watchlist Router** (`/api/trpc/watchlist.*`)
-   - `add` - Add stock to watchlist
-   - `list` - Get user's watchlist
-   - `getById` - Get watchlist item details
-   - `update` - Update watchlist item
-   - `remove` - Remove from watchlist
-   - `removeByStock` - Remove by stock ID
-   - `isWatched` - Check if stock is watched
-   - `getPriceAlerts` - Get price alerts
-   - `getSummary` - Get watchlist summary
-   - `bulkAdd` - Bulk add to watchlist
-
 ## Database Schema
 
 The API uses a comprehensive database schema designed for stock portfolio management:
@@ -143,7 +130,6 @@ The API uses a comprehensive database schema designed for stock portfolio manage
 - **Positions**: Trading positions with detailed tracking
 - **Transactions**: Individual buy/sell transactions
 - **PriceHistory**: Historical price data
-- **Watchlist**: Stocks to monitor
 - **PortfolioSnapshot**: Portfolio performance snapshots
 
 ## Development

@@ -15,7 +15,7 @@ model User {
   email        String   @unique
   name         String?
   passwordHash String
-  baseCurrency String   @default("USD")
+  baseCurrency String   @default("AUD")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -24,7 +24,6 @@ model User {
   portfolioSnapshots PortfolioSnapshot[]
   refreshTokens      RefreshToken[]
   passwordResetTokens PasswordResetToken[]
-  watchlist          Watchlist[]
 
   @@map("users")
 }
@@ -114,7 +113,6 @@ model Asset {
   exchange     Exchange      @relation(fields: [exchangeId], references: [id])
   positions    Position[]
   priceHistory PriceHistory[]
-  watchlist    Watchlist[]
 
   @@unique([symbol, exchangeId])
   @@map("assets")
@@ -233,25 +231,6 @@ model PortfolioSnapshot {
 
   @@unique([userId, accountId, exchangeId, date])
   @@map("portfolio_snapshots")
-}
-
-// ─── Watchlist ───────────────────────────────────────────────────────────────
-
-model Watchlist {
-  id          String   @id @default(cuid())
-  userId      String
-  assetId     String
-  name        String?
-  notes       String?
-  targetPrice Decimal? @db.Decimal(10, 4)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user  User  @relation(fields: [userId], references: [id])
-  asset Asset @relation(fields: [assetId], references: [id])
-
-  @@unique([userId, assetId])
-  @@map("watchlist")
 }
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
