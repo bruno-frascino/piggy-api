@@ -6,6 +6,7 @@ import {
   handleValidationErrors,
 } from '../middleware/validation.js'
 import { authenticateToken } from '../middleware/auth.js'
+import { computeSnapshotValues } from '../lib/portfolio-calc.js'
 
 const router = Router()
 router.use(authenticateToken)
@@ -131,22 +132,17 @@ router.get(
       }),
     ])
 
-    const totalInvested = openPositions.reduce(
-      (sum, p) => sum + Number(p.capitalAllocated),
-      0
-    )
-    const totalUnrealizedPnL = openPositions.reduce(
-      (sum, p) => sum + Number(p.unrealizedPnL ?? 0),
-      0
-    )
-    const totalRealizedPnL = closedPositions.reduce(
-      (sum, p) => sum + Number(p.realizedPnL ?? 0),
-      0
-    )
-    const totalPnL = totalUnrealizedPnL + totalRealizedPnL
-    const totalValue = totalInvested + totalUnrealizedPnL
-    const totalReturnPct =
-      totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0
+    const { totalInvested, totalPnL, totalValue, totalReturnPct } =
+      computeSnapshotValues(
+        openPositions.map((p) => ({
+          capitalAllocated: Number(p.capitalAllocated),
+          unrealizedPnL:
+            p.unrealizedPnL !== null ? Number(p.unrealizedPnL) : null,
+        })),
+        closedPositions.map((p) => ({
+          realizedPnL: p.realizedPnL !== null ? Number(p.realizedPnL) : null,
+        }))
+      )
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
