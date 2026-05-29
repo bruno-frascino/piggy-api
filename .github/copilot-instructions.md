@@ -12,19 +12,19 @@ The workspace contains two projects:
 
 ## Frontend Stack (`piggy-fe/`)
 
-| Concern       | Library / Tool                                                           |
-| ------------- | ------------------------------------------------------------------------ |
-| Framework     | Next.js 16 (App Router)                                                  |
-| Language      | TypeScript 6                                                             |
-| UI components | PrimeReact v10 + PrimeFlex v4 + Primeicons v7 (theme: `lara-light-blue`) |
-| Styling       | Tailwind CSS v4 + PostCSS                                                |
-| Server state  | TanStack React Query v5                                                  |
-| HTTP client   | Axios (shared instance at `src/lib/api-client.ts`)                       |
-| Charts        | Chart.js + react-chartjs-2                                               |
-| Local state   | React `useState` — no global state library (Zustand/Redux not used)      |
-| PWA           | @ducanh2912/next-pwa                                                     |
-| Testing       | Vitest + @testing-library/react                                          |
-| Linting       | ESLint + Prettier + lint-staged + Husky                                  |
+| Concern       | Library / Tool                                                                                                                                                                           |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Framework     | Next.js 16 (App Router)                                                                                                                                                                  |
+| Language      | TypeScript 6                                                                                                                                                                             |
+| UI components | PrimeReact v10 + PrimeFlex v4 + Primeicons v7 (theme: `lara-light-blue`)                                                                                                                 |
+| Styling       | Tailwind CSS v4 + PostCSS                                                                                                                                                                |
+| Server state  | TanStack React Query v5                                                                                                                                                                  |
+| HTTP client   | Axios (shared instance at `src/lib/api-client.ts`)                                                                                                                                       |
+| Charts        | Chart.js + react-chartjs-2                                                                                                                                                               |
+| Local state   | React `useState` for feature state; no external global state library (Zustand/Redux not used). React Context is allowed for cross-cutting UI concerns (for example toast notifications). |
+| PWA           | @ducanh2912/next-pwa                                                                                                                                                                     |
+| Testing       | Vitest + @testing-library/react                                                                                                                                                          |
+| Linting       | ESLint + Prettier + lint-staged + Husky                                                                                                                                                  |
 
 **Key directories:**
 
@@ -64,12 +64,12 @@ src/
 
 ```
 src/
-  controllers/   # Route handlers (auth, users, exchanges, stocks, positions, portfolio, watchlist)
+  controllers/   # Route handlers (auth, users, stocks, positions, portfolio, accounts)
   lib/           # prisma.ts, jwt.ts, exchange-sync.ts, swagger.ts
   middleware/    # validation.ts (asyncHandler, errorHandler), auth.ts (authenticateToken)
 prisma/
   schema.prisma  # Source of truth for all data models
-  migrations/    # Single clean migration (20260517_init)
+  migrations/    # Timestamped migration history
   seed-exchanges.ts
 ```
 
@@ -85,7 +85,8 @@ prisma/
 - Users can create a position without preselecting an exchange.
 - Exchange selection is derived from the selected stock symbol search result and should not require a separate manual "Add Exchange" step.
 - Exchanges shown on the dashboard are discovered from the user positions for the selected account.
-- When defining or implementing solutions, prefer patterns that are appropriate for a Progressive Web App: responsive layouts, touch-friendly interactions, lightweight flows, resilient offline-aware behavior where relevant, and UI patterns that work well on both mobile and desktop.
+- When defining or implementing solutions, prefer patterns that are appropriate for a Progressive Web App: responsive layouts, touch-friendly interactions, lightweight flows, and UI patterns that work well on both mobile and desktop.
+- For offline behavior: for read-only views (portfolio, history), show cached last-successful data and an explicit stale-data indicator when offline. Do not queue or auto-retry offline mutations.
 - When a new feature is discussed or implemented, complete it end to end: create or update the backend and frontend together when both sides are involved.
 - When a feature is removed or changed, keep both sides aligned so there are no stale or half-finished integrations.
 
@@ -94,6 +95,7 @@ prisma/
 - All frontend HTTP calls must go through the shared Axios instance in `src/lib/api-client.ts`.
 - **Never** hardcode URLs. Use the environment variable `NEXT_PUBLIC_API_URL=http://localhost:4000/api`.
 - A mock API mode is available for offline development: set `NEXT_PUBLIC_USE_MOCK_API=true`.
+- When adding a new API endpoint, add a corresponding mock implementation in `src/lib/mock-api.ts` for `NEXT_PUBLIC_USE_MOCK_API=true`; if a realistic mock is not provided yet, return a clear not-implemented stub in mock mode.
 
 ### Data Contracts & Type Safety
 
@@ -101,16 +103,19 @@ prisma/
 - Backend Prisma models (`prisma/schema.prisma`) are the source of truth for data shapes.
 - Frontend TypeScript interfaces are **manually mirrored** in `src/lib/types.ts`; update this file whenever the schema changes.
 - Never use `any`; use `unknown` with type guards at system boundaries.
+- All `localStorage` access must be guarded with `typeof window !== 'undefined'` and wrapped in `try/catch`; if `localStorage` is unavailable or throws, fall back to in-memory state.
 
 ### Authentication
 
 - Protected backend routes require a Bearer JWT in the `Authorization` header.
+- Access tokens are stored in `localStorage` under `authToken`.
+- Refresh tokens should be stored in an `httpOnly`, `Secure`, `SameSite=Strict` cookie set by the backend.
 - The Axios instance attaches it automatically via a request interceptor:
   ```ts
   const token = localStorage.getItem('authToken')
   config.headers.Authorization = `Bearer ${token}`
   ```
-- On 401 responses the interceptor removes the stored token and redirects to `/auth/login`.
+- On 401 responses, first attempt one refresh via `POST /api/auth/refresh`; if refresh fails, clear auth state and redirect to `/auth/login`.
 
 ### Error Handling
 
@@ -128,6 +133,7 @@ For validation errors:
 
 - Form-level errors on the frontend: use PrimeReact `<Message severity="error" text={...} />`.
 - Global mutation feedback (success/error): use PrimeReact `<Toast>` via a context provider. Expose a `useToast()` hook that components can call to trigger toasts without prop-drilling the ref.
+- If the Yahoo Finance symbol search request fails or times out (5s), the backend should return `503` with `{ "error": "Upstream Unavailable", "message": "Symbol search temporarily unavailable" }`; the frontend should display this with `<Message severity="warn" />`.
 
 ### API Documentation
 
@@ -148,8 +154,12 @@ For validation errors:
 - Use **functional React components** with hooks only — no class components.
 - Strict TypeScript: no `any`, use `unknown` + type guards at boundaries.
 - Do not leave the codebase with any compilation errors after making changes.
+- When changing `prisma/schema.prisma`, generate a new timestamped migration via `prisma migrate dev --name <change>`. Do not edit the existing `20260517140750_init` migration.
 - For every new feature, bug fix, or behavior change, create or update unit tests in the same change set.
 - Consider the task incomplete until relevant unit tests exist and pass for the modified behavior.
+- Backend tests: test controllers with a mocked Prisma client.
+- Frontend tests: test hooks with `QueryClientProvider` and mocked Axios; test components with `@testing-library/react`.
+- Target at least 80% line coverage for newly added code.
 - Do not suggest partial solutions; if a solution is proposed, implement it end to end rather than leaving disconnected backend or frontend pieces behind.
 - React Query hooks live in `src/hooks/api.ts`; raw Axios calls live in `src/lib/api-client.ts`.
 - Backend route handlers must be wrapped with `asyncHandler()` from `src/middleware/validation.ts`.
