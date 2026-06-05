@@ -5,6 +5,7 @@
 -- ─── Enums ───────────────────────────────────────────────────────────────────
 
 CREATE TYPE "AssetType"       AS ENUM ('EQUITY', 'ETF', 'CRYPTO');
+CREATE TYPE "TradingAccountStatus" AS ENUM ('ACTIVE', 'CLOSED');
 CREATE TYPE "PositionType"    AS ENUM ('LONG', 'SHORT');
 CREATE TYPE "PositionStatus"  AS ENUM ('OPEN', 'CLOSED', 'PARTIAL');
 CREATE TYPE "TransactionType" AS ENUM ('BUY', 'SELL', 'DIVIDEND', 'SPLIT', 'BONUS');
@@ -58,6 +59,8 @@ CREATE TABLE "trading_accounts" (
     "id"        TEXT        NOT NULL,
     "userId"    TEXT        NOT NULL,
     "name"      TEXT        NOT NULL,
+    "status"    "TradingAccountStatus" NOT NULL DEFAULT 'ACTIVE',
+    "closedAt"  TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "trading_accounts_pkey" PRIMARY KEY ("id")

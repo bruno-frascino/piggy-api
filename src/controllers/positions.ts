@@ -6,6 +6,7 @@ import {
   handleValidationErrors,
 } from '../middleware/validation.js'
 import { authenticateToken } from '../middleware/auth.js'
+import { fetchHistoricalMaxDrawdown } from '../lib/historical-drawdown.js'
 import type { AssetType } from '@prisma/client'
 
 const router = Router()
@@ -463,6 +464,21 @@ router.post(
     })
 
     res.status(201).json({ success: true, data: position })
+
+    // Fire-and-forget: compute historical max drawdown in the background.
+    // This must run after res.json() so it never delays the API response.
+    void fetchHistoricalMaxDrawdown(asset.symbol, entryPrice, openDate)
+      .then((drawdown) => {
+        if (drawdown !== null) {
+          return prisma.position.update({
+            where: { id: position.id },
+            data: { maxDrawdownPercent: drawdown },
+          })
+        }
+      })
+      .catch(() => {
+        // silent — a failed history fetch must never crash the request cycle
+      })
   })
 )
 
@@ -505,6 +521,82 @@ router.get(
     })
 
     res.json({ success: true, data: events })
+  })
+)
+
+// ─── POST /api/positions/:id/recalculate-drawdown ────────────────────────────
+
+/**
+ * @swagger
+ * /api/positions/{id}/recalculate-drawdown:
+ *   post:
+ *     summary: Recalculate max drawdown from Yahoo Finance historical data
+ *     description: >
+ *       Fetches daily OHLC history from the position's open date to today,
+ *       finds the lowest intraday low, and persists it as maxDrawdownPercent.
+ *       Returns the new value (or null if history is unavailable / no drawdown).
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Recalculation result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 maxDrawdownPercent:
+ *                   type: number
+ *                   nullable: true
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Position not found
+ *       401:
+ *         description: Unauthorized
+ */
+router.post(
+  '/:id/recalculate-drawdown',
+  [param('id').isString(), handleValidationErrors],
+  asyncHandler(async (req: Request, res: Response) => {
+    const position = await prisma.position.findFirst({
+      where: { id: req.params.id, userId: req.user!.userId },
+      include: { asset: true },
+    })
+    if (!position) {
+      return res
+        .status(404)
+        .json({ error: 'Not Found', message: 'Position not found' })
+    }
+
+    const drawdown = await fetchHistoricalMaxDrawdown(
+      position.asset.symbol,
+      Number(position.entryPrice),
+      new Date(position.openDate)
+    )
+
+    await prisma.position.update({
+      where: { id: position.id },
+      data: { maxDrawdownPercent: drawdown },
+    })
+
+    res.json({
+      success: true,
+      maxDrawdownPercent: drawdown,
+      message:
+        drawdown !== null
+          ? `Max drawdown updated to ${drawdown.toFixed(2)}%`
+          : 'No historical drawdown found; value cleared',
+    })
   })
 )
 
@@ -575,6 +667,9 @@ router.get(
  *                 type: string
  *               unrealizedPnL:
  *                 type: number
+ *               currentPrice:
+ *                 type: number
+ *                 description: Current market price (used to calculate max drawdown)
  *     responses:
  *       200:
  *         description: Position updated
@@ -622,6 +717,14 @@ router.patch(
     body('tradeGrade').optional().isIn(['A', 'B', 'C', 'D', 'F']),
     body('lessonsLearned').optional().isString().trim(),
     body('unrealizedPnL').optional().isFloat().toFloat(),
+    body('currentPrice').optional().isFloat({ min: 0 }).toFloat(),
+    body('maxDrawdownPercent')
+      .optional({ nullable: true })
+      .custom((v) => {
+        if (v === null) return true
+        if (typeof v === 'number' && isFinite(v) && v >= 0) return true
+        throw new Error('Must be null or a non-negative number')
+      }),
     handleValidationErrors,
   ],
   asyncHandler(async (req: Request, res: Response) => {
@@ -649,6 +752,8 @@ router.patch(
       tradeGrade,
       lessonsLearned,
       unrealizedPnL,
+      currentPrice,
+      maxDrawdownPercent: maxDrawdownPercentBody,
       symbol,
       exchangeCode,
       accountName,
@@ -674,6 +779,31 @@ router.patch(
       ...(unrealizedPnL !== undefined && { unrealizedPnL }),
     }
 
+    // Allow explicit maxDrawdownPercent override (null resets it; a number sets it directly).
+    // Falls back to auto-calculating from currentPrice only when not explicitly provided.
+    if (maxDrawdownPercentBody !== undefined) {
+      updates.maxDrawdownPercent =
+        maxDrawdownPercentBody === null ? null : Number(maxDrawdownPercentBody)
+    } else if (currentPrice !== undefined && currentPrice > 0) {
+      const entryPriceValue = Number(existing.entryPrice)
+      const drawdownPct =
+        ((currentPrice - entryPriceValue) / entryPriceValue) * 100
+
+      // Only track negative drawdowns (when price is below entry)
+      if (drawdownPct < 0) {
+        const absDrawdownPct = Math.abs(drawdownPct)
+        const existingMaxDrawdown =
+          (existing as any).maxDrawdownPercent !== undefined &&
+          (existing as any).maxDrawdownPercent !== null
+            ? Number((existing as any).maxDrawdownPercent)
+            : 0
+
+        // Update if this is a new maximum drawdown
+        if (absDrawdownPct > existingMaxDrawdown) {
+          updates.maxDrawdownPercent = absDrawdownPct
+        }
+      }
+    }
     const resolvedSymbol =
       typeof symbol === 'string' && symbol.trim()
         ? symbol.trim().toUpperCase()

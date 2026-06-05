@@ -78,6 +78,8 @@ model TradingAccount {
   id         String   @id @default(cuid())
   userId     String
   name       String
+  status     TradingAccountStatus @default(ACTIVE)
+  closedAt   DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -87,6 +89,11 @@ model TradingAccount {
 
   @@unique([userId, name])
   @@map("trading_accounts")
+}
+
+enum TradingAccountStatus {
+  ACTIVE
+  CLOSED
 }
 
 // ─── Assets ──────────────────────────────────────────────────────────────────
@@ -170,6 +177,7 @@ model Position {
   unrealizedPnL    Decimal?       @db.Decimal(12, 2)
   realizedPnL      Decimal?       @db.Decimal(12, 2)
   returnPercentage Decimal?       @db.Decimal(8, 4)
+  maxDrawdownPercent Decimal?     @db.Decimal(8, 4)
   tradeGrade       String?
   lessonsLearned   String?
   createdAt        DateTime       @default(now())

@@ -47,7 +47,7 @@ export const errorHandler = (
 ) => {
   console.error('API Error:', err)
 
-  // Prisma errors
+  // Prisma known request errors
   if (err.code === 'P2002') {
     return res.status(409).json({
       error: 'Conflict',
@@ -62,10 +62,28 @@ export const errorHandler = (
     })
   }
 
-  // Default error
-  res.status(err.status || 500).json({
+  if (err.code === 'P2003') {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'Referenced resource does not exist',
+    })
+  }
+
+  // Any other Prisma error — never expose internal details to the client
+  if (err.code && /^P\d{4}$/.test(err.code)) {
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Something went wrong. Please try again later.',
+    })
+  }
+
+  // Intentional client errors (4xx) may pass their message through
+  const statusCode = err.status || 500
+  res.status(statusCode).json({
     error: err.name || 'Internal Server Error',
-    message: err.message || 'Something went wrong',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    message:
+      statusCode < 500
+        ? err.message || 'An error occurred'
+        : 'Something went wrong. Please try again later.',
   })
 }
