@@ -1,0 +1,118 @@
+name: Deploy API
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --run
+
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # Full install (needs devDependencies like typescript) purely for the build step.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Build TypeScript
+        run: npm run build
+
+      # Only ship what the VPS needs to run in production: compiled output,
+      # manifest/lockfile (to reinstall prod deps), and prisma schema/migrations.
+      - name: Assemble deploy bundle
+        run: |
+          mkdir -p deploy-bundle
+          cp -r dist deploy-bundle/
+          cp -r prisma deploy-bundle/
+          cp package.json package-lock.json deploy-bundle/
+
+      - name: Upload deploy bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-bundle
+          path: deploy-bundle
+          retention-days: 1
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download deploy bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: deploy-bundle
+          path: deploy-bundle
+
+      - name: Upload bundle to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          source: 'deploy-bundle/*'
+          target: /var/www/piggy-api/incoming
+          strip_components: 1
+
+      - name: Release and restart on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+            cd /var/www/piggy-api
+
+            # Swap in the freshly uploaded build (keeps the persistent .env in place)
+            rm -rf dist prisma package.json package-lock.json
+            mv incoming/dist incoming/prisma incoming/package.json incoming/package-lock.json .
+            rmdir incoming
+
+            # Install production dependencies only
+            npm ci --omit=dev
+
+            # Regenerate Prisma client for the installed (prod) node_modules
+            npx prisma generate
+
+            # Run pending DB migrations (safe to run on every deploy)
+            npx prisma migrate deploy
+
+            # Start on first deploy, reload on subsequent ones
+            pm2 describe piggy-api > /dev/null 2>&1 \
+              && pm2 reload piggy-api --update-env \
+              || pm2 start dist/index.js --name piggy-api --update-env
+
+            pm2 save
