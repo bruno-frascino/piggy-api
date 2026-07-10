@@ -14,14 +14,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
+          cache: yarn
+          cache-dependency-path: yarn.lock
 
       - name: Install dependencies
-        run: npm ci
+        run: yarn install --frozen-lockfile
 
       - name: Run tests
-        run: npm test -- --run
+        run: yarn test --run
 
   build:
     name: Build
@@ -34,18 +34,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
+          cache: yarn
+          cache-dependency-path: yarn.lock
 
       # Full install (needs devDependencies like typescript) purely for the build step.
       - name: Install dependencies
-        run: npm ci
+        run: yarn install --frozen-lockfile
 
       - name: Generate Prisma client
-        run: npx prisma generate
+        run: yarn prisma generate
 
       - name: Build TypeScript
-        run: npm run build
+        run: yarn build
 
       # Only ship what the VPS needs to run in production: compiled output,
       # manifest/lockfile (to reinstall prod deps), and prisma schema/migrations.
@@ -54,7 +54,7 @@ jobs:
           mkdir -p deploy-bundle
           cp -r dist deploy-bundle/
           cp -r prisma deploy-bundle/
-          cp package.json package-lock.json deploy-bundle/
+          cp package.json yarn.lock deploy-bundle/
 
       - name: Upload deploy bundle
         uses: actions/upload-artifact@v4
@@ -97,18 +97,18 @@ jobs:
             cd /var/www/piggy-api
 
             # Swap in the freshly uploaded build (keeps the persistent .env in place)
-            rm -rf dist prisma package.json package-lock.json
-            mv incoming/dist incoming/prisma incoming/package.json incoming/package-lock.json .
+            rm -rf dist prisma package.json yarn.lock
+            mv incoming/dist incoming/prisma incoming/package.json incoming/yarn.lock .
             rmdir incoming
 
             # Install production dependencies only
-            npm ci --omit=dev
+            yarn install --production --frozen-lockfile
 
             # Regenerate Prisma client for the installed (prod) node_modules
-            npx prisma generate
+            yarn prisma generate
 
             # Run pending DB migrations (safe to run on every deploy)
-            npx prisma migrate deploy
+            yarn prisma migrate deploy
 
             # Start on first deploy, reload on subsequent ones
             pm2 describe piggy-api > /dev/null 2>&1 \

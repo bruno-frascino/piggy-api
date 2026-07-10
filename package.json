@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "main": "index.js",
+  "packageManager": "yarn@1.22.22",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
