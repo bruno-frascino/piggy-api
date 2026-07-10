@@ -128,7 +128,7 @@ describe('errorHandler', () => {
     })
   })
 
-  it('returns stack only in development mode', () => {
+  it('sanitizes 500 errors in development mode', () => {
     process.env.NODE_ENV = 'development'
     const err = new Error('debug me')
     const req = {} as Request
@@ -140,8 +140,10 @@ describe('errorHandler', () => {
     expect(resMock.status).toHaveBeenCalledWith(500)
     const payload = resMock.json.mock.calls[0]?.[0] as Record<string, unknown>
     expect(payload.error).toBe('Error')
-    expect(payload.message).toBe('debug me')
-    expect(typeof payload.stack).toBe('string')
+    expect(payload.message).toBe(
+      'Something went wrong. Please try again later.'
+    )
+    expect(payload.stack).toBeUndefined()
   })
 
   it('omits stack outside development mode', () => {

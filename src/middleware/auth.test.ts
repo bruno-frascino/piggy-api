@@ -5,8 +5,20 @@ const { verifyAccessTokenMock } = vi.hoisted(() => ({
   verifyAccessTokenMock: vi.fn(),
 }))
 
+const { findUniqueMock } = vi.hoisted(() => ({
+  findUniqueMock: vi.fn(),
+}))
+
 vi.mock('../lib/jwt.js', () => ({
   verifyAccessToken: verifyAccessTokenMock,
+}))
+
+vi.mock('../lib/prisma.js', () => ({
+  prisma: {
+    user: {
+      findUnique: findUniqueMock,
+    },
+  },
 }))
 
 import { authenticateToken } from './auth.js'
@@ -26,14 +38,15 @@ function createMockResponse(): MockResponse {
 describe('authenticateToken', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    findUniqueMock.mockResolvedValue({ id: 'user_1' })
   })
 
-  it('returns 401 when authorization header is missing', () => {
+  it('returns 401 when authorization header is missing', async () => {
     const req = { headers: {} } as unknown as Request
     const res = createMockResponse() as unknown as Response
     const next = vi.fn() as unknown as NextFunction
 
-    authenticateToken(req, res, next)
+    await authenticateToken(req, res, next)
 
     const resMock = res as unknown as MockResponse
     expect(resMock.status).toHaveBeenCalledWith(401)
@@ -44,7 +57,7 @@ describe('authenticateToken', () => {
     expect(next).not.toHaveBeenCalled()
   })
 
-  it('returns 401 when token verification fails', () => {
+  it('returns 401 when token verification fails', async () => {
     verifyAccessTokenMock.mockImplementation(() => {
       throw new Error('bad token')
     })
@@ -55,7 +68,7 @@ describe('authenticateToken', () => {
     const res = createMockResponse() as unknown as Response
     const next = vi.fn() as unknown as NextFunction
 
-    authenticateToken(req, res, next)
+    await authenticateToken(req, res, next)
 
     const resMock = res as unknown as MockResponse
     expect(verifyAccessTokenMock).toHaveBeenCalledWith('invalid-token')
@@ -67,7 +80,7 @@ describe('authenticateToken', () => {
     expect(next).not.toHaveBeenCalled()
   })
 
-  it('attaches user payload and calls next() for valid token', () => {
+  it('attaches user payload and calls next() for valid token', async () => {
     verifyAccessTokenMock.mockReturnValue({
       userId: 'user_1',
       email: 'dev@example.com',
@@ -79,9 +92,13 @@ describe('authenticateToken', () => {
     const res = createMockResponse() as unknown as Response
     const next = vi.fn() as unknown as NextFunction
 
-    authenticateToken(req, res, next)
+    await authenticateToken(req, res, next)
 
     expect(verifyAccessTokenMock).toHaveBeenCalledWith('valid-token')
+    expect(findUniqueMock).toHaveBeenCalledWith({
+      where: { id: 'user_1' },
+      select: { id: true },
+    })
     expect(req.user).toEqual({
       userId: 'user_1',
       email: 'dev@example.com',
