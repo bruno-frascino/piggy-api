@@ -54,7 +54,7 @@ jobs:
           mkdir -p deploy-bundle
           cp -r dist deploy-bundle/
           cp -r prisma deploy-bundle/
-          cp package.json yarn.lock deploy-bundle/
+          cp package.json yarn.lock prisma.config.ts deploy-bundle/
 
       - name: Upload deploy bundle
         uses: actions/upload-artifact@v4
@@ -97,8 +97,8 @@ jobs:
             cd /var/www/piggy-api
 
             # Swap in the freshly uploaded build (keeps the persistent .env in place)
-            rm -rf dist prisma package.json yarn.lock
-            mv incoming/dist incoming/prisma incoming/package.json incoming/yarn.lock .
+            rm -rf dist prisma package.json yarn.lock prisma.config.ts
+            mv incoming/dist incoming/prisma incoming/package.json incoming/yarn.lock incoming/prisma.config.ts .
             rmdir incoming
 
             # Install production dependencies only
