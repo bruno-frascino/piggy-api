@@ -1,23 +1,29 @@
 # Piggy API
 
-A comprehensive stock portfolio management API built with tRPC, Prisma, and TypeScript.
+A stock/ETF/crypto portfolio tracking REST API built with Express, Prisma, and TypeScript.
 
 ## Features
 
-- **User Management**: Create and manage user accounts
-- **Exchange Management**: Support for multiple stock exchanges (NYSE, NASDAQ, etc.)
-- **Stock Management**: Add and manage stocks with price history
-- **Position Tracking**: Detailed position management with entry/exit tracking
-- **Transaction History**: Complete transaction logging
-- **Portfolio Analytics**: Performance tracking and metrics
+- **Authentication**: Email/password signup & login with JWT access + refresh tokens (rotation), password reset flow
+- **Trading Accounts**: Create, rename, close/reopen, and delete trading accounts
+- **Position Tracking**: Open, update, close (fully or partially), and delete positions, with drawdown recalculation from historical prices
+- **Portfolio Snapshots**: Daily portfolio snapshots and historical equity-curve data
+- **Stock Search & Quotes**: Symbol search and live quotes powered by Yahoo Finance (no API key required)
+- **API Documentation**: Interactive Swagger UI
 
 ## Tech Stack
 
-- **Framework**: Express.js
-- **API**: tRPC for type-safe APIs
-- **Database**: PostgreSQL with Prisma ORM
-- **Validation**: Zod for runtime type checking
-- **TypeScript**: Full type safety
+- **Runtime**: Node.js (ESM modules)
+- **Framework**: Express 5
+- **Language**: TypeScript
+- **Database**: PostgreSQL with Prisma ORM (`@prisma/adapter-pg`)
+- **Auth**: JWT (`jsonwebtoken`) + `bcryptjs`, refresh token rotation
+- **Validation**: `express-validator`
+- **Security**: `helmet`, `cors`, `morgan`
+- **API docs**: Swagger UI (`swagger-jsdoc` + `swagger-ui-express`)
+- **Testing**: Vitest
+- **Linting**: ESLint + Prettier + lint-staged + Husky
+- **Package manager**: Yarn (see `.nvmrc` / `packageManager` field for the pinned Node/Yarn versions)
 
 ## Quick Start
 
@@ -31,7 +37,7 @@ A comprehensive stock portfolio management API built with tRPC, Prisma, and Type
 
    ```bash
    cp .env.example .env
-   # Edit .env with your database URL
+   # Edit .env with your database URL and JWT secrets
    # No market-data API key required for symbol search
    ```
 
@@ -47,123 +53,104 @@ A comprehensive stock portfolio management API built with tRPC, Prisma, and Type
    yarn dev
    ```
 
-The API will be available at `http://localhost:3000`
+The API will be available at `http://localhost:4000` (configurable via the `PORT` env var).
 
 ## API Endpoints
 
-### Health Check
+### Health & Info
 
-- `GET /health` - Server health status
+- `GET /health` - Service health check
+- `GET /api` - API info (documentation link, features)
+- `GET /api/docs` - Swagger UI (interactive API documentation)
 
-### API Information
+### Auth (`/api/auth`)
 
-- `GET /api` - API information and available routers
+- `POST /api/auth/register` - Register a new user
+- `POST /api/auth/login` - Sign in; returns `user`, `accessToken`, `refreshToken`
+- `POST /api/auth/refresh` - Exchange a refresh token for a new access + refresh token pair
+- `POST /api/auth/logout` - Revoke the current refresh token (requires auth)
+- `POST /api/auth/forgot-password` - Request a password reset
+- `POST /api/auth/reset-password` - Set a new password using a reset token
 
-### Stock Search
+### Users (`/api/users`) — requires auth
 
-- `GET /api/stocks/search?q=NASDAQ` - Search stock symbols globally (free provider)
+- `GET /api/users/me` - Get the authenticated user's profile
+- `PATCH /api/users/me` - Update profile (name, baseCurrency) or change password
 
-### tRPC Endpoints
+### Stocks (`/api/stocks`)
 
-All business logic is handled through tRPC at `/api/trpc/[router].[procedure]`
+- `GET /api/stocks/search` - Search stock symbols globally (Yahoo Finance; no auth required)
+- `GET /api/stocks/quotes` - Live quotes for a comma-separated list of symbols (requires auth)
 
-#### Available Routers:
+### Accounts (`/api/accounts`) — requires auth
 
-1. **User Router** (`/api/trpc/user.*`)
-   - `create` - Create new user
-   - `list` - Get all users
-   - `getById` - Get user by ID
-   - `getByEmail` - Get user by email
-   - `update` - Update user information
-   - `getPortfolioSummary` - Get user's portfolio summary
-   - `getStats` - Get user activity statistics
-   - `delete` - Delete user
+- `GET /api/accounts` - List trading accounts (`includeClosed` query param supported)
+- `POST /api/accounts` - Create (or return existing) trading account
+- `PATCH /api/accounts/:id` - Rename a trading account
+- `POST /api/accounts/:id/close` - Close a trading account (must have no open/partial positions)
+- `POST /api/accounts/:id/reopen` - Reopen a closed trading account
+- `DELETE /api/accounts/:id` - Delete an empty trading account
 
-2. **Exchange Router** (`/api/trpc/exchange.*`)
-   - `create` - Create new exchange
-   - `list` - Get all exchanges
-   - `getById` - Get exchange by ID
-   - `getByCode` - Get exchange by code
-   - `update` - Update exchange information
-   - `getStats` - Get exchange statistics
-   - `delete` - Delete exchange
+### Positions (`/api/positions`) — requires auth
 
-3. **Stock Router** (`/api/trpc/stock.*`)
-   - `create` - Add new stock
-   - `list` - Get stocks with filtering
-   - `getById` - Get stock by ID
-   - `getBySymbol` - Get stock by symbol
-   - `update` - Update stock information
-   - `getPriceHistory` - Get price history
-   - `addPriceHistory` - Add price data
-   - `addBulkPriceHistory` - Bulk add price data
-   - `getLatestPrice` - Get latest price
-   - `getPopularStocks` - Get stocks with recent activity
-   - `delete` - Delete stock
+- `GET /api/positions` - List positions (filterable by `status`, `assetType`, `exchangeCode`, `accountId`; paginated)
+- `POST /api/positions` - Open a new position
+- `PATCH /api/positions/:id` - Update position metadata
+- `POST /api/positions/:id/close` - Close or partially close a position
+- `DELETE /api/positions/:id` - Delete a position and its transactions
+- `GET /api/positions/close-events` - List close events (sell transactions) with context
+- `POST /api/positions/:id/recalculate-drawdown` - Recalculate max drawdown from historical prices
 
-4. **Position Router** (`/api/trpc/position.*`)
-   - `create` - Open new position
-   - `close` - Close position
-   - `list` - Get positions with filtering
-   - `getById` - Get position by ID
-   - `update` - Update position details
-   - `delete` - Delete position
-   - `openSummary` - Get open positions summary
+### Portfolio (`/api/portfolio`) — requires auth
 
-5. **Transaction Router** (`/api/trpc/transaction.*`)
-   - `create` - Create new transaction
-   - `list` - Get transactions with filtering
-   - `getById` - Get transaction by ID
-   - `getByPosition` - Get transactions for position
-   - `update` - Update transaction
-   - `getSummary` - Get transaction analytics
-   - `delete` - Delete transaction
-   - `createBulk` - Bulk create transactions
+- `GET /api/portfolio/history` - Historical portfolio snapshots (for equity-curve charting)
+- `POST /api/portfolio/snapshot` - Create/update today's portfolio snapshot (upsert)
 
 ## Database Schema
 
-The API uses a comprehensive database schema designed for stock portfolio management:
+Defined in `prisma/schema.prisma`:
 
-- **Users**: User accounts
-- **Exchanges**: Stock exchanges (NYSE, NASDAQ, etc.)
-- **Stocks**: Individual stocks/securities
-- **Positions**: Trading positions with detailed tracking
-- **Transactions**: Individual buy/sell transactions
-- **PriceHistory**: Historical price data
-- **PortfolioSnapshot**: Portfolio performance snapshots
+- **User**: user accounts
+- **RefreshToken** / **PasswordResetToken**: auth token tracking
+- **Exchange**: stock exchanges
+- **TradingAccount**: a user's trading accounts
+- **Asset**: individual stocks/ETFs/crypto assets
+- **PriceHistory**: historical price data per asset
+- **Position**: trading positions with entry/exit tracking
+- **Transaction**: individual buy/sell transactions tied to a position
+- **PortfolioSnapshot**: daily portfolio performance snapshots
 
 ## Development
 
 ### Scripts
 
-- `yarn dev` - Start development server with hot reload
-- `yarn build` - Build for production
-- `yarn test` - Run tests
-- `yarn lint` - Run ESLint
+- `yarn dev` - Start development server with hot reload (runs TypeScript directly via `tsx`, no build step)
+- `yarn build` - Compile to `dist/` for production (uses `tsconfig.build.json`; the root `tsconfig.json` is type-check only, `noEmit: true`)
+- `yarn test` - Run tests (watch mode); `yarn test --run` / `yarn test:coverage` for CI-style single runs
+- `yarn lint` / `yarn lint:fix` - Run ESLint
 - `yarn format` - Format code with Prettier
 
 ### Database Commands
 
 - `yarn db:migrate:dev` - Create/apply local migrations during development
-- `yarn db:migrate:deploy` - Apply pending checked-in migrations
-- `yarn prisma generate` - Generate Prisma client
-- `yarn prisma studio` - Open Prisma Studio
-- `yarn prisma migrate reset` - Reset database
-- `yarn db:seed:exchanges` - Fetch and upsert exchanges from Financial Modeling Prep
-- `yarn db:sql:exchanges` - Manually create only the exchanges table from SQL fallback script
+- `yarn db:migrate:deploy` - Apply pending checked-in migrations (used in production deploys)
+- `yarn db:migrate:reset` - Reset the database
+- `yarn db:seed` - Run the Prisma seed script (`prisma/seed-exchanges.ts`)
+- `npx prisma studio` - Open Prisma Studio
 
 ### Recommended Development DB Workflow
 
 1. Keep all schema changes in `prisma/schema.prisma`.
-2. Create migrations with `yarn db:migrate:dev` and commit files under `prisma/migrations`.
-3. On startup, the API auto-runs `prisma migrate deploy` when `NODE_ENV` is not `production` and `DB_AUTO_MIGRATE` is not `false`.
-4. Use `prisma/sql/001_create_exchanges_table.sql` only as a temporary fallback when you need to bootstrap quickly.
+2. Create migrations with `yarn db:migrate:dev` and commit the generated files under `prisma/migrations`.
+3. On startup, the API auto-runs `prisma migrate deploy` when `NODE_ENV` is not `production` and `DB_AUTO_MIGRATE` is not `false` (see `.env.example`).
+4. Datasource connection config for the Prisma CLI (`migrate deploy`, `generate`, etc.) lives in `prisma.config.ts` at the repo root, which reads `DATABASE_URL` from `.env`.
 
-## Type Safety
+## Deployment
 
-This API is fully type-safe from database to API responses:
+The API deploys to a DigitalOcean VPS via GitHub Actions (`.github/workflows/deploy.yml`, manually triggered via `workflow_dispatch`):
 
-1. **Database**: Prisma generates types from schema
-2. **Validation**: Zod schemas ensure runtime type safety
-3. **API**: tRPC provides end-to-end type safety
-4. **Client**: Generated types for frontend consumption
+1. **Test** job: installs deps, runs the test suite.
+2. **Build** job: installs deps, generates the Prisma client, compiles TypeScript, and bundles `dist/`, `prisma/`, `package.json`, `yarn.lock`, and `prisma.config.ts` into a deploy artifact.
+3. **Deploy** job: uploads the bundle to the VPS via SCP, then over SSH installs production dependencies, regenerates the Prisma client, runs `prisma migrate deploy`, and starts/reloads the app via PM2.
+
+The VPS never needs Git access to the repo — only the compiled artifact is shipped. A persistent `.env` file on the VPS (outside the deploy bundle) holds production secrets and is never overwritten by a deploy.
