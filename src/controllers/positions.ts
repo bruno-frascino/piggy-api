@@ -280,7 +280,6 @@ router.get(
  *               - entryPrice
  *               - quantity
  *               - capitalAllocated
- *               - openReason
  *             properties:
  *               symbol:
  *                 type: string
@@ -367,7 +366,7 @@ router.post(
     body('entryPrice').isFloat({ min: 0.0001 }).toFloat(),
     body('quantity').isFloat({ min: 0.000001 }).toFloat(),
     body('capitalAllocated').isFloat({ min: 0 }).toFloat(),
-    body('openReason').isString().trim().isLength({ min: 1 }),
+    body('openReason').optional().isString().trim().isLength({ min: 1 }),
     body('positionType').optional().isIn(['LONG', 'SHORT']),
     body('buyFees').optional().isFloat({ min: 0 }).toFloat(),
     body('stopLossPrice')
@@ -437,7 +436,7 @@ router.post(
         totalBuyValue,
         buyFees,
         capitalAllocated,
-        openReason,
+        openReason: openReason ?? null,
         stopLossPrice: stopLossPrice ?? null,
         takeProfitPrice: takeProfitPrice ?? null,
         strategy: strategy ?? null,
@@ -975,6 +974,8 @@ router.post(
     }
 
     const { closeDate, exitPrice, fees = 0, notes } = req.body
+    const normalizedCloseNotes =
+      typeof notes === 'string' && notes.trim() ? notes.trim() : null
     const buyQty = position.transactions
       .filter((tx) => tx.type === 'BUY')
       .reduce((sum, tx) => sum + Number(tx.quantity), 0)
@@ -1009,7 +1010,7 @@ router.post(
         price: exitPrice,
         totalValue: totalSellValue,
         fees,
-        notes: notes ?? null,
+        notes: normalizedCloseNotes,
       },
     })
 

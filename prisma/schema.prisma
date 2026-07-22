@@ -168,7 +168,7 @@ model Position {
   riskPercentage   Decimal?       @db.Decimal(5, 2)
   capitalAllocated Decimal        @db.Decimal(12, 2)
   portfolioWeight  Decimal?       @db.Decimal(5, 2)
-  openReason       String
+  openReason       String?
   strategy         String?
   setupType        String?
   timeframe        String?
