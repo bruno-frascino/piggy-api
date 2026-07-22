@@ -17,8 +17,16 @@ import { authenticateToken } from '../middleware/auth.js'
 
 const router = Router()
 
+const sanitizeEmail = (value: unknown) => {
+  if (typeof value !== 'string') return value
+  return value.trim().toLowerCase()
+}
+
 const registerValidation = [
-  body('email').isEmail().normalizeEmail().withMessage('Must be a valid email'),
+  body('email')
+    .customSanitizer(sanitizeEmail)
+    .isEmail()
+    .withMessage('Must be a valid email'),
   body('password')
     .isLength({ min: 8 })
     .withMessage('Password must be at least 8 characters'),
@@ -27,7 +35,7 @@ const registerValidation = [
 ]
 
 const loginValidation = [
-  body('email').isEmail().normalizeEmail(),
+  body('email').customSanitizer(sanitizeEmail).isEmail(),
   body('password').notEmpty().withMessage('Password is required'),
   handleValidationErrors,
 ]
@@ -395,8 +403,8 @@ router.post(
   '/forgot-password',
   [
     body('email')
+      .customSanitizer(sanitizeEmail)
       .isEmail()
-      .normalizeEmail()
       .withMessage('Must be a valid email'),
     handleValidationErrors,
   ],

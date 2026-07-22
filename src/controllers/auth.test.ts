@@ -178,6 +178,40 @@ describe('auth controller', () => {
     expect(Array.isArray(response.body.details)).toBe(true)
   })
 
+  it('preserves dots in email local-part during register', async () => {
+    findUserUniqueMock.mockResolvedValue(null)
+    createUserMock.mockResolvedValue({
+      id: 'u_1',
+      email: 'bruno.m.frascino@gmail.com',
+      name: 'Bruno Frascino',
+      baseCurrency: 'AUD',
+      createdAt: new Date('2026-05-28T10:00:00Z'),
+    })
+
+    const response = await request(createApp())
+      .post('/api/auth/register')
+      .send({
+        email: '  Bruno.M.Frascino@gmail.com  ',
+        password: 'password123',
+        name: 'Bruno Frascino',
+      })
+
+    expect(response.status).toBe(201)
+
+    expect(findUserUniqueMock).toHaveBeenCalledWith({
+      where: { email: 'bruno.m.frascino@gmail.com' },
+    })
+
+    const createArgs = createUserMock.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>
+    }
+
+    expect(createArgs.data).toMatchObject({
+      email: 'bruno.m.frascino@gmail.com',
+      name: 'Bruno Frascino',
+    })
+  })
+
   it('logs in with valid credentials and returns safe user shape', async () => {
     findUserUniqueMock.mockResolvedValue({
       id: 'u_1',
