@@ -33,7 +33,10 @@ src/
   app/           # Next.js App Router pages
     auth/        # login, signup, forgot-password
     history/     # closed positions history
+    reports/     # ATO capital gains tax reports (generate/list/download PDF)
   components/    # Shared UI components (PrimeReact-based)
+    PageHeader.tsx, MobileTabBar.tsx  # shared page-header + mobile bottom nav
+    ReportsView.tsx, GenerateReportDialog.tsx, ReportDetailDialog.tsx  # Tax Reports feature
   hooks/         # api.ts — TanStack Query hooks wrapping the API client
   lib/
     api-client.ts   # Axios instance + all API call functions
@@ -45,27 +48,29 @@ src/
 
 ## Backend Stack (`piggy-api/`)
 
-| Concern       | Library / Tool                                                 |
-| ------------- | -------------------------------------------------------------- |
-| Runtime       | Node.js (ESM modules)                                          |
-| Framework     | Express 5                                                      |
-| Language      | TypeScript 6                                                   |
-| ORM           | Prisma v7 + @prisma/adapter-pg                                 |
-| Database      | PostgreSQL                                                     |
-| Auth          | JWT (jsonwebtoken) + bcryptjs; refresh token rotation          |
-| Validation    | express-validator v7                                           |
-| Security      | helmet, cors, morgan                                           |
-| API docs      | Swagger UI at `/api/docs` (swagger-jsdoc + swagger-ui-express) |
-| Symbol search | Yahoo Finance public API — no key required                     |
-| Testing       | Vitest                                                         |
-| Linting       | ESLint + Prettier + lint-staged + Husky                        |
+| Concern       | Library / Tool                                                             |
+| ------------- | -------------------------------------------------------------------------- |
+| Runtime       | Node.js (ESM modules)                                                      |
+| Framework     | Express 5                                                                  |
+| Language      | TypeScript 6                                                               |
+| ORM           | Prisma v7 + @prisma/adapter-pg                                             |
+| Database      | PostgreSQL                                                                 |
+| Auth          | JWT (jsonwebtoken) + bcryptjs; refresh token rotation                      |
+| Validation    | express-validator v7                                                       |
+| Security      | helmet, cors, morgan                                                       |
+| API docs      | Swagger UI at `/api/docs` (swagger-jsdoc + swagger-ui-express)             |
+| Symbol search | Yahoo Finance public API — no key required                                 |
+| PDF reports   | pdfkit (pure-JS, no Chromium — used for ATO capital gains tax report PDFs) |
+| Testing       | Vitest                                                                     |
+| Linting       | ESLint + Prettier + lint-staged + Husky                                    |
 
 **Key directories:**
 
 ```
 src/
-  controllers/   # Route handlers (auth, users, stocks, positions, portfolio, accounts)
+  controllers/   # Route handlers (auth, users, stocks, positions, portfolio, accounts, tax-reports)
   lib/           # prisma.ts, jwt.ts, exchange-sync.ts, swagger.ts
+                 # fx-rates.ts (RBA historical FX + Yahoo fallback), cgt-engine.ts, pdf-report.ts
   middleware/    # validation.ts (asyncHandler, errorHandler), auth.ts (authenticateToken)
 prisma/
   schema.prisma  # Source of truth for all data models
@@ -89,6 +94,15 @@ prisma/
 - For offline behavior: for read-only views (portfolio, history), show cached last-successful data and an explicit stale-data indicator when offline. Do not queue or auto-retry offline mutations.
 - When a new feature is discussed or implemented, complete it end to end: create or update the backend and frontend together when both sides are involved.
 - When a feature is removed or changed, keep both sides aligned so there are no stale or half-finished integrations.
+
+### Tax Reports (ATO Capital Gains)
+
+- A `Position` is created with exactly one BUY transaction and is never appended to (no "add units to an existing position" flow exists) — every Position IS already a discrete CGT parcel (`openDate`/`entryPrice`/`buyFees` = acquisition date/cost/incidental costs). Every SELL `Transaction` against it (partial or full close) is an unambiguous disposal of that specific parcel. No FIFO lot reconstruction is implemented or needed.
+- Reports are scoped by an explicit, user-picked multi-select of Trading Accounts each time (`piggy-api/src/lib/cgt-engine.ts` `computeCapitalGainsReport`), not "all accounts" — this supports separate declarations (e.g. the user's own accounts vs a spouse's accounts tracked under the same login). The exact account selection is hashed into `TaxReport.accountsKey` and used both as the upsert key (`@@unique([userId, financialYearStartYear, accountsKey])`) and to find the correct prior-year report for loss carry-forward chaining — different account combinations never share a carry-forward chain.
+- FX conversion to AUD uses RBA's official daily rates first (`piggy-api/src/lib/fx-rates.ts`, parses `https://www.rba.gov.au/statistics/tables/csv/f11.1-data.csv`), falling back to Yahoo Finance historical rates only when RBA doesn't cover the date (pre-2023) or currency. Results are cached in `FxRateCache` (`{currency, date}` unique) both for performance and reproducibility.
+- The 50% CGT discount (individuals, held > 12 months) and loss-offset ordering (losses applied to non-discount gains first, then discount-eligible gains, before the 50% discount is applied) follow the ATO's documented method — see `piggy-api/docs/ato-capital-gains-methodology.md` for the full write-up and disclaimers.
+- Generated PDFs (`piggy-api/src/lib/pdf-report.ts`, via `pdfkit` — no Chromium/Puppeteer, important given the VPS's limited RAM) are persisted as `Bytes` directly in the `TaxReport` row (no S3/disk storage) so past reports can be re-downloaded later. Email delivery is intentionally NOT implemented yet — download-only via `GET /api/tax-reports/:id/download`.
+- Every report (UI and PDF) must carry a clear "not professional tax advice — verify with a registered tax agent" disclaimer.
 
 ### HTTP & API Client
 

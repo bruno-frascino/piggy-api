@@ -164,6 +164,11 @@ const options = {
         name: 'Accounts',
         description: 'Trading accounts per exchange (multi-account support)',
       },
+      {
+        name: 'TaxReports',
+        description:
+          'ATO capital gains tax report generation, listing, and PDF download',
+      },
     ],
   },
   apis: ['./src/controllers/*.ts'], // Path to the API docs
