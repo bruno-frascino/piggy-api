@@ -10,7 +10,6 @@ export default defineConfig({
         'src/**/*.test.ts',
         'src/index.ts',
         'src/controllers/index.ts',
-        'src/controllers/positions.ts',
         'src/lib/exchange-sync.ts',
         'src/lib/prisma.ts',
         'src/lib/swagger.ts',
