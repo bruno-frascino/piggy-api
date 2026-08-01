@@ -82,9 +82,9 @@ The backend owns `context/openapi.json`. The frontend vendors it as `contracts/o
 source metadata in `contracts/openapi.meta.json`. Run `yarn contract:pull` in `piggy-fe` after a
 backend API change, then run `yarn context:build` there.
 
-This handoff is intentionally manual because frontend CI does not have a sibling backend checkout.
-Therefore, frontend `context:check` proves consistency with its committed contract copy, not with the
-latest backend branch.
+Updating the vendored copy remains a reviewed developer action. Freshness verification is automatic:
+frontend pre-push runs `yarn contract:check` against the sibling backend, and frontend CI sparsely
+checks out `piggy-api/context/openapi.json` and compares it with the committed contract.
 
 ## What is automatic
 
@@ -92,13 +92,14 @@ latest backend branch.
 `yarn context:check` regenerates into a temporary directory, compares hashes, reports drift, and
 leaves the working tree unchanged.
 
-On push, Husky runs `context:build`. If generated files changed, the push is blocked so they can be
-reviewed and committed. `CONTEXT_SKIP=1 git push` is an emergency bypass and should not be routine.
+On push, Husky runs `context:build` and `contract:check`. If generated files changed or the backend
+contract differs, the push is blocked so the relevant artifacts can be reviewed and committed.
+`CONTEXT_SKIP=1` and `CONTRACT_SKIP=1` are emergency bypasses and should not be routine.
 
-After a push to `main`, GitHub Actions installs dependencies and runs lint, tests, build, and
-`context:check`. The workflow can also be started manually with `workflow_dispatch`. This hosted
-check reports a failure after the commit has landed; the local pre-push hook is what prevents stale
-generated context from being pushed during the normal workflow.
+After a push to `main`, GitHub Actions installs dependencies and runs lint, tests, build,
+`context:check`, and the cross-repository contract check. The workflow can also be started manually
+with `workflow_dispatch`. This hosted check reports a failure after the commit has landed; the local
+pre-push hook is what prevents stale generated context or contracts during the normal workflow.
 
 ## What remains manual
 
