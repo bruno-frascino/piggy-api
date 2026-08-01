@@ -19,6 +19,7 @@
     "format": "prettier --write .",
     "context:build": "tsx scripts/context/build.ts",
     "context:check": "tsx scripts/context/check.ts",
+    "docs:manual": "tsx scripts/docs/generate-specification-manual.ts",
     "prepare": "husky"
   },
   "keywords": [],

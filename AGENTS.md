@@ -48,7 +48,7 @@ lockfiles. Node version per `.nvmrc`.
    see `docs/adr/0002-tax-report-accounts-key-scoping.md`.
 10. After changing `src/`, `prisma/schema.prisma`, or routes: run `yarn context:build` and
     commit the resulting `context/` diff (see `context/README.md`). `yarn context:check`
-    verifies freshness without writing; it's what the (planned) pre-push hook and CI run.
+    verifies freshness without writing; the pre-push hook regenerates context and PR CI checks it.
 
 ## Where to look
 
@@ -60,6 +60,7 @@ lockfiles. Node version per `.nvmrc`.
 - **Why decisions were made**: `docs/adr/`
 - **ATO CGT methodology write-up**: `docs/ato-capital-gains-methodology.md`
 - **Production deployment topology (VPS + Vercel, CI/CD pipeline)**: `docs/deployment.md`
+- **Specification/context operating manual**: `docs/specification-system-manual.md` and PDF
 - **Scoped conventions**: `.github/instructions/*.instructions.md` (auto-attached by
   file path via `applyTo` globs — prisma changes, controller changes, tests, tax logic)
 
