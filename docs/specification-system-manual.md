@@ -13,7 +13,7 @@ implementation is generated from one executable specification.
 
 The system combines authored rules and decisions with deterministic indexes generated from the
 code. Local pre-push hooks regenerate those indexes and block a push if the generated files are not
-committed. Pull-request CI independently checks freshness without changing files.
+committed. GitHub Actions independently checks the pushed `main` commit without changing files.
 
 Code edits do not immediately update documentation. Run `yarn context:build` while developing, or
 let the pre-push hook regenerate it and then commit the resulting changes. Some source-of-truth
@@ -95,8 +95,10 @@ leaves the working tree unchanged.
 On push, Husky runs `context:build`. If generated files changed, the push is blocked so they can be
 reviewed and committed. `CONTEXT_SKIP=1 git push` is an emergency bypass and should not be routine.
 
-On a pull request, GitHub Actions installs dependencies and runs lint, tests, build, and
-`context:check`. The workflows currently run only for pull requests, not direct pushes.
+After a push to `main`, GitHub Actions installs dependencies and runs lint, tests, build, and
+`context:check`. The workflow can also be started manually with `workflow_dispatch`. This hosted
+check reports a failure after the commit has landed; the local pre-push hook is what prevents stale
+generated context from being pushed during the normal workflow.
 
 ## What remains manual
 
@@ -118,7 +120,8 @@ On a pull request, GitHub Actions installs dependencies and runs lint, tests, bu
 3. Run `yarn context:build`.
 4. Review and commit source, tests, authored docs, and generated `context/` changes together.
 5. Run `yarn lint`, `yarn test --run`, `yarn build`, and `yarn context:check`.
-6. Push and open a pull request so hosted CI validates the change.
+6. Push to `main`; the local hook checks generated files before upload and hosted CI validates the
+   resulting commit.
 
 ### Frontend-only implementation change
 
@@ -127,7 +130,7 @@ On a pull request, GitHub Actions installs dependencies and runs lint, tests, bu
 3. Review and commit source, tests, authored docs, generated context, and generated reference types
    together.
 4. Run `yarn lint`, `yarn test --run`, `yarn build`, and `yarn context:check`.
-5. Push and open a pull request.
+5. Push to `main` and confirm the hosted CI run succeeds.
 
 ### Cross-repository API change
 
@@ -145,10 +148,11 @@ Any new encoded violation fails `context:check`. Three additional API methods ar
 hooks outside the central React Query layer. The cleanup is tracked in
 `piggy-fe/docs/context-maintenance-follow-ups.md`.
 
-The PR-only workflows still need their first hosted GitHub Actions verification and should then be
-considered for required branch protection. Local hooks can be bypassed and are not an authoritative
-team control. Generator output should also be reviewed after upgrades to TypeScript parsing,
-dependency analysis, Prisma, Next.js, Swagger, or OpenAPI tooling.
+The push-to-main workflows still need their first hosted GitHub Actions verification. Because the
+hosted check runs after a direct push has landed, it detects failures but cannot prevent them from
+reaching `main`; recovery requires a follow-up fix or revert. Local hooks can also be bypassed, so
+review the GitHub Actions result after each push. Generator output should be reviewed after upgrades
+to TypeScript parsing, dependency analysis, Prisma, Next.js, Swagger, or OpenAPI tooling.
 
 ## Token-efficiency expectations
 
