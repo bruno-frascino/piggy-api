@@ -120,6 +120,10 @@ const options = {
         description:
           'ATO capital gains tax report generation, listing, and PDF download',
       },
+      {
+        name: 'Statistics',
+        description: 'Aggregated portfolio and trade analytics',
+      },
     ],
   },
   apis: ['./src/controllers/*.ts'], // Path to the API docs

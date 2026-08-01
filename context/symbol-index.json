@@ -18,13 +18,13 @@
     "startLine": 18
   },
   {
-    "endLine": 10,
+    "endLine": 11,
     "file": "src/controllers/index.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 10
+    "startLine": 11
   },
   {
     "endLine": 11,
@@ -43,6 +43,15 @@
     "name": "default",
     "signature": "router = Router()",
     "startLine": 16
+  },
+  {
+    "endLine": 19,
+    "file": "src/controllers/statistics.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 19
   },
   {
     "endLine": 12,
@@ -315,13 +324,130 @@
     "startLine": 19
   },
   {
-    "endLine": 128,
+    "endLine": 32,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "StatisticsTradeRow",
+    "signature": "export type StatisticsTradeRow =",
+    "startLine": 20
+  },
+  {
+    "endLine": 38,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "TimeSeriesPoint",
+    "signature": "export type TimeSeriesPoint =",
+    "startLine": 34
+  },
+  {
+    "endLine": 44,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "HistogramBucket",
+    "signature": "export type HistogramBucket =",
+    "startLine": 40
+  },
+  {
+    "endLine": 54,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "StatisticsRisk",
+    "signature": "export type StatisticsRisk =",
+    "startLine": 46
+  },
+  {
+    "endLine": 61,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "BreakdownRow",
+    "signature": "export type BreakdownRow =",
+    "startLine": 56
+  },
+  {
+    "endLine": 79,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "SummaryOutput",
+    "signature": "export type SummaryOutput =",
+    "startLine": 68
+  },
+  {
+    "endLine": 116,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "mapTradeRows",
+    "signature": "export function mapTradeRows(events: TradeEventInput[]): StatisticsTradeRow[]",
+    "startLine": 81
+  },
+  {
+    "endLine": 152,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "computeSummary",
+    "signature": "export function computeSummary(",
+    "startLine": 118
+  },
+  {
+    "endLine": 189,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "bucketSnapshotSeries",
+    "signature": "export function bucketSnapshotSeries( snapshots: Array<",
+    "startLine": 154
+  },
+  {
+    "endLine": 222,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "bucketRealizedSeries",
+    "signature": "export function bucketRealizedSeries( trades: StatisticsTradeRow[], granularity: 'day' | 'week' | 'month' ): TimeSeriesPoint[]",
+    "startLine": 191
+  },
+  {
+    "endLine": 250,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "buildHistogram",
+    "signature": "export function buildHistogram( values: number[], bins: number ): HistogramBucket[]",
+    "startLine": 224
+  },
+  {
+    "endLine": 307,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "computeRiskFromEquitySeries",
+    "signature": "export function computeRiskFromEquitySeries( points: Array<",
+    "startLine": 252
+  },
+  {
+    "endLine": 354,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "computeBreakdowns",
+    "signature": "export function computeBreakdowns( rows: Array<",
+    "startLine": 309
+  },
+  {
+    "endLine": 132,
     "file": "src/lib/swagger.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "specs",
     "signature": "specs = swaggerJsdoc(options)",
-    "startLine": 128
+    "startLine": 132
   },
   {
     "endLine": 66,

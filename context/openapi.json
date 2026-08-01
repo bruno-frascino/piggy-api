@@ -1265,6 +1265,514 @@
         ]
       }
     },
+    "/api/statistics/breakdowns": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "by",
+            "required": true,
+            "schema": {
+              "enum": [
+                "account",
+                "exchange",
+                "assetType",
+                "industry"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metric",
+            "required": true,
+            "schema": {
+              "enum": [
+                "marketValue",
+                "realizedPnL",
+                "totalPnL"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV trading account IDs",
+            "in": "query",
+            "name": "accountIds",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV exchange codes (e.g. NASDAQ, ASX)",
+            "in": "query",
+            "name": "exchangeCodes",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV asset types",
+            "in": "query",
+            "name": "assetTypes",
+            "schema": {
+              "enum": [
+                "EQUITY",
+                "ETF",
+                "CRYPTO"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV position statuses",
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "enum": [
+                "OPEN",
+                "PARTIAL",
+                "CLOSED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Grouped rows with weights"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get grouped portfolio breakdown rows for charts/tables",
+        "tags": [
+          "Statistics"
+        ]
+      }
+    },
+    "/api/statistics/closed-trades": {
+      "get": {
+        "parameters": [
+          {
+            "description": "CSV trading account IDs",
+            "in": "query",
+            "name": "accountIds",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV exchange codes (e.g. NASDAQ, ASX)",
+            "in": "query",
+            "name": "exchangeCodes",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV asset types",
+            "in": "query",
+            "name": "assetTypes",
+            "schema": {
+              "enum": [
+                "EQUITY",
+                "ETF",
+                "CRYPTO"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateFrom",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateTo",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "schema": {
+              "default": "closeDate",
+              "enum": [
+                "closeDate",
+                "pnl",
+                "returnPct",
+                "holdingDays"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortDir",
+            "schema": {
+              "default": "desc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated closed trades"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get paginated closed trade rows for the selected scope",
+        "tags": [
+          "Statistics"
+        ]
+      }
+    },
+    "/api/statistics/distributions": {
+      "get": {
+        "parameters": [
+          {
+            "description": "CSV trading account IDs",
+            "in": "query",
+            "name": "accountIds",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV exchange codes (e.g. NASDAQ, ASX)",
+            "in": "query",
+            "name": "exchangeCodes",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV asset types",
+            "in": "query",
+            "name": "assetTypes",
+            "schema": {
+              "enum": [
+                "EQUITY",
+                "ETF",
+                "CRYPTO"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateFrom",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateTo",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Histogram buckets for charting"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get histogram distributions for returns, PnL and holding days",
+        "tags": [
+          "Statistics"
+        ]
+      }
+    },
+    "/api/statistics/risk": {
+      "get": {
+        "parameters": [
+          {
+            "description": "CSV trading account IDs",
+            "in": "query",
+            "name": "accountIds",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV exchange codes (e.g. NASDAQ, ASX)",
+            "in": "query",
+            "name": "exchangeCodes",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateFrom",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateTo",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Volatility, Sharpe and drawdown metrics"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get risk metrics from portfolio snapshot return series",
+        "tags": [
+          "Statistics"
+        ]
+      }
+    },
+    "/api/statistics/summary": {
+      "get": {
+        "parameters": [
+          {
+            "description": "CSV trading account IDs",
+            "in": "query",
+            "name": "accountIds",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV exchange codes (e.g. NASDAQ, ASX)",
+            "in": "query",
+            "name": "exchangeCodes",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV asset types",
+            "in": "query",
+            "name": "assetTypes",
+            "schema": {
+              "enum": [
+                "EQUITY",
+                "ETF",
+                "CRYPTO"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV position statuses",
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "enum": [
+                "OPEN",
+                "PARTIAL",
+                "CLOSED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateFrom",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateTo",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregated summary metrics"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get statistics summary KPIs for the selected scope",
+        "tags": [
+          "Statistics"
+        ]
+      }
+    },
+    "/api/statistics/timeseries": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "metric",
+            "required": true,
+            "schema": {
+              "enum": [
+                "equity",
+                "totalPnL",
+                "realizedPnL"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "schema": {
+              "default": "month",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV trading account IDs",
+            "in": "query",
+            "name": "accountIds",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV exchange codes (e.g. NASDAQ, ASX)",
+            "in": "query",
+            "name": "exchangeCodes",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateFrom",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateTo",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregated time-series points"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get time-series points for statistics charts",
+        "tags": [
+          "Statistics"
+        ]
+      }
+    },
     "/api/stocks/quotes": {
       "get": {
         "description": "Returns the current market price, day change and day change % for each\nsymbol via Yahoo Finance (no API key required). Symbols must use the\nYahoo Finance format — include exchange suffix where applicable\n(e.g. BHP.AX for ASX, VOD.L for LSE). Maximum 50 symbols per request.\n",
@@ -1726,6 +2234,10 @@
     {
       "description": "ATO capital gains tax report generation, listing, and PDF download",
       "name": "TaxReports"
+    },
+    {
+      "description": "Aggregated portfolio and trade analytics",
+      "name": "Statistics"
     }
   ]
 }

@@ -6,6 +6,7 @@ import positionRoutes from './positions.js'
 import portfolioRoutes from './portfolio.js'
 import accountRoutes from './accounts.js'
 import taxReportRoutes from './tax-reports.js'
+import statisticsRoutes from './statistics.js'
 
 const router = Router()
 
@@ -16,5 +17,6 @@ router.use('/positions', positionRoutes)
 router.use('/portfolio', portfolioRoutes)
 router.use('/accounts', accountRoutes)
 router.use('/tax-reports', taxReportRoutes)
+router.use('/statistics', statisticsRoutes)
 
 export default router
