@@ -100,6 +100,9 @@ After a push to `main`, GitHub Actions installs dependencies and runs lint, test
 `context:check`, and the cross-repository contract check. The workflow can also be started manually
 with `workflow_dispatch`. This hosted check reports a failure after the commit has landed; the local
 pre-push hook is what prevents stale generated context or contracts during the normal workflow.
+Both repositories' workflows were verified successfully on GitHub-hosted Ubuntu on 2026-08-01,
+including frontend contract verification. Dependency caching is non-authoritative, and the backend
+deploy bundle has an explicit one-day artifact retention.
 
 ## What remains manual
 
@@ -148,11 +151,11 @@ The frontend has no accepted architecture-violation baseline; every encoded viol
 `context:check`. Components, pages, and helper hooks consume backend operations through the central
 React Query layer.
 
-The push-to-main workflows still need their first hosted GitHub Actions verification. Because the
-hosted check runs after a direct push has landed, it detects failures but cannot prevent them from
-reaching `main`; recovery requires a follow-up fix or revert. Local hooks can also be bypassed, so
-review the GitHub Actions result after each push. Generator output should be reviewed after upgrades
-to TypeScript parsing, dependency analysis, Prisma, Next.js, Swagger, or OpenAPI tooling.
+Because hosted checks run after a direct push has landed, they detect failures but cannot prevent
+them from reaching `main`; recovery requires a follow-up fix or revert. Local hooks can also be
+bypassed, so review the GitHub Actions result after each push. Generator output should be reviewed
+after upgrades to TypeScript parsing, dependency analysis, Prisma, Next.js, Swagger, or OpenAPI
+tooling.
 
 ## Token-efficiency expectations
 
