@@ -143,10 +143,9 @@ generated context from being pushed during the normal workflow.
 
 ## Current limitations and follow-ups
 
-The frontend currently accepts an exact baseline of four direct API-client architecture violations.
-Any new encoded violation fails `context:check`. Three additional API methods are called by helper
-hooks outside the central React Query layer. The cleanup is tracked in
-`piggy-fe/docs/context-maintenance-follow-ups.md`.
+The frontend has no accepted architecture-violation baseline; every encoded violation fails
+`context:check`. Three API methods are still called by helper hooks outside the central React Query
+layer. That separate cleanup is tracked in `piggy-fe/docs/context-maintenance-follow-ups.md`.
 
 The push-to-main workflows still need their first hosted GitHub Actions verification. Because the
 hosted check runs after a direct push has landed, it detects failures but cannot prevent them from
