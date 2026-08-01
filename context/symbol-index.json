@@ -315,13 +315,13 @@
     "startLine": 19
   },
   {
-    "endLine": 177,
+    "endLine": 128,
     "file": "src/lib/swagger.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "specs",
     "signature": "specs = swaggerJsdoc(options)",
-    "startLine": 177
+    "startLine": 128
   },
   {
     "endLine": 66,

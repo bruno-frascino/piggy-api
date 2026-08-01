@@ -145,7 +145,7 @@ deploy bundle has an explicit one-day artifact retention.
 5. Run `yarn context:build`, inspect `context/contract-drift.md`, and validate the frontend.
 6. Commit the frontend contract, generated references, source, tests, and context together.
 
-## Current limitations and follow-ups
+## Operational boundaries
 
 The frontend has no accepted architecture-violation baseline; every encoded violation fails
 `context:check`. Components, pages, and helper hooks consume backend operations through the central

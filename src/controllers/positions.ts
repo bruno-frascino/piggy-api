@@ -399,6 +399,94 @@ router.get(
   })
 )
 
+// ─── PATCH /api/positions/close-events/:id ───────────────────────────────────
+
+/**
+ * @swagger
+ * /api/positions/close-events/{id}:
+ *   patch:
+ *     summary: Update a close event (SELL transaction)
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               closeDate:
+ *                 type: string
+ *                 format: date-time
+ *               exitPrice:
+ *                 type: number
+ *                 minimum: 0.0001
+ *               sellFees:
+ *                 type: number
+ *                 minimum: 0
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Updated SELL transaction
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Close event not found
+ */
+router.patch(
+  '/close-events/:id',
+  [
+    param('id').notEmpty(),
+    body('closeDate').optional().isISO8601(),
+    body('exitPrice').optional().isFloat({ min: 0.0001 }).toFloat(),
+    body('sellFees').optional().isFloat({ min: 0 }).toFloat(),
+    body('notes').optional().isString(),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const event = await prisma.transaction.findFirst({
+      where: {
+        id: req.params.id,
+        type: 'SELL',
+        position: { userId: req.user!.userId },
+      },
+      select: { positionId: true, quantity: true },
+    })
+    if (!event) {
+      return res
+        .status(404)
+        .json({ error: 'Not Found', message: 'Close event not found' })
+    }
+
+    const { closeDate, exitPrice, sellFees, notes } = req.body
+    const updated = await prisma.transaction.update({
+      where: { id: req.params.id },
+      data: {
+        ...(closeDate !== undefined && { date: closeDate }),
+        ...(exitPrice !== undefined && {
+          price: exitPrice,
+          totalValue: exitPrice * Number(event.quantity),
+        }),
+        ...(sellFees !== undefined && { fees: sellFees }),
+        ...(notes !== undefined && { notes: notes.trim() || null }),
+      },
+    })
+
+    await recomputePositionFromTransactions(event.positionId)
+    res.json({ success: true, data: updated })
+  })
+)
+
 // ─── POST /api/positions/:id/recalculate-drawdown ────────────────────────────
 
 /**
@@ -668,9 +756,9 @@ router.patch(
       if (drawdownPct < 0) {
         const absDrawdownPct = Math.abs(drawdownPct)
         const existingMaxDrawdown =
-          (existing as any).maxDrawdownPercent !== undefined &&
-          (existing as any).maxDrawdownPercent !== null
-            ? Number((existing as any).maxDrawdownPercent)
+          existing.maxDrawdownPercent !== undefined &&
+          existing.maxDrawdownPercent !== null
+            ? Number(existing.maxDrawdownPercent)
             : 0
 
         // Update if this is a new maximum drawdown
@@ -688,7 +776,6 @@ router.patch(
         ? exchangeCode.trim().toUpperCase()
         : null
 
-    let resolvedAssetId = existing.assetId
     if (
       resolvedSymbol ||
       resolvedExchangeCode ||
@@ -705,7 +792,6 @@ router.patch(
         existing.asset.assetType,
         industry ?? existing.asset.industry ?? undefined
       )
-      resolvedAssetId = asset.id
       updates.assetId = asset.id
     }
 

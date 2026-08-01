@@ -28,5 +28,5 @@ Architecture rules enforced by `module-graph.ts` (fails the build if violated â€
 `middleware/` must not import controllers; only `src/lib/prisma.ts` imports
 `@prisma/client`; no circular dependencies.
 
-Deferred operational concerns and verification work are tracked in
-`docs/context-maintenance-follow-ups.md`.
+Generator maintenance and review rules live in
+`.github/instructions/context-maintenance.instructions.md`.

@@ -23,3 +23,6 @@ applyTo: '**'
 - A non-zero exit from `yarn context:build` can also mean a real architecture-rule
   violation was found (see `context/module-graph.md`), not just staleness — read the
   console output to tell which case applies before assuming it's just a rebuild.
+- Review generated context diffs whenever TypeScript, ts-morph, dependency-cruiser, knip,
+  Prisma, Swagger, or related parser/generator dependencies change; version upgrades can
+  legitimately reshape deterministic output.

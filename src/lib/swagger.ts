@@ -52,46 +52,10 @@ const options = {
               type: 'string',
               description: 'User full name',
             },
-            createdAt: {
+            baseCurrency: {
               type: 'string',
-              format: 'date-time',
-            },
-            updatedAt: {
-              type: 'string',
-              format: 'date-time',
-            },
-          },
-        },
-        Exchange: {
-          type: 'object',
-          properties: {
-            id: {
-              type: 'string',
-              description: 'Unique identifier',
-            },
-            code: {
-              type: 'string',
-              description: 'Exchange code (e.g., NYSE, NASDAQ)',
-            },
-            name: {
-              type: 'string',
-              description: 'Exchange full name',
-            },
-            country: {
-              type: 'string',
-              description: 'Country where exchange is located',
-            },
-            timezone: {
-              type: 'string',
-              description: 'Exchange timezone',
-            },
-            currency: {
-              type: 'string',
-              description: 'Exchange currency (3 letters)',
-            },
-            isActive: {
-              type: 'boolean',
-              description: 'Whether exchange is active',
+              description: 'User portfolio base currency (3 letters)',
+              example: 'USD',
             },
             createdAt: {
               type: 'string',
@@ -106,13 +70,13 @@ const options = {
         Error: {
           type: 'object',
           properties: {
-            success: {
-              type: 'boolean',
-              example: false,
-            },
             error: {
               type: 'string',
-              description: 'Error message',
+              description: 'Stable error category',
+            },
+            message: {
+              type: 'string',
+              description: 'Human-readable error detail',
             },
             details: {
               type: 'array',
@@ -120,19 +84,6 @@ const options = {
                 type: 'object',
               },
               description: 'Detailed validation errors',
-            },
-          },
-        },
-        Success: {
-          type: 'object',
-          properties: {
-            success: {
-              type: 'boolean',
-              example: true,
-            },
-            data: {
-              type: 'object',
-              description: 'Response data',
             },
           },
         },

@@ -1,4 +1,5 @@
 import express from 'express'
+import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -21,7 +22,7 @@ const {
 }))
 
 vi.mock('../middleware/auth.js', () => ({
-  authenticateToken: (req: any, _res: any, next: any) => {
+  authenticateToken: (req: Request, _res: Response, next: NextFunction) => {
     req.user = { userId: 'u_1', email: 'alice@example.com' }
     next()
   },

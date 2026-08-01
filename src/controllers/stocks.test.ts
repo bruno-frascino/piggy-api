@@ -1,8 +1,10 @@
 import express from 'express'
+import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { quoteMock } = vi.hoisted(() => ({
+const { fetchMock, quoteMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
   quoteMock: vi.fn(),
 }))
 
@@ -13,7 +15,7 @@ vi.mock('yahoo-finance2', () => ({
 }))
 
 vi.mock('../middleware/auth.js', () => ({
-  authenticateToken: (req: any, _res: any, next: any) => {
+  authenticateToken: (req: Request, _res: Response, next: NextFunction) => {
     req.user = { userId: 'u_1', email: 'alice@example.com' }
     next()
   },
@@ -31,11 +33,13 @@ function createApp() {
 describe('stocks controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(globalThis as any).fetch = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
   })
 
+  afterEach(() => vi.unstubAllGlobals())
+
   it('maps search results from yahoo payload', async () => {
-    ;(globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock.mockResolvedValueOnce({
       ok: true,
       json: vi.fn().mockResolvedValue({
         quotes: [
@@ -66,7 +70,7 @@ describe('stocks controller', () => {
   })
 
   it('falls back to second yahoo host when first is rate limited', async () => {
-    ;(globalThis.fetch as any)
+    fetchMock
       .mockResolvedValueOnce({
         ok: false,
         status: 429,
@@ -86,7 +90,7 @@ describe('stocks controller', () => {
   })
 
   it('returns 502 when both yahoo hosts fail', async () => {
-    ;(globalThis.fetch as any)
+    fetchMock
       .mockResolvedValueOnce({
         ok: false,
         status: 500,

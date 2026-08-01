@@ -1,4 +1,5 @@
 import express from 'express'
+import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -11,6 +12,7 @@ const {
   positionUpdateMock,
   positionDeleteMock,
   transactionFindManyMock,
+  transactionFindFirstMock,
   transactionCreateMock,
   transactionUpdateMock,
   exchangeFindUniqueMock,
@@ -28,6 +30,7 @@ const {
   positionUpdateMock: vi.fn(),
   positionDeleteMock: vi.fn(),
   transactionFindManyMock: vi.fn(),
+  transactionFindFirstMock: vi.fn(),
   transactionCreateMock: vi.fn(),
   transactionUpdateMock: vi.fn(),
   exchangeFindUniqueMock: vi.fn(),
@@ -39,7 +42,7 @@ const {
 }))
 
 vi.mock('../middleware/auth.js', () => ({
-  authenticateToken: (req: any, _res: any, next: any) => {
+  authenticateToken: (req: Request, _res: Response, next: NextFunction) => {
     req.user = { userId: 'u_1', email: 'alice@example.com' }
     next()
   },
@@ -62,6 +65,7 @@ vi.mock('../lib/prisma.js', () => ({
     },
     transaction: {
       findMany: transactionFindManyMock,
+      findFirst: transactionFindFirstMock,
       create: transactionCreateMock,
       update: transactionUpdateMock,
     },
@@ -191,6 +195,92 @@ describe('positions controller', () => {
           where: { type: 'SELL', position: { userId: 'u_1' } },
         })
       )
+    })
+  })
+
+  describe('PATCH /api/positions/close-events/:id', () => {
+    it('returns 404 when the SELL transaction is not owned by the user', async () => {
+      transactionFindFirstMock.mockResolvedValue(null)
+
+      const response = await request(createApp())
+        .patch('/api/positions/close-events/missing')
+        .send({ exitPrice: 12 })
+
+      expect(response.status).toBe(404)
+      expect(transactionFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: 'missing',
+          type: 'SELL',
+          position: { userId: 'u_1' },
+        },
+        select: { positionId: true, quantity: true },
+      })
+    })
+
+    it('updates the SELL transaction and recomputes its position', async () => {
+      transactionFindFirstMock.mockResolvedValue({
+        positionId: 'p_1',
+        quantity: 5,
+      })
+      transactionUpdateMock.mockResolvedValue({ id: 'tx_1', price: 12 })
+      positionFindUniqueMock.mockResolvedValue({
+        id: 'p_1',
+        entryPrice: 10,
+        buyFees: 0,
+        transactions: [
+          {
+            type: 'BUY',
+            quantity: 5,
+            price: 10,
+            totalValue: 50,
+            fees: 0,
+            date: new Date('2026-01-01'),
+          },
+          {
+            type: 'SELL',
+            quantity: 5,
+            price: 12,
+            totalValue: 60,
+            fees: 1,
+            date: new Date('2026-02-01'),
+          },
+        ],
+      })
+      positionUpdateMock.mockResolvedValue({ id: 'p_1', status: 'CLOSED' })
+
+      const response = await request(createApp())
+        .patch('/api/positions/close-events/tx_1')
+        .send({
+          closeDate: '2026-02-01T00:00:00.000Z',
+          exitPrice: 12,
+          sellFees: 1,
+          notes: ' reviewed ',
+        })
+
+      expect(response.status).toBe(200)
+      expect(transactionUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'tx_1' },
+        data: {
+          date: '2026-02-01T00:00:00.000Z',
+          price: 12,
+          totalValue: 60,
+          fees: 1,
+          notes: 'reviewed',
+        },
+      })
+      expect(positionUpdateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'p_1' } })
+      )
+    })
+
+    it('validates editable close-event fields', async () => {
+      const response = await request(createApp())
+        .patch('/api/positions/close-events/tx_1')
+        .send({ exitPrice: 0, sellFees: -1 })
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toBe('Validation Error')
+      expect(transactionFindFirstMock).not.toHaveBeenCalled()
     })
   })
 

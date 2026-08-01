@@ -11,72 +11,23 @@
             "type": "array"
           },
           "error": {
-            "description": "Error message",
+            "description": "Stable error category",
             "type": "string"
           },
-          "success": {
-            "example": false,
-            "type": "boolean"
-          }
-        },
-        "type": "object"
-      },
-      "Exchange": {
-        "properties": {
-          "code": {
-            "description": "Exchange code (e.g., NYSE, NASDAQ)",
+          "message": {
+            "description": "Human-readable error detail",
             "type": "string"
-          },
-          "country": {
-            "description": "Country where exchange is located",
-            "type": "string"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "currency": {
-            "description": "Exchange currency (3 letters)",
-            "type": "string"
-          },
-          "id": {
-            "description": "Unique identifier",
-            "type": "string"
-          },
-          "isActive": {
-            "description": "Whether exchange is active",
-            "type": "boolean"
-          },
-          "name": {
-            "description": "Exchange full name",
-            "type": "string"
-          },
-          "timezone": {
-            "description": "Exchange timezone",
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "Success": {
-        "properties": {
-          "data": {
-            "description": "Response data",
-            "type": "object"
-          },
-          "success": {
-            "example": true,
-            "type": "boolean"
           }
         },
         "type": "object"
       },
       "User": {
         "properties": {
+          "baseCurrency": {
+            "description": "User portfolio base currency (3 letters)",
+            "example": "USD",
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -966,6 +917,70 @@
           }
         ],
         "summary": "List close events (SELL transactions) for the authenticated user",
+        "tags": [
+          "Positions"
+        ]
+      }
+    },
+    "/api/positions/close-events/{id}": {
+      "patch": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "closeDate": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "exitPrice": {
+                    "minimum": 0.0001,
+                    "type": "number"
+                  },
+                  "notes": {
+                    "type": "string"
+                  },
+                  "sellFees": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated SELL transaction"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Close event not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Update a close event (SELL transaction)",
         "tags": [
           "Positions"
         ]
