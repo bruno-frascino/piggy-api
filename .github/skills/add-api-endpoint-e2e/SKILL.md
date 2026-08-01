@@ -1,6 +1,6 @@
 ---
 name: add-api-endpoint-e2e
-description: Add a new REST API endpoint end-to-end across piggy-api and piggy-fe — backend route, Swagger docs, frontend API module, React Query hook, mock-mode support, and tests on both sides. Use when the user asks to add/expose a new backend endpoint that the frontend will consume.
+description: Add a new REST API endpoint end-to-end across piggy-api and piggy-fe — backend route, Swagger docs, frontend API module, React Query hook, and tests on both sides. Use when the user asks to add/expose a new backend endpoint that the frontend will consume.
 ---
 
 # Add a new API endpoint end-to-end
@@ -39,6 +39,6 @@ Once the backend route is committed (and, once Phase 3 tooling exists, its
 `context/openapi.json` regenerated), switch to `piggy-fe` and follow its
 `add-api-endpoint-e2e` skill: `yarn contract:pull` (if contract tooling exists) → add an
 `src/lib/api/*.ts` method → wire a `src/hooks/api.ts` React Query hook → add a
-`src/lib/mock-api.ts` mock branch → update `src/lib/types.ts` → tests.
+matching interface in `src/lib/types.ts` → tests.
 
 Cross-repo ordering rule: **piggy-api lands first**, always — see `AGENTS.md`.
