@@ -18,6 +18,10 @@ const ROOT = path.join(__dirname, '..', '..')
 export const JSON_OUTPUT_PATH = path.join(ROOT, 'context', 'module-graph.json')
 export const MD_OUTPUT_PATH = path.join(ROOT, 'context', 'module-graph.md')
 
+export type StableCruiseResult = Omit<ICruiseResult, 'summary'> & {
+  summary: Omit<ICruiseResult['summary'], 'environment'>
+}
+
 const cruiseOptions: ICruiseOptions = {
   includeOnly: '^src',
   validate: true,
@@ -64,19 +68,37 @@ const cruiseOptions: ICruiseOptions = {
   },
 }
 
+export function normalizeCruiseResult(result: ICruiseResult): StableCruiseResult {
+  const { environment, optionsUsed, ...summary } = result.summary
+  void environment
+  return {
+    ...result,
+    summary: {
+      ...summary,
+      optionsUsed: {
+        ...optionsUsed,
+        baseDir: '.',
+        tsConfig: optionsUsed.tsConfig
+          ? { ...optionsUsed.tsConfig, fileName: 'tsconfig.json' }
+          : undefined,
+      },
+    },
+  }
+}
+
 export async function generateModuleGraph(): Promise<{
-  result: ICruiseResult
+  result: StableCruiseResult
   violationCount: number
 }> {
   const cruiseResult = await cruise([path.join(ROOT, 'src')], cruiseOptions)
-  const output = cruiseResult.output as ICruiseResult
+  const output = normalizeCruiseResult(cruiseResult.output as ICruiseResult)
   const violations = output.modules.flatMap((m: IModule) =>
     (m.dependencies ?? []).filter((d) => (d.rules ?? []).length > 0)
   )
   return { result: output, violationCount: violations.length }
 }
 
-export function buildMarkdownSummary(result: ICruiseResult, violationCount: number): string {
+export function buildMarkdownSummary(result: StableCruiseResult, violationCount: number): string {
   const lines: string[] = [
     '# Module graph',
     '',

@@ -1442,158 +1442,12 @@
     }
   ],
   "summary": {
-    "environment": {
-      "extensionsFound": [
-        {
-          "available": true,
-          "extension": ".js"
-        },
-        {
-          "available": true,
-          "extension": ".cjs"
-        },
-        {
-          "available": true,
-          "extension": ".mjs"
-        },
-        {
-          "available": true,
-          "extension": ".jsx"
-        },
-        {
-          "available": true,
-          "extension": ".ts"
-        },
-        {
-          "available": true,
-          "extension": ".tsx"
-        },
-        {
-          "available": true,
-          "extension": ".d.ts"
-        },
-        {
-          "available": true,
-          "extension": ".cts"
-        },
-        {
-          "available": true,
-          "extension": ".d.cts"
-        },
-        {
-          "available": true,
-          "extension": ".mts"
-        },
-        {
-          "available": true,
-          "extension": ".d.mts"
-        },
-        {
-          "available": false,
-          "extension": ".vue"
-        },
-        {
-          "available": false,
-          "extension": ".svelte"
-        },
-        {
-          "available": false,
-          "extension": ".ls"
-        },
-        {
-          "available": false,
-          "extension": ".coffee"
-        },
-        {
-          "available": false,
-          "extension": ".litcoffee"
-        },
-        {
-          "available": false,
-          "extension": ".coffee.md"
-        },
-        {
-          "available": false,
-          "extension": ".csx"
-        },
-        {
-          "available": false,
-          "extension": ".cjsx"
-        }
-      ],
-      "nodeVersionFound": "v22.23.1",
-      "nodeVersionSupported": "^22||^24||>=26",
-      "osVersionFound": "arm64 darwin@25.5.0",
-      "transpilersFound": [
-        {
-          "available": true,
-          "currentVersion": "acorn@8.17.0",
-          "name": "javascript",
-          "version": "*"
-        },
-        {
-          "available": false,
-          "currentVersion": "-",
-          "name": "babel",
-          "version": ">=7.0.0 <8.0.0"
-        },
-        {
-          "available": false,
-          "currentVersion": "-",
-          "name": "coffee-script",
-          "version": ">=1.0.0 <2.0.0"
-        },
-        {
-          "available": false,
-          "currentVersion": "-",
-          "name": "coffeescript",
-          "version": ">=1.0.0 <3.0.0"
-        },
-        {
-          "available": false,
-          "currentVersion": "-",
-          "name": "livescript",
-          "version": ">=1.0.0 <2.0.0"
-        },
-        {
-          "available": false,
-          "currentVersion": "-",
-          "name": "svelte",
-          "version": ">=3.0.0 <6.0.0"
-        },
-        {
-          "available": false,
-          "currentVersion": "-",
-          "name": "swc",
-          "version": ">=1.0.0 <2.0.0"
-        },
-        {
-          "available": true,
-          "currentVersion": "typescript@6.0.3",
-          "name": "typescript",
-          "version": ">=2.0.0 <7.0.0"
-        },
-        {
-          "available": false,
-          "currentVersion": "-",
-          "name": "vue-template-compiler",
-          "version": ">=2.0.0 <3.0.0"
-        },
-        {
-          "available": false,
-          "currentVersion": "-",
-          "name": "@vue/compiler-sfc",
-          "version": ">=3.0.0 <4.0.0"
-        }
-      ],
-      "version": "18.1.0"
-    },
     "error": 0,
     "ignore": 0,
     "info": 0,
     "optionsUsed": {
       "args": "src",
-      "baseDir": "/Users/brunofrascino/dev/piggy-api",
+      "baseDir": ".",
       "combinedDependencies": false,
       "detectJSDocImports": false,
       "detectProcessBuiltinModuleCalls": false,
@@ -1610,7 +1464,7 @@
       "preserveSymlinks": false,
       "skipAnalysisNotInRules": false,
       "tsConfig": {
-        "fileName": "/Users/brunofrascino/dev/piggy-api/tsconfig.json"
+        "fileName": "tsconfig.json"
       },
       "tsPreCompilationDeps": false
     },
