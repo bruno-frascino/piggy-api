@@ -1,0 +1,1686 @@
+{
+  "modules": [
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounts.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/accounts.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/accounts.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/accounts.test.ts",
+        "src/controllers/index.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/accounts.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/controllers/accounts.ts",
+        "src/middleware/auth.ts",
+        "src/controllers/auth.ts",
+        "src/controllers/portfolio.ts",
+        "src/controllers/positions.ts",
+        "src/lib/position-service.ts",
+        "src/controllers/tax-reports.ts",
+        "src/lib/cgt-engine.ts",
+        "src/lib/fx-rates.ts",
+        "src/controllers/users.ts",
+        "src/index.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/prisma.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/jwt.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/jwt.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/accounts.ts",
+        "src/controllers/auth.ts",
+        "src/controllers/portfolio.ts",
+        "src/controllers/positions.ts",
+        "src/controllers/stocks.ts",
+        "src/controllers/tax-reports.ts",
+        "src/controllers/users.ts",
+        "src/middleware/auth.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/middleware/auth.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/middleware/auth.ts",
+        "src/controllers/auth.ts",
+        "src/lib/jwt.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/jwt.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/controllers/accounts.ts",
+        "src/controllers/auth.ts",
+        "src/controllers/portfolio.ts",
+        "src/controllers/positions.ts",
+        "src/controllers/stocks.ts",
+        "src/controllers/tax-reports.ts",
+        "src/controllers/users.ts",
+        "src/controllers/positions.test.ts",
+        "src/index.ts",
+        "src/middleware/validation.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/middleware/validation.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/auth.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/auth.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/jwt.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/jwt.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/auth.test.ts",
+        "src/controllers/index.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/auth.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounts.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/accounts.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./portfolio.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/portfolio.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./positions.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/positions.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./stocks.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/stocks.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./tax-reports.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/tax-reports.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./users.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/users.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/index.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/index.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/portfolio-calc.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/portfolio-calc.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/index.ts",
+        "src/controllers/portfolio.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/portfolio.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/controllers/portfolio.ts",
+        "src/lib/portfolio-calc.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/portfolio-calc.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/historical-drawdown.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/historical-drawdown.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/position-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/index.ts",
+        "src/controllers/positions.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/positions.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/controllers/positions.ts",
+        "src/lib/historical-drawdown.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/historical-drawdown.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/positions.ts",
+        "src/lib/position-service.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/position-service.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/index.ts",
+        "src/controllers/stocks.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/stocks.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/cgt-engine.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cgt-engine.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/pdf-report.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/pdf-report.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/index.ts",
+        "src/controllers/tax-reports.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/tax-reports.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./fx-rates.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fx-rates.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/tax-reports.ts",
+        "src/lib/cgt-engine.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/cgt-engine.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/cgt-engine.ts",
+        "src/lib/fx-rates.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/fx-rates.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./app-icon.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/app-icon.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/tax-reports.ts",
+        "src/lib/pdf-report.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/pdf-report.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/lib/pdf-report.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/app-icon.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/index.ts",
+        "src/controllers/users.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/users.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [],
+      "orphan": true,
+      "source": "src/controllers/max-drawdown.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./portfolio.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/portfolio.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/portfolio.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./positions.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/positions.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/positions.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./stocks.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/stocks.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/stocks.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./tax-reports.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/tax-reports.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/tax-reports.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./users.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/users.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/users.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./controllers/index.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/index.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./lib/exchange-sync.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/exchange-sync.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./lib/swagger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/swagger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/index.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/index.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/exchange-sync.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/index.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/swagger.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cgt-engine.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cgt-engine.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/cgt-engine.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./fx-rates.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fx-rates.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/fx-rates.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./historical-drawdown.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/historical-drawdown.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/historical-drawdown.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./jwt.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/jwt.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/jwt.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./pdf-report.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/pdf-report.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/pdf-report.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./portfolio-calc.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/portfolio-calc.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/portfolio-calc.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-service.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/position-service.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/middleware/auth.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/middleware/validation.test.ts",
+      "valid": true
+    }
+  ],
+  "summary": {
+    "environment": {
+      "extensionsFound": [
+        {
+          "available": true,
+          "extension": ".js"
+        },
+        {
+          "available": true,
+          "extension": ".cjs"
+        },
+        {
+          "available": true,
+          "extension": ".mjs"
+        },
+        {
+          "available": true,
+          "extension": ".jsx"
+        },
+        {
+          "available": true,
+          "extension": ".ts"
+        },
+        {
+          "available": true,
+          "extension": ".tsx"
+        },
+        {
+          "available": true,
+          "extension": ".d.ts"
+        },
+        {
+          "available": true,
+          "extension": ".cts"
+        },
+        {
+          "available": true,
+          "extension": ".d.cts"
+        },
+        {
+          "available": true,
+          "extension": ".mts"
+        },
+        {
+          "available": true,
+          "extension": ".d.mts"
+        },
+        {
+          "available": false,
+          "extension": ".vue"
+        },
+        {
+          "available": false,
+          "extension": ".svelte"
+        },
+        {
+          "available": false,
+          "extension": ".ls"
+        },
+        {
+          "available": false,
+          "extension": ".coffee"
+        },
+        {
+          "available": false,
+          "extension": ".litcoffee"
+        },
+        {
+          "available": false,
+          "extension": ".coffee.md"
+        },
+        {
+          "available": false,
+          "extension": ".csx"
+        },
+        {
+          "available": false,
+          "extension": ".cjsx"
+        }
+      ],
+      "nodeVersionFound": "v22.23.1",
+      "nodeVersionSupported": "^22||^24||>=26",
+      "osVersionFound": "arm64 darwin@25.5.0",
+      "transpilersFound": [
+        {
+          "available": true,
+          "currentVersion": "acorn@8.17.0",
+          "name": "javascript",
+          "version": "*"
+        },
+        {
+          "available": false,
+          "currentVersion": "-",
+          "name": "babel",
+          "version": ">=7.0.0 <8.0.0"
+        },
+        {
+          "available": false,
+          "currentVersion": "-",
+          "name": "coffee-script",
+          "version": ">=1.0.0 <2.0.0"
+        },
+        {
+          "available": false,
+          "currentVersion": "-",
+          "name": "coffeescript",
+          "version": ">=1.0.0 <3.0.0"
+        },
+        {
+          "available": false,
+          "currentVersion": "-",
+          "name": "livescript",
+          "version": ">=1.0.0 <2.0.0"
+        },
+        {
+          "available": false,
+          "currentVersion": "-",
+          "name": "svelte",
+          "version": ">=3.0.0 <6.0.0"
+        },
+        {
+          "available": false,
+          "currentVersion": "-",
+          "name": "swc",
+          "version": ">=1.0.0 <2.0.0"
+        },
+        {
+          "available": true,
+          "currentVersion": "typescript@6.0.3",
+          "name": "typescript",
+          "version": ">=2.0.0 <7.0.0"
+        },
+        {
+          "available": false,
+          "currentVersion": "-",
+          "name": "vue-template-compiler",
+          "version": ">=2.0.0 <3.0.0"
+        },
+        {
+          "available": false,
+          "currentVersion": "-",
+          "name": "@vue/compiler-sfc",
+          "version": ">=3.0.0 <4.0.0"
+        }
+      ],
+      "version": "18.1.0"
+    },
+    "error": 0,
+    "ignore": 0,
+    "info": 0,
+    "optionsUsed": {
+      "args": "src",
+      "baseDir": "/Users/brunofrascino/dev/piggy-api",
+      "combinedDependencies": false,
+      "detectJSDocImports": false,
+      "detectProcessBuiltinModuleCalls": false,
+      "exoticRequireStrings": [],
+      "externalModuleResolutionStrategy": "node_modules",
+      "includeOnly": "^src",
+      "metrics": false,
+      "moduleSystems": [
+        "es6",
+        "cjs",
+        "tsd",
+        "amd"
+      ],
+      "preserveSymlinks": false,
+      "skipAnalysisNotInRules": false,
+      "tsConfig": {
+        "fileName": "/Users/brunofrascino/dev/piggy-api/tsconfig.json"
+      },
+      "tsPreCompilationDeps": false
+    },
+    "ruleSetUsed": {
+      "forbidden": [
+        {
+          "comment": "No circular dependencies anywhere under src/.",
+          "from": {},
+          "name": "no-circular",
+          "scope": "module",
+          "severity": "error",
+          "to": {
+            "circular": true
+          }
+        },
+        {
+          "comment": "Controllers must not import other controllers (src/controllers/index.ts is exempt — it mounts them; test files are exempt from this rule).",
+          "from": {
+            "path": "^src/controllers",
+            "pathNot": "index\\.ts$|\\.test\\.ts$"
+          },
+          "name": "controllers-no-controller-imports",
+          "scope": "module",
+          "severity": "error",
+          "to": {
+            "path": "^src/controllers",
+            "pathNot": "index\\.ts$"
+          }
+        },
+        {
+          "comment": "lib/ must not import controllers.",
+          "from": {
+            "path": "^src/lib"
+          },
+          "name": "lib-no-controller-imports",
+          "scope": "module",
+          "severity": "error",
+          "to": {
+            "path": "^src/controllers"
+          }
+        },
+        {
+          "comment": "middleware/ must not import controllers.",
+          "from": {
+            "path": "^src/middleware"
+          },
+          "name": "middleware-no-controller-imports",
+          "scope": "module",
+          "severity": "error",
+          "to": {
+            "path": "^src/controllers"
+          }
+        },
+        {
+          "comment": "Only src/lib/prisma.ts may import @prisma/client.",
+          "from": {
+            "path": "^src/(?!lib/prisma\\.ts$)"
+          },
+          "name": "only-prisma-ts-imports-prisma-client",
+          "scope": "module",
+          "severity": "error",
+          "to": {
+            "path": "node_modules/@prisma/client"
+          }
+        }
+      ]
+    },
+    "totalCruised": 39,
+    "totalDependenciesCruised": 62,
+    "violations": [],
+    "warn": 0
+  }
+}

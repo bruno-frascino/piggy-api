@@ -89,6 +89,7 @@ export default [
       'build/**',
       '.git/**',
       'coverage/**',
+      'context/**',
       '*.min.js',
       'eslint.config.js', // Ignore this config file itself
     ],

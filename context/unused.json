@@ -1,0 +1,127 @@
+{
+  "issues": [
+    {
+      "binaries": [],
+      "catalog": [],
+      "dependencies": [
+        {
+          "col": 6,
+          "line": 43,
+          "name": "pg",
+          "pos": 1226
+        }
+      ],
+      "devDependencies": [
+        {
+          "col": 6,
+          "line": 51,
+          "name": "@types/bcryptjs",
+          "pos": 1427
+        },
+        {
+          "col": 6,
+          "line": 58,
+          "name": "@types/pg",
+          "pos": 1654
+        }
+      ],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [],
+      "file": "package.json",
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "binaries": [],
+      "catalog": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [
+        {
+          "col": 23,
+          "line": 149,
+          "name": "ensureCoreExchanges",
+          "pos": 3512
+        }
+      ],
+      "file": "src/lib/exchange-sync.ts",
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "binaries": [],
+      "catalog": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [
+        {
+          "col": 14,
+          "line": 15,
+          "name": "GENERATOR_VERSION",
+          "pos": 617
+        },
+        {
+          "col": 17,
+          "line": 18,
+          "name": "sortKeysDeep",
+          "pos": 735
+        },
+        {
+          "col": 17,
+          "line": 38,
+          "name": "normalizeText",
+          "pos": 1479
+        },
+        {
+          "col": 17,
+          "line": 43,
+          "name": "sha256",
+          "pos": 1643
+        }
+      ],
+      "file": "scripts/context/lib/manifest.ts",
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "binaries": [],
+      "catalog": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [],
+      "file": "src/lib/cgt-engine.ts",
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [
+        {
+          "col": 18,
+          "line": 10,
+          "name": "CgtLineItem",
+          "pos": 418
+        }
+      ],
+      "unlisted": [],
+      "unresolved": []
+    }
+  ]
+}

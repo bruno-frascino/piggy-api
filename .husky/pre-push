@@ -1,0 +1,21 @@
+# context:build exits 1 on architecture-rule violations (a separate, tracked concern) —
+# that must not be conflated with THIS hook's only job: blocking on stale/uncommitted context/.
+yarn context:build || true
+
+if [ -n "$(git status --porcelain -- context/)" ]; then
+  if [ "$CONTEXT_SKIP" = "1" ]; then
+    echo "⚠ context/ is stale but CONTEXT_SKIP=1 is set — pushing anyway."
+    exit 0
+  fi
+  echo ""
+  echo "✖ Push blocked: context/ is out of date."
+  echo "  yarn context:build just regenerated it — the changes are already on disk."
+  echo ""
+  echo "  Run:"
+  echo "    git add context/"
+  echo "    git commit --amend --no-edit    # or a new commit"
+  echo ""
+  echo "  Escape hatch (not recommended): CONTEXT_SKIP=1 git push"
+  echo ""
+  exit 1
+fi

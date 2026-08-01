@@ -1,0 +1,371 @@
+[
+  {
+    "endLine": 10,
+    "file": "src/controllers/accounts.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 10
+  },
+  {
+    "endLine": 18,
+    "file": "src/controllers/auth.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 18
+  },
+  {
+    "endLine": 10,
+    "file": "src/controllers/index.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 10
+  },
+  {
+    "endLine": 11,
+    "file": "src/controllers/portfolio.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 11
+  },
+  {
+    "endLine": 16,
+    "file": "src/controllers/positions.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 16
+  },
+  {
+    "endLine": 12,
+    "file": "src/controllers/stocks.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 12
+  },
+  {
+    "endLine": 13,
+    "file": "src/controllers/tax-reports.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 13
+  },
+  {
+    "endLine": 11,
+    "file": "src/controllers/users.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 11
+  },
+  {
+    "endLine": 16,
+    "file": "src/index.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "app",
+    "signature": "app = express()",
+    "startLine": 16
+  },
+  {
+    "endLine": 32,
+    "file": "src/lib/cgt-engine.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "CgtLineItem",
+    "signature": "export interface CgtLineItem",
+    "startLine": 10
+  },
+  {
+    "endLine": 47,
+    "file": "src/lib/cgt-engine.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "CgtReportResult",
+    "signature": "export interface CgtReportResult",
+    "startLine": 34
+  },
+  {
+    "endLine": 53,
+    "file": "src/lib/cgt-engine.ts",
+    "jsdoc": "Derives the stable \"declaration identity\" key used for upserts and for matching the correct year-to-year carried-forward loss chain.",
+    "kind": "FunctionDeclaration",
+    "name": "computeAccountsKey",
+    "signature": "export function computeAccountsKey(accountIds: string[]): string",
+    "startLine": 51
+  },
+  {
+    "endLine": 65,
+    "file": "src/lib/cgt-engine.ts",
+    "jsdoc": "Australian financial year: 1 Jul (startYear) – 30 Jun (startYear + 1).",
+    "kind": "FunctionDeclaration",
+    "name": "getFinancialYearRange",
+    "signature": "export function getFinancialYearRange(financialYearStartYear: number):",
+    "startLine": 56
+  },
+  {
+    "endLine": 247,
+    "file": "src/lib/cgt-engine.ts",
+    "jsdoc": "Computes an ATO-style capital gains report for a user, financial year, and an explicit set of Trading Accounts (a \"declaration\" — e.g. the user's own accounts vs a spouse's accounts tracked under the same login). Each `Position` is created with exactly one BUY transaction and is never appended to (see positions.ts `POST /`), so every Position IS already a discrete CGT parcel — no FIFO lot reconstruction is required. Every SELL transaction against it (full or partial close) is an unambiguous disposal of that specific parcel.",
+    "kind": "FunctionDeclaration",
+    "name": "computeCapitalGainsReport",
+    "signature": "export async function computeCapitalGainsReport( userId: string, financialYearStartYear: number, accountIds: string[] ): Promise<CgtReportResult>",
+    "startLine": 78
+  },
+  {
+    "endLine": 169,
+    "file": "src/lib/exchange-sync.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "ensureCoreExchanges",
+    "signature": "export async function ensureCoreExchanges( prisma: PrismaClient ): Promise<SyncResult>",
+    "startLine": 149
+  },
+  {
+    "endLine": 185,
+    "file": "src/lib/exchange-sync.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "seedExchangesIfEmpty",
+    "signature": "export async function seedExchangesIfEmpty(prisma: PrismaClient): Promise<",
+    "startLine": 171
+  },
+  {
+    "endLine": 179,
+    "file": "src/lib/fx-rates.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "FxRateResult",
+    "signature": "export interface FxRateResult",
+    "startLine": 175
+  },
+  {
+    "endLine": 247,
+    "file": "src/lib/fx-rates.ts",
+    "jsdoc": "Returns the historical rate to convert 1 unit of `currency` into AUD on `date` (amountAud = amountForeign * rate). Checks the `FxRateCache` table first; on a cache miss, tries RBA's official daily rates first, falling back to Yahoo Finance only if RBA doesn't cover the date/currency. Always returns `{ rate: 1, source: 'RBA' }` for AUD without hitting the network.",
+    "kind": "FunctionDeclaration",
+    "name": "getHistoricalFxRateToAud",
+    "signature": "export async function getHistoricalFxRateToAud( currency: string, date: Date ): Promise<FxRateResult>",
+    "startLine": 188
+  },
+  {
+    "endLine": 52,
+    "file": "src/lib/historical-drawdown.ts",
+    "jsdoc": "Fetches daily OHLC history from Yahoo Finance for a symbol between openDate and today, then returns the worst intra-period low as a max-drawdown percentage relative to the entry price. The returned value is always positive (e.g. 6.4 means a 6.4% drawdown). Returns null when history is unavailable or there was no drawdown at all.",
+    "kind": "FunctionDeclaration",
+    "name": "fetchHistoricalMaxDrawdown",
+    "signature": "export async function fetchHistoricalMaxDrawdown( symbol: string, entryPrice: number, openDate: Date ): Promise<number | null>",
+    "startLine": 11
+  },
+  {
+    "endLine": 6,
+    "file": "src/lib/jwt.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "JwtPayload",
+    "signature": "export interface JwtPayload",
+    "startLine": 3
+  },
+  {
+    "endLine": 27,
+    "file": "src/lib/jwt.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "signAccessToken",
+    "signature": "export function signAccessToken(payload: JwtPayload): string",
+    "startLine": 23
+  },
+  {
+    "endLine": 33,
+    "file": "src/lib/jwt.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "signRefreshToken",
+    "signature": "export function signRefreshToken(payload: JwtPayload): string",
+    "startLine": 29
+  },
+  {
+    "endLine": 37,
+    "file": "src/lib/jwt.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "verifyAccessToken",
+    "signature": "export function verifyAccessToken(token: string): JwtPayload",
+    "startLine": 35
+  },
+  {
+    "endLine": 41,
+    "file": "src/lib/jwt.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "verifyRefreshToken",
+    "signature": "export function verifyRefreshToken(token: string): JwtPayload",
+    "startLine": 39
+  },
+  {
+    "endLine": 49,
+    "file": "src/lib/jwt.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "refreshTokenExpiresAt",
+    "signature": "export function refreshTokenExpiresAt(): Date",
+    "startLine": 43
+  },
+  {
+    "endLine": 8,
+    "file": "src/lib/pdf-report.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "ReportUserInfo",
+    "signature": "export interface ReportUserInfo",
+    "startLine": 5
+  },
+  {
+    "endLine": 272,
+    "file": "src/lib/pdf-report.ts",
+    "jsdoc": "Renders a Capital Gains Tax summary PDF for a computed report result. Uses `pdfkit` (pure-JS, no Chromium/native deps — important on a small VPS).",
+    "kind": "FunctionDeclaration",
+    "name": "buildCapitalGainsPdf",
+    "signature": "export function buildCapitalGainsPdf( result: CgtReportResult, user: ReportUserInfo ): Promise<Buffer>",
+    "startLine": 75
+  },
+  {
+    "endLine": 4,
+    "file": "src/lib/portfolio-calc.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "OpenPositionForSnapshot",
+    "signature": "export interface OpenPositionForSnapshot",
+    "startLine": 1
+  },
+  {
+    "endLine": 8,
+    "file": "src/lib/portfolio-calc.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "ClosedPositionForSnapshot",
+    "signature": "export interface ClosedPositionForSnapshot",
+    "startLine": 6
+  },
+  {
+    "endLine": 45,
+    "file": "src/lib/portfolio-calc.ts",
+    "jsdoc": "Computes the values stored in a PortfolioSnapshot row. totalValue intentionally includes totalRealizedPnL so that the equity curve remains meaningful even when no positions are open — the chart reflects cumulative wealth (invested capital + unrealised gains + realised gains) rather than just money currently at work in the market.",
+    "kind": "FunctionDeclaration",
+    "name": "computeSnapshotValues",
+    "signature": "export function computeSnapshotValues( openPositions: OpenPositionForSnapshot[], closedPositions: ClosedPositionForSnapshot[] ):",
+    "startLine": 18
+  },
+  {
+    "endLine": 54,
+    "file": "src/lib/position-service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "findOrCreateAsset",
+    "signature": "export async function findOrCreateAsset( symbol: string, exchangeCode: string, name?: string, assetType?: string, industry?: string )",
+    "startLine": 8
+  },
+  {
+    "endLine": 82,
+    "file": "src/lib/position-service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "resolveTradingAccount",
+    "signature": "export async function resolveTradingAccount( userId: string, accountName?: string, accountId?: string )",
+    "startLine": 56
+  },
+  {
+    "endLine": 88,
+    "file": "src/lib/position-service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "toDateOnly",
+    "signature": "export function toDateOnly(value: Date)",
+    "startLine": 84
+  },
+  {
+    "endLine": 132,
+    "file": "src/lib/position-service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "recomputePositionFromTransactions",
+    "signature": "export async function recomputePositionFromTransactions(positionId: string)",
+    "startLine": 90
+  },
+  {
+    "endLine": 23,
+    "file": "src/lib/prisma.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "prisma",
+    "signature": "prisma = globalForPrisma.prisma ?? new PrismaClient(",
+    "startLine": 19
+  },
+  {
+    "endLine": 177,
+    "file": "src/lib/swagger.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "specs",
+    "signature": "specs = swaggerJsdoc(options)",
+    "startLine": 177
+  },
+  {
+    "endLine": 66,
+    "file": "src/middleware/auth.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "authenticateToken",
+    "signature": "export async function authenticateToken( req: Request, res: Response, next: NextFunction )",
+    "startLine": 13
+  },
+  {
+    "endLine": 18,
+    "file": "src/middleware/validation.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "handleValidationErrors",
+    "signature": "handleValidationErrors = ( req: Request, res: Response, next: NextFunction ) =>",
+    "startLine": 5
+  },
+  {
+    "endLine": 32,
+    "file": "src/middleware/validation.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "validateCuid",
+    "signature": "validateCuid = (field: string) =>",
+    "startLine": 21
+  },
+  {
+    "endLine": 39,
+    "file": "src/middleware/validation.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "asyncHandler",
+    "signature": "asyncHandler = (fn: Function) =>",
+    "startLine": 35
+  },
+  {
+    "endLine": 89,
+    "file": "src/middleware/validation.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "errorHandler",
+    "signature": "errorHandler = ( err: Error &",
+    "startLine": 42
+  }
+]
