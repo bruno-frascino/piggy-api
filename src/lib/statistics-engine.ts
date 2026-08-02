@@ -12,7 +12,7 @@ type TradeEventInput = {
     accountId: string
     asset: {
       symbol: string
-      exchange: { code: string }
+      exchange: { code: string; currency: string }
     }
   }
 }
@@ -23,6 +23,7 @@ export type StatisticsTradeRow = {
   symbol: string
   accountId: string
   exchangeCode: string
+  currency: string
   openDate: string
   closeDate: string
   unitsClosed: number
@@ -105,6 +106,7 @@ export function mapTradeRows(events: TradeEventInput[]): StatisticsTradeRow[] {
       symbol: event.position.asset.symbol,
       accountId: event.position.accountId,
       exchangeCode: event.position.asset.exchange.code,
+      currency: event.position.asset.exchange.currency,
       openDate,
       closeDate,
       unitsClosed: quantity,

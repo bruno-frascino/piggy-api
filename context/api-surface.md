@@ -27,7 +27,7 @@
 | GET | `/api/positions/close-events` | 🔒 | — | [src/controllers/positions.ts:376](../src/controllers/positions.ts#L376) |
 | PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×4 | [src/controllers/positions.ts:446](../src/controllers/positions.ts#L446) |
 | GET | `/api/statistics/breakdowns` | 🔒 | , query ×2 | [src/controllers/statistics.ts:614](../src/controllers/statistics.ts#L614) |
-| GET | `/api/statistics/closed-trades` | 🔒 | , query ×4 | [src/controllers/statistics.ts:745](../src/controllers/statistics.ts#L745) |
+| GET | `/api/statistics/closed-trades` | 🔒 | , query ×4 | [src/controllers/statistics.ts:760](../src/controllers/statistics.ts#L760) |
 | GET | `/api/statistics/distributions` | 🔒 |  | [src/controllers/statistics.ts:426](../src/controllers/statistics.ts#L426) |
 | GET | `/api/statistics/risk` | 🔒 |  | [src/controllers/statistics.ts:520](../src/controllers/statistics.ts#L520) |
 | GET | `/api/statistics/summary` | 🔒 |  | [src/controllers/statistics.ts:169](../src/controllers/statistics.ts#L169) |

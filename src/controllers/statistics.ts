@@ -737,6 +737,21 @@ router.get(
  *     responses:
  *       200:
  *         description: Paginated closed trades
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       currency:
+ *                         type: string
+ *                         description: ISO 4217 currency code from the trade's exchange
  *       400:
  *         description: Validation error
  *       401:
@@ -792,7 +807,7 @@ router.get(
                 asset: {
                   select: {
                     symbol: true,
-                    exchange: { select: { code: true } },
+                    exchange: { select: { code: true, currency: true } },
                   },
                 },
               },
@@ -835,7 +850,10 @@ router.get(
             buyFees: true,
             openDate: true,
             asset: {
-              select: { symbol: true, exchange: { select: { code: true } } },
+              select: {
+                symbol: true,
+                exchange: { select: { code: true, currency: true } },
+              },
             },
           },
         },

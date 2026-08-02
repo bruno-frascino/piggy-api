@@ -2,7 +2,7 @@
   "artifacts": {
     "api-surface.md": {
       "path": "context/api-surface.md",
-      "sha256": "551b6d180b38236384a9a463a28d0277f52dd812fc332c446692ad2f37bcd180"
+      "sha256": "bce6c226db33fa2e02a903c23fab18f8b648818888a7e3696e13b53e110d8e56"
     },
     "data-model.md": {
       "path": "context/data-model.md",
@@ -18,17 +18,17 @@
     },
     "openapi.json": {
       "path": "context/openapi.json",
-      "sha256": "9e34f80a8898b9abdfd2d391edc634d84fe8c769250bf96304df1fd374b1db42"
+      "sha256": "eebeebbdfe9b13492ea74ff6fa96c8a693c4a68c04518e6221df40fef40a924e"
     },
     "symbol-index.json": {
       "path": "context/symbol-index.json",
-      "sha256": "78fdfcf027c769ddd465006195ffdcbf13b414a1f0c3e0712b075820a5c978e7"
+      "sha256": "ed684ab55171356eb8ba4eb0db194c210e5e756fcb4d04e0054f74ff43f50f80"
     },
     "unused.json": {
       "path": "context/unused.json",
       "sha256": "bd951ab3ca82bd722dd3c5ebe8c1bad0ad8cde0fe69ca50afcfc4079213c304f"
     }
   },
-  "generatedAt": "2026-08-01T09:30:12.986Z",
+  "generatedAt": "2026-08-02T08:32:21.222Z",
   "generatorVersion": 1
 }

@@ -71,7 +71,10 @@ describe('statistics controller', () => {
             entryPrice: 100,
             buyFees: 5,
             openDate: new Date('2026-01-01T00:00:00.000Z'),
-            asset: { symbol: 'AAPL', exchange: { code: 'NASDAQ' } },
+            asset: {
+              symbol: 'AAPL',
+              exchange: { code: 'NASDAQ', currency: 'USD' },
+            },
           },
         },
       ])
@@ -157,7 +160,10 @@ describe('statistics controller', () => {
             entryPrice: 100,
             buyFees: 0,
             openDate: new Date('2026-01-01T00:00:00.000Z'),
-            asset: { symbol: 'AAPL', exchange: { code: 'NASDAQ' } },
+            asset: {
+              symbol: 'BHP.AX',
+              exchange: { code: 'ASX', currency: 'AUD' },
+            },
           },
         },
       ])
@@ -170,6 +176,11 @@ describe('statistics controller', () => {
       expect(response.status).toBe(200)
       expect(response.body.success).toBe(true)
       expect(response.body.data).toHaveLength(1)
+      expect(response.body.data[0]).toMatchObject({
+        symbol: 'BHP.AX',
+        exchangeCode: 'ASX',
+        currency: 'AUD',
+      })
       expect(response.body.meta).toEqual({ total: 1, limit: 10, offset: 0 })
     })
 
@@ -188,7 +199,10 @@ describe('statistics controller', () => {
             entryPrice: 100,
             buyFees: 0,
             openDate: new Date('2026-01-01T00:00:00.000Z'),
-            asset: { symbol: 'AAPL', exchange: { code: 'NASDAQ' } },
+            asset: {
+              symbol: 'AAPL',
+              exchange: { code: 'NASDAQ', currency: 'USD' },
+            },
           },
         },
         {
@@ -204,7 +218,10 @@ describe('statistics controller', () => {
             entryPrice: 100,
             buyFees: 0,
             openDate: new Date('2026-01-01T00:00:00.000Z'),
-            asset: { symbol: 'MSFT', exchange: { code: 'NASDAQ' } },
+            asset: {
+              symbol: 'MSFT',
+              exchange: { code: 'NASDAQ', currency: 'USD' },
+            },
           },
         },
       ])
