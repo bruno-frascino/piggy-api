@@ -1,5 +1,13 @@
 # Run lint-staged to lint and format only staged files
 npx lint-staged
 
+# Regenerate context/ and stage it so the pre-push freshness check can't block later.
+# Only when the commit touches sources that context/ is derived from.
+if git diff --cached --name-only | grep -qE '^(src/|prisma/schema\.prisma)'; then
+  # context:build exits 1 on architecture-rule violations — surfaced by pre-push, not here.
+  yarn context:build || true
+  git add context/
+fi
+
 # Run tests to ensure nothing is broken
 # yarn test
