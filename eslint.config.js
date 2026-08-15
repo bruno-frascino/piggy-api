@@ -29,6 +29,7 @@ export default [
         Headers: 'readonly',
         Request: 'readonly',
         Response: 'readonly',
+        AbortController: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
         setInterval: 'readonly',

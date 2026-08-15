@@ -123,6 +123,8 @@ describe('findOrCreateAsset', () => {
         name: 'AAPL',
         assetType: 'EQUITY',
         industry: null,
+        sector: null,
+        marketCap: null,
         exchangeId: 'ex_1',
       },
     })

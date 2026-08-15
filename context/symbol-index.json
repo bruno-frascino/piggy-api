@@ -18,13 +18,13 @@
     "startLine": 18
   },
   {
-    "endLine": 11,
+    "endLine": 13,
     "file": "src/controllers/index.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 11
+    "startLine": 13
   },
   {
     "endLine": 11,
@@ -43,6 +43,15 @@
     "name": "default",
     "signature": "router = Router()",
     "startLine": 16
+  },
+  {
+    "endLine": 17,
+    "file": "src/controllers/screener.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 17
   },
   {
     "endLine": 19,
@@ -74,6 +83,15 @@
   {
     "endLine": 11,
     "file": "src/controllers/users.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 11
+  },
+  {
+    "endLine": 11,
+    "file": "src/controllers/watchlists.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
@@ -151,6 +169,78 @@
     "name": "seedExchangesIfEmpty",
     "signature": "export async function seedExchangesIfEmpty(prisma: PrismaClient): Promise<",
     "startLine": 171
+  },
+  {
+    "endLine": 14,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "",
+    "kind": "ClassDeclaration",
+    "name": "FmpUnavailableError",
+    "signature": "export class FmpUnavailableError extends Error",
+    "startLine": 9
+  },
+  {
+    "endLine": 28,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "ScreenerCriteria",
+    "signature": "export interface ScreenerCriteria",
+    "startLine": 16
+  },
+  {
+    "endLine": 41,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "ScreenerResult",
+    "signature": "export interface ScreenerResult",
+    "startLine": 30
+  },
+  {
+    "endLine": 48,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "SymbolSearchResult",
+    "signature": "export interface SymbolSearchResult",
+    "startLine": 43
+  },
+  {
+    "endLine": 57,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "UpcomingDividend",
+    "signature": "export interface UpcomingDividend",
+    "startLine": 50
+  },
+  {
+    "endLine": 171,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "screenStocks",
+    "signature": "export async function screenStocks( criteria: ScreenerCriteria ): Promise<ScreenerResult[]>",
+    "startLine": 143
+  },
+  {
+    "endLine": 187,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "searchSymbol",
+    "signature": "export async function searchSymbol( q: string, limit = 20 ): Promise<SymbolSearchResult[]>",
+    "startLine": 173
+  },
+  {
+    "endLine": 209,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "Fetches all dividend ex-dates in [from, to] (max 90-day range per FMP), unfiltered by symbol.",
+    "kind": "FunctionDeclaration",
+    "name": "getDividendsCalendar",
+    "signature": "export async function getDividendsCalendar( from: string, to: string ): Promise<UpcomingDividend[]>",
+    "startLine": 190
   },
   {
     "endLine": 179,
@@ -279,40 +369,40 @@
     "startLine": 18
   },
   {
-    "endLine": 54,
+    "endLine": 69,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "findOrCreateAsset",
-    "signature": "export async function findOrCreateAsset( symbol: string, exchangeCode: string, name?: string, assetType?: string, industry?: string )",
+    "signature": "export async function findOrCreateAsset( symbol: string, exchangeCode: string, name?: string, assetType?: string, industry?: string, sector?: string, marketCap?: number )",
     "startLine": 8
   },
   {
-    "endLine": 82,
+    "endLine": 97,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "resolveTradingAccount",
     "signature": "export async function resolveTradingAccount( userId: string, accountName?: string, accountId?: string )",
-    "startLine": 56
+    "startLine": 71
   },
   {
-    "endLine": 88,
+    "endLine": 103,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "toDateOnly",
     "signature": "export function toDateOnly(value: Date)",
-    "startLine": 84
+    "startLine": 99
   },
   {
-    "endLine": 132,
+    "endLine": 147,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "recomputePositionFromTransactions",
     "signature": "export async function recomputePositionFromTransactions(positionId: string)",
-    "startLine": 90
+    "startLine": 105
   },
   {
     "endLine": 23,
@@ -441,13 +531,13 @@
     "startLine": 311
   },
   {
-    "endLine": 132,
+    "endLine": 141,
     "file": "src/lib/swagger.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "specs",
     "signature": "specs = swaggerJsdoc(options)",
-    "startLine": 132
+    "startLine": 141
   },
   {
     "endLine": 66,

@@ -26,6 +26,11 @@
 | POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:530](../src/controllers/positions.ts#L530) |
 | GET | `/api/positions/close-events` | 🔒 | — | [src/controllers/positions.ts:376](../src/controllers/positions.ts#L376) |
 | PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×4 | [src/controllers/positions.ts:446](../src/controllers/positions.ts#L446) |
+| GET | `/api/screener` | 🔒 | query ×10 | [src/controllers/screener.ts:124](../src/controllers/screener.ts#L124) |
+| GET | `/api/screener/saved-screens` | 🔒 | — | [src/controllers/screener.ts:301](../src/controllers/screener.ts#L301) |
+| POST | `/api/screener/saved-screens` | 🔒 | body ×2 | [src/controllers/screener.ts:344](../src/controllers/screener.ts#L344) |
+| DELETE | `/api/screener/saved-screens/:id` | 🔒 | param | [src/controllers/screener.ts:385](../src/controllers/screener.ts#L385) |
+| GET | `/api/screener/upcoming-dividends` | 🔒 | query ×3 | [src/controllers/screener.ts:233](../src/controllers/screener.ts#L233) |
 | GET | `/api/statistics/breakdowns` | 🔒 | , query ×2 | [src/controllers/statistics.ts:614](../src/controllers/statistics.ts#L614) |
 | GET | `/api/statistics/closed-trades` | 🔒 | , query ×4 | [src/controllers/statistics.ts:760](../src/controllers/statistics.ts#L760) |
 | GET | `/api/statistics/distributions` | 🔒 |  | [src/controllers/statistics.ts:426](../src/controllers/statistics.ts#L426) |
@@ -41,3 +46,10 @@
 | POST | `/api/tax-reports/generate` | 🔒 | body ×3 | [src/controllers/tax-reports.ts:90](../src/controllers/tax-reports.ts#L90) |
 | GET | `/api/users/me` | 🔒 | — | [src/controllers/users.ts:50](../src/controllers/users.ts#L50) |
 | PATCH | `/api/users/me` | 🔒 | body ×4 | [src/controllers/users.ts:127](../src/controllers/users.ts#L127) |
+| GET | `/api/watchlists` | 🔒 | — | [src/controllers/watchlists.ts:34](../src/controllers/watchlists.ts#L34) |
+| POST | `/api/watchlists` | 🔒 | body | [src/controllers/watchlists.ts:75](../src/controllers/watchlists.ts#L75) |
+| DELETE | `/api/watchlists/:id` | 🔒 | param | [src/controllers/watchlists.ts:212](../src/controllers/watchlists.ts#L212) |
+| GET | `/api/watchlists/:id` | 🔒 | param | [src/controllers/watchlists.ts:111](../src/controllers/watchlists.ts#L111) |
+| PATCH | `/api/watchlists/:id` | 🔒 | param, body | [src/controllers/watchlists.ts:168](../src/controllers/watchlists.ts#L168) |
+| POST | `/api/watchlists/:id/items` | 🔒 | param, body ×7 | [src/controllers/watchlists.ts:277](../src/controllers/watchlists.ts#L277) |
+| DELETE | `/api/watchlists/:id/items/:itemId` | 🔒 | param ×2 | [src/controllers/watchlists.ts:355](../src/controllers/watchlists.ts#L355) |

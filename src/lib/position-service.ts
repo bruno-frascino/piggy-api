@@ -10,7 +10,9 @@ export async function findOrCreateAsset(
   exchangeCode: string,
   name?: string,
   assetType?: string,
-  industry?: string
+  industry?: string,
+  sector?: string,
+  marketCap?: number
 ) {
   const normalizedSymbol = symbol.trim().toUpperCase()
   const normalizedExchange = exchangeCode.trim().toUpperCase()
@@ -33,10 +35,21 @@ export async function findOrCreateAsset(
   })
   if (existing) {
     const normalizedIndustry = industry?.trim() || null
+    const normalizedSector = sector?.trim() || null
+    const updateData: Record<string, unknown> = {}
     if (normalizedIndustry && existing.industry !== normalizedIndustry) {
+      updateData.industry = normalizedIndustry
+    }
+    if (normalizedSector && existing.sector !== normalizedSector) {
+      updateData.sector = normalizedSector
+    }
+    if (marketCap !== undefined && Number(existing.marketCap) !== marketCap) {
+      updateData.marketCap = marketCap
+    }
+    if (Object.keys(updateData).length > 0) {
       return prisma.asset.update({
         where: { id: existing.id },
-        data: { industry: normalizedIndustry },
+        data: updateData,
       })
     }
     return existing
@@ -48,6 +61,8 @@ export async function findOrCreateAsset(
       name: name?.trim() || normalizedSymbol,
       assetType: (assetType as AssetType) || 'EQUITY',
       industry: industry?.trim() || null,
+      sector: sector?.trim() || null,
+      marketCap: marketCap ?? null,
       exchangeId: exchange.id,
     },
   })

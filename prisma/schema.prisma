@@ -25,6 +25,8 @@ model User {
   refreshTokens      RefreshToken[]
   passwordResetTokens PasswordResetToken[]
   taxReports         TaxReport[]
+  watchlists         Watchlist[]
+  savedScreens       SavedScreen[]
 
   @@map("users")
 }
@@ -118,9 +120,10 @@ model Asset {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  exchange     Exchange      @relation(fields: [exchangeId], references: [id])
-  positions    Position[]
-  priceHistory PriceHistory[]
+  exchange       Exchange       @relation(fields: [exchangeId], references: [id])
+  positions      Position[]
+  priceHistory   PriceHistory[]
+  watchlistItems WatchlistItem[]
 
   @@unique([symbol, exchangeId])
   @@map("assets")
@@ -303,4 +306,47 @@ model FxRateCache {
 
   @@unique([currency, date])
   @@map("fx_rate_cache")
+}
+
+// ─── Screener & Watchlists ───────────────────────────────────────────────────
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items WatchlistItem[]
+
+  @@unique([userId, name])
+  @@map("watchlists")
+}
+
+model WatchlistItem {
+  id          String   @id @default(cuid())
+  watchlistId String
+  assetId     String
+  addedAt     DateTime @default(now())
+
+  watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  asset     Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, assetId])
+  @@map("watchlist_items")
+}
+
+model SavedScreen {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  filters   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@map("saved_screens")
 }

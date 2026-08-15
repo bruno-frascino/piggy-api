@@ -124,6 +124,15 @@ const options = {
         name: 'Statistics',
         description: 'Aggregated portfolio and trade analytics',
       },
+      {
+        name: 'Screener',
+        description:
+          'Market-wide stock screening (market cap, dividend, sector/industry) via Financial Modeling Prep',
+      },
+      {
+        name: 'Watchlists',
+        description: 'User-created named watchlists of tracked stocks',
+      },
     ],
   },
   apis: ['./src/controllers/*.ts'], // Path to the API docs

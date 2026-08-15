@@ -96,11 +96,13 @@
         "src/controllers/portfolio.ts",
         "src/controllers/positions.ts",
         "src/lib/position-service.ts",
+        "src/controllers/screener.ts",
         "src/controllers/statistics.ts",
         "src/controllers/tax-reports.ts",
         "src/lib/cgt-engine.ts",
         "src/lib/fx-rates.ts",
         "src/controllers/users.ts",
+        "src/controllers/watchlists.ts",
         "src/index.ts"
       ],
       "orphan": false,
@@ -149,10 +151,12 @@
         "src/controllers/auth.ts",
         "src/controllers/portfolio.ts",
         "src/controllers/positions.ts",
+        "src/controllers/screener.ts",
         "src/controllers/statistics.ts",
         "src/controllers/stocks.ts",
         "src/controllers/tax-reports.ts",
         "src/controllers/users.ts",
+        "src/controllers/watchlists.ts",
         "src/middleware/auth.test.ts"
       ],
       "orphan": false,
@@ -177,10 +181,12 @@
         "src/controllers/auth.ts",
         "src/controllers/portfolio.ts",
         "src/controllers/positions.ts",
+        "src/controllers/screener.ts",
         "src/controllers/statistics.ts",
         "src/controllers/stocks.ts",
         "src/controllers/tax-reports.ts",
         "src/controllers/users.ts",
+        "src/controllers/watchlists.ts",
         "src/controllers/positions.test.ts",
         "src/index.ts",
         "src/middleware/validation.test.ts"
@@ -375,6 +381,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./screener.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/screener.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./statistics.js",
           "moduleSystem": "es6",
           "resolved": "src/controllers/statistics.ts",
@@ -429,6 +452,23 @@
           "module": "./users.js",
           "moduleSystem": "es6",
           "resolved": "src/controllers/users.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./watchlists.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/watchlists.ts",
           "valid": true
         }
       ],
@@ -656,10 +696,101 @@
       ],
       "dependents": [
         "src/controllers/positions.ts",
+        "src/controllers/watchlists.ts",
         "src/lib/position-service.test.ts"
       ],
       "orphan": false,
       "source": "src/lib/position-service.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/fmp-client.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fmp-client.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/index.ts",
+        "src/controllers/screener.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/screener.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/controllers/screener.ts",
+        "src/controllers/screener.test.ts",
+        "src/lib/fmp-client.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/fmp-client.ts",
       "valid": true
     },
     {
@@ -1064,6 +1195,85 @@
       "valid": true
     },
     {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/position-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/index.ts",
+        "src/controllers/watchlists.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/watchlists.ts",
+      "valid": true
+    },
+    {
       "dependencies": [],
       "dependents": [],
       "orphan": true,
@@ -1135,6 +1345,48 @@
       "dependents": [],
       "orphan": false,
       "source": "src/controllers/positions.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/fmp-client.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fmp-client.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./screener.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/screener.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/screener.test.ts",
       "valid": true
     },
     {
@@ -1235,6 +1487,31 @@
       "dependents": [],
       "orphan": false,
       "source": "src/controllers/users.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./watchlists.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/watchlists.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/watchlists.test.ts",
       "valid": true
     },
     {
@@ -1371,6 +1648,31 @@
       "dependents": [],
       "orphan": false,
       "source": "src/lib/cgt-engine.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./fmp-client.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fmp-client.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/fmp-client.test.ts",
       "valid": true
     },
     {
@@ -1665,8 +1967,8 @@
         }
       ]
     },
-    "totalCruised": 42,
-    "totalDependenciesCruised": 68,
+    "totalCruised": 48,
+    "totalDependenciesCruised": 82,
     "violations": [],
     "warn": 0
   }

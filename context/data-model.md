@@ -20,6 +20,10 @@ erDiagram
     TradingAccount ||--o{ PortfolioSnapshot : "account"
     Exchange ||--o{ PortfolioSnapshot : "exchange"
     User ||--o{ TaxReport : "user"
+    User ||--o{ Watchlist : "user"
+    Watchlist ||--o{ WatchlistItem : "watchlist"
+    Asset ||--o{ WatchlistItem : "asset"
+    User ||--o{ SavedScreen : "user"
 ```
 
 ## Models
@@ -41,6 +45,8 @@ erDiagram
 | refreshTokens | `RefreshToken[]` | — |
 | passwordResetTokens | `PasswordResetToken[]` | — |
 | taxReports | `TaxReport[]` | — |
+| watchlists | `Watchlist[]` | — |
+| savedScreens | `SavedScreen[]` | — |
 
 ### `RefreshToken` (table: `refresh_tokens`)
 
@@ -116,6 +122,7 @@ Constraints: `@@unique([userId, name])`
 | exchange | `Exchange` | @relation(fields: [exchangeId], references: [id]) |
 | positions | `Position[]` | — |
 | priceHistory | `PriceHistory[]` | — |
+| watchlistItems | `WatchlistItem[]` | — |
 
 Constraints: `@@unique([symbol, exchangeId])`
 
@@ -267,6 +274,47 @@ Constraints: `@@unique([userId, financialYearStartYear, accountsKey])`
 
 Constraints: `@@unique([currency, date])`
 
+### `Watchlist` (table: `watchlists`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| userId | `String` | — |
+| name | `String` | — |
+| createdAt | `DateTime` | @default(now()) |
+| updatedAt | `DateTime` | @updatedAt |
+| user | `User` | @relation(fields: [userId], references: [id], onDelete: Cascade) |
+| items | `WatchlistItem[]` | — |
+
+Constraints: `@@unique([userId, name])`
+
+### `WatchlistItem` (table: `watchlist_items`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| watchlistId | `String` | — |
+| assetId | `String` | — |
+| addedAt | `DateTime` | @default(now()) |
+| watchlist | `Watchlist` | @relation(fields: [watchlistId], references: [id], onDelete: Cascade) |
+| asset | `Asset` | @relation(fields: [assetId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@unique([watchlistId, assetId])`
+
+### `SavedScreen` (table: `saved_screens`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| userId | `String` | — |
+| name | `String` | — |
+| filters | `Json` | — |
+| createdAt | `DateTime` | @default(now()) |
+| updatedAt | `DateTime` | @updatedAt |
+| user | `User` | @relation(fields: [userId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@unique([userId, name])`
+
 ## Enums
 
 - **TradingAccountStatus**: ACTIVE, CLOSED
@@ -281,3 +329,4 @@ Constraints: `@@unique([currency, date])`
 - `20260604133246_add_max_drawdown_percent`
 - `20260722173150_make_open_reason_optional`
 - `20260724114014_add_tax_reports`
+- `20260814234043_add_watchlists_screener`
