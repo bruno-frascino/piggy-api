@@ -1610,7 +1610,8 @@
     {
       "dependencies": [],
       "dependents": [
-        "src/index.ts"
+        "src/index.ts",
+        "src/lib/exchange-sync.test.ts"
       ],
       "orphan": false,
       "source": "src/lib/exchange-sync.ts",
@@ -1648,6 +1649,31 @@
       "dependents": [],
       "orphan": false,
       "source": "src/lib/cgt-engine.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./exchange-sync.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/exchange-sync.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/exchange-sync.test.ts",
       "valid": true
     },
     {
@@ -1967,8 +1993,8 @@
         }
       ]
     },
-    "totalCruised": 48,
-    "totalDependenciesCruised": 82,
+    "totalCruised": 49,
+    "totalDependenciesCruised": 83,
     "violations": [],
     "warn": 0
   }

@@ -10,11 +10,11 @@
     },
     "module-graph.json": {
       "path": "context/module-graph.json",
-      "sha256": "db0f19aaa6176a36fcb784060429d13e23230f5206541553799876a4dd4d2590"
+      "sha256": "8c379ad12845cbbc2b5de94535737af9cff7302e3e7c9bc9d5868060aa096844"
     },
     "module-graph.md": {
       "path": "context/module-graph.md",
-      "sha256": "d53eb6b1ba14c001986bcbf8cd5d3696486c540d77601c981920d695eca9b5b3"
+      "sha256": "24d4274d0fe58076a8d14083899a5f6fb6d65114acf16e85b236210b2ebd715e"
     },
     "openapi.json": {
       "path": "context/openapi.json",
@@ -22,13 +22,13 @@
     },
     "symbol-index.json": {
       "path": "context/symbol-index.json",
-      "sha256": "53b0fa412f665e0129d1b161fa62d5db8c17c29d5cae1f0e4462ab195228e3fe"
+      "sha256": "1de2995be33c21e72156ddc9fdfe725df85cfa94caa6483d024e41eef7ca5217"
     },
     "unused.json": {
       "path": "context/unused.json",
-      "sha256": "bd951ab3ca82bd722dd3c5ebe8c1bad0ad8cde0fe69ca50afcfc4079213c304f"
+      "sha256": "ed77ac158853f264a0573c7e48c5496575468391324d12bd761d9918e27c9489"
     }
   },
-  "generatedAt": "2026-08-15T12:32:14.175Z",
+  "generatedAt": "2026-08-16T06:58:05.387Z",
   "generatorVersion": 1
 }

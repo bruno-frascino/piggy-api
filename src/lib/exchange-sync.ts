@@ -47,6 +47,15 @@ const CORE_EXCHANGES: SeedExchange[] = [
     delay: '20 min',
   },
   {
+    code: 'CXA',
+    name: 'Cboe Australia',
+    currency: 'AUD',
+    countryName: 'Australia',
+    countryCode: 'AU',
+    symbolSuffix: '.XA',
+    delay: '20 min',
+  },
+  {
     code: 'B3',
     name: 'B3 - Brasil Bolsa Balcao',
     currency: 'BRL',

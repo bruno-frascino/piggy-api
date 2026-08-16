@@ -45,29 +45,6 @@
       "enumMembers": [],
       "exports": [
         {
-          "col": 23,
-          "line": 149,
-          "name": "ensureCoreExchanges",
-          "pos": 3512
-        }
-      ],
-      "file": "src/lib/exchange-sync.ts",
-      "files": [],
-      "namespaceMembers": [],
-      "optionalPeerDependencies": [],
-      "types": [],
-      "unlisted": [],
-      "unresolved": []
-    },
-    {
-      "binaries": [],
-      "catalog": [],
-      "dependencies": [],
-      "devDependencies": [],
-      "duplicates": [],
-      "enumMembers": [],
-      "exports": [
-        {
           "col": 14,
           "line": 15,
           "name": "GENERATOR_VERSION",

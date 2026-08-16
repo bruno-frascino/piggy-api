@@ -153,22 +153,22 @@
     "startLine": 78
   },
   {
-    "endLine": 169,
+    "endLine": 178,
     "file": "src/lib/exchange-sync.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "ensureCoreExchanges",
     "signature": "export async function ensureCoreExchanges( prisma: PrismaClient ): Promise<SyncResult>",
-    "startLine": 149
+    "startLine": 158
   },
   {
-    "endLine": 185,
+    "endLine": 194,
     "file": "src/lib/exchange-sync.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "seedExchangesIfEmpty",
     "signature": "export async function seedExchangesIfEmpty(prisma: PrismaClient): Promise<",
-    "startLine": 171
+    "startLine": 180
   },
   {
     "endLine": 14,
