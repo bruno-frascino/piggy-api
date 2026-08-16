@@ -357,6 +357,42 @@ describe('positions controller', () => {
         })
       )
     })
+
+    it('updates and clears the opening reason', async () => {
+      positionFindFirstMock.mockResolvedValue({
+        id: 'p_1',
+        assetId: 'a_1',
+        quantity: 5,
+        entryPrice: 10,
+        buyFees: 0,
+        openDate: '2026-01-01T00:00:00.000Z',
+        asset: { symbol: 'AAPL', exchange: { code: 'NASDAQ' } },
+        transactions: [],
+      })
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      const updatedResponse = await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ openReason: 'New rationale' })
+      const clearedResponse = await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ openReason: null })
+
+      expect(updatedResponse.status).toBe(200)
+      expect(clearedResponse.status).toBe(200)
+      expect(positionUpdateMock).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          data: expect.objectContaining({ openReason: 'New rationale' }),
+        })
+      )
+      expect(positionUpdateMock).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          data: expect.objectContaining({ openReason: null }),
+        })
+      )
+    })
   })
 
   describe('POST /api/positions/:id/close', () => {

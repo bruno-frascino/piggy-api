@@ -1070,6 +1070,10 @@
                     "format": "date-time",
                     "type": "string"
                   },
+                  "openReason": {
+                    "nullable": true,
+                    "type": "string"
+                  },
                   "quantity": {
                     "minimum": 0.000001,
                     "type": "number"

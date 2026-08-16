@@ -623,6 +623,9 @@ router.post(
  *                   type: string
  *               notes:
  *                 type: string
+ *               openReason:
+ *                 type: string
+ *                 nullable: true
  *               tradeGrade:
  *                 type: string
  *                 enum: [A, B, C, D, F]
@@ -677,6 +680,7 @@ router.patch(
     body('timeframe').optional().isString().trim(),
     body('tags').optional().isArray(),
     body('notes').optional().isString().trim(),
+    body('openReason').optional({ nullable: true }).isString().trim(),
     body('tradeGrade').optional().isIn(['A', 'B', 'C', 'D', 'F']),
     body('lessonsLearned').optional().isString().trim(),
     body('unrealizedPnL').optional().isFloat().toFloat(),
@@ -712,6 +716,7 @@ router.patch(
       timeframe,
       tags,
       notes,
+      openReason,
       tradeGrade,
       lessonsLearned,
       unrealizedPnL,
@@ -737,6 +742,12 @@ router.patch(
       ...(timeframe !== undefined && { timeframe }),
       ...(tags !== undefined && { tags }),
       ...(notes !== undefined && { notes }),
+      ...(openReason !== undefined && {
+        openReason:
+          typeof openReason === 'string' && openReason.trim()
+            ? openReason.trim()
+            : null,
+      }),
       ...(tradeGrade !== undefined && { tradeGrade }),
       ...(lessonsLearned !== undefined && { lessonsLearned }),
       ...(unrealizedPnL !== undefined && { unrealizedPnL }),
