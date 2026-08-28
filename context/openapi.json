@@ -2061,7 +2061,7 @@
     },
     "/api/stocks/quotes": {
       "get": {
-        "description": "Returns the current market price, day change and day change % for each\nsymbol via Yahoo Finance (no API key required). Symbols must use the\nYahoo Finance format — include exchange suffix where applicable\n(e.g. BHP.AX for ASX, VOD.L for LSE). Maximum 50 symbols per request.\n",
+        "description": "Returns the current market price, day change and day change % for each\nsymbol via FMP, with Yahoo Finance as a fallback. Maximum 50 symbols\nper request.\n",
         "parameters": [
           {
             "description": "Comma-separated list of symbols (e.g. AAPL,BHP.AX,BTC-USD)",
@@ -2166,7 +2166,7 @@
             "description": "Validation error"
           }
         },
-        "summary": "Search stock symbols globally",
+        "summary": "Search stock symbols globally via FMP with Yahoo fallback",
         "tags": [
           "Stocks"
         ]

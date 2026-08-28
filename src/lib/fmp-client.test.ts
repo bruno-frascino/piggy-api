@@ -122,6 +122,58 @@ describe('searchSymbol', () => {
   })
 })
 
+describe('getQuotes', () => {
+  it('maps batch quote fields and converts percentage changes to fractions', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve([
+            {
+              symbol: 'AAPL',
+              price: 100,
+              change: 2,
+              changesPercentage: 2,
+              currency: 'USD',
+            },
+          ]),
+      })
+    )
+    const { getQuotes } = await loadModule()
+
+    await expect(getQuotes(['AAPL'])).resolves.toEqual([
+      {
+        symbol: 'AAPL',
+        price: 100,
+        change: 2,
+        changePercent: 0.02,
+        currency: 'USD',
+      },
+    ])
+  })
+})
+
+describe('getHistoricalPrices', () => {
+  it('maps FMP historical bars from the nested response shape', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            historical: [{ date: '2026-08-14', low: 98, close: 99 }],
+          }),
+      })
+    )
+    const { getHistoricalPrices } = await loadModule()
+
+    await expect(
+      getHistoricalPrices('AAPL', '2026-08-01', '2026-08-17')
+    ).resolves.toEqual([{ date: '2026-08-14', low: 98, close: 99 }])
+  })
+})
+
 describe('getDividendsCalendar', () => {
   it('maps raw dividend calendar items', async () => {
     vi.stubGlobal(

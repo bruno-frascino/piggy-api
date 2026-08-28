@@ -1,4 +1,5 @@
 import YahooFinance from 'yahoo-finance2'
+import { getHistoricalPrices } from './fmp-client.js'
 
 /**
  * Fetches daily OHLC history from Yahoo Finance for a symbol between
@@ -21,17 +22,28 @@ export async function fetchHistoricalMaxDrawdown(
   // Nothing to scan if open date is today or in the future
   if (from >= today) return null
 
-  let bars: { low?: number | null }[]
+  let bars: { low?: number | null }[] | null
   try {
-    const yf = new YahooFinance()
-    bars = await yf.historical(symbol, {
-      period1: from,
-      period2: today,
-      interval: '1d',
-    })
+    bars = await getHistoricalPrices(
+      symbol,
+      from.toISOString().slice(0, 10),
+      today.toISOString().slice(0, 10)
+    )
   } catch {
-    // Yahoo Finance unavailable or symbol unrecognised — fail silently
-    return null
+    bars = null
+  }
+
+  if (!bars || bars.length === 0) {
+    try {
+      const yf = new YahooFinance()
+      bars = await yf.historical(symbol, {
+        period1: from,
+        period2: today,
+        interval: '1d',
+      })
+    } catch {
+      return null
+    }
   }
 
   if (!Array.isArray(bars) || bars.length === 0) return null

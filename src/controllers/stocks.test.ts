@@ -89,7 +89,7 @@ describe('stocks controller', () => {
     expect(response.body.data).toEqual([])
   })
 
-  it('returns 502 when both yahoo hosts fail', async () => {
+  it('returns 503 when both providers fail', async () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: false,
@@ -106,8 +106,8 @@ describe('stocks controller', () => {
 
     const response = await request(createApp()).get('/api/stocks/search?q=tsla')
 
-    expect(response.status).toBe(502)
-    expect(response.body.success).toBe(false)
+    expect(response.status).toBe(503)
+    expect(response.body.error).toBe('Upstream Unavailable')
   })
 
   it('returns empty data when quotes input resolves to no symbols', async () => {

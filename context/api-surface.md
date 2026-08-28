@@ -37,8 +37,8 @@
 | GET | `/api/statistics/risk` | 🔒 |  | [src/controllers/statistics.ts:520](../src/controllers/statistics.ts#L520) |
 | GET | `/api/statistics/summary` | 🔒 |  | [src/controllers/statistics.ts:169](../src/controllers/statistics.ts#L169) |
 | GET | `/api/statistics/timeseries` | 🔒 | , query ×2 | [src/controllers/statistics.ts:280](../src/controllers/statistics.ts#L280) |
-| GET | `/api/stocks/quotes` | 🔒 | query | [src/controllers/stocks.ts:261](../src/controllers/stocks.ts#L261) |
-| GET | `/api/stocks/search` | — | — | [src/controllers/stocks.ts:142](../src/controllers/stocks.ts#L142) |
+| GET | `/api/stocks/quotes` | 🔒 | query | [src/controllers/stocks.ts:289](../src/controllers/stocks.ts#L289) |
+| GET | `/api/stocks/search` | — | — | [src/controllers/stocks.ts:162](../src/controllers/stocks.ts#L162) |
 | GET | `/api/tax-reports` | 🔒 | — | [src/controllers/tax-reports.ts:193](../src/controllers/tax-reports.ts#L193) |
 | DELETE | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:341](../src/controllers/tax-reports.ts#L341) |
 | GET | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:245](../src/controllers/tax-reports.ts#L245) |

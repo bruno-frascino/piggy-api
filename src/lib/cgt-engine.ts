@@ -26,9 +26,9 @@ export interface CgtLineItem {
   costBaseAud: number
   capitalGainAud: number
   fxRateAcquire: number
-  fxRateAcquireSource: 'RBA' | 'YAHOO_FALLBACK'
+  fxRateAcquireSource: 'RBA' | 'FMP_FALLBACK' | 'YAHOO_FALLBACK'
   fxRateDispose: number
-  fxRateDisposeSource: 'RBA' | 'YAHOO_FALLBACK'
+  fxRateDisposeSource: 'RBA' | 'FMP_FALLBACK' | 'YAHOO_FALLBACK'
 }
 
 export interface CgtReportResult {

@@ -47,6 +47,20 @@ export interface SymbolSearchResult {
   currency: string | null
 }
 
+export interface MarketQuote {
+  symbol: string
+  price: number | null
+  change: number | null
+  changePercent: number | null
+  currency: string | null
+}
+
+export interface HistoricalPriceBar {
+  date: string
+  low: number | null
+  close: number | null
+}
+
 export interface UpcomingDividend {
   symbol: string
   exDate: string
@@ -74,6 +88,25 @@ interface RawSymbolSearchItem {
   name: string
   exchange: string | null
   currency: string | null
+}
+
+interface RawQuoteItem {
+  symbol?: string
+  price?: number | null
+  change?: number | null
+  changePercentage?: number | null
+  changesPercentage?: number | null
+  currency?: string | null
+}
+
+interface RawHistoricalPriceBar {
+  date?: string
+  low?: number | null
+  close?: number | null
+}
+
+interface RawHistoricalPriceResponse {
+  historical?: RawHistoricalPriceBar[]
 }
 
 interface RawDividendCalendarItem {
@@ -183,6 +216,47 @@ export async function searchSymbol(
     name: item.name,
     exchange: item.exchange ?? null,
     currency: item.currency ?? null,
+  }))
+}
+
+export async function getQuotes(symbols: string[]): Promise<MarketQuote[]> {
+  if (symbols.length === 0) return []
+
+  const results = await Promise.allSettled(
+    symbols.map((symbol) => fetchJson<RawQuoteItem[]>('/quote', { symbol }))
+  )
+
+  return results.flatMap((result) => {
+    if (result.status === 'rejected') return []
+    const item = result.value[0]
+    if (!item?.symbol || typeof item.price !== 'number') return []
+    const percentage = item.changePercentage ?? item.changesPercentage
+    return [
+      {
+        symbol: item.symbol,
+        price: item.price,
+        change: typeof item.change === 'number' ? item.change : null,
+        changePercent: typeof percentage === 'number' ? percentage / 100 : null,
+        currency: item.currency ?? null,
+      },
+    ]
+  })
+}
+
+export async function getHistoricalPrices(
+  symbol: string,
+  from: string,
+  to: string
+): Promise<HistoricalPriceBar[]> {
+  const raw = await fetchJson<
+    RawHistoricalPriceResponse | RawHistoricalPriceBar[]
+  >('/historical-price-eod/full', { symbol, from, to })
+  const historical = Array.isArray(raw) ? raw : (raw.historical ?? [])
+
+  return historical.map((bar) => ({
+    date: bar.date ?? '',
+    low: typeof bar.low === 'number' ? bar.low : null,
+    close: typeof bar.close === 'number' ? bar.close : null,
   }))
 }
 

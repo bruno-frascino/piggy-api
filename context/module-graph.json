@@ -665,13 +665,45 @@
       "valid": true
     },
     {
-      "dependencies": [],
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./fmp-client.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fmp-client.ts",
+          "valid": true
+        }
+      ],
       "dependents": [
         "src/controllers/positions.ts",
         "src/lib/historical-drawdown.test.ts"
       ],
       "orphan": false,
       "source": "src/lib/historical-drawdown.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/lib/historical-drawdown.ts",
+        "src/controllers/screener.ts",
+        "src/controllers/stocks.ts",
+        "src/lib/fx-rates.ts",
+        "src/controllers/screener.test.ts",
+        "src/lib/fmp-client.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/fmp-client.ts",
       "valid": true
     },
     {
@@ -783,17 +815,6 @@
       "valid": true
     },
     {
-      "dependencies": [],
-      "dependents": [
-        "src/controllers/screener.ts",
-        "src/controllers/screener.test.ts",
-        "src/lib/fmp-client.test.ts"
-      ],
-      "orphan": false,
-      "source": "src/lib/fmp-client.ts",
-      "valid": true
-    },
-    {
       "dependencies": [
         {
           "circular": false,
@@ -883,6 +904,23 @@
     },
     {
       "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/fmp-client.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fmp-client.ts",
+          "valid": true
+        },
         {
           "circular": false,
           "coreModule": false,
@@ -1069,6 +1107,23 @@
     },
     {
       "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./fmp-client.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fmp-client.ts",
+          "valid": true
+        },
         {
           "circular": false,
           "coreModule": false,
@@ -1994,7 +2049,7 @@
       ]
     },
     "totalCruised": 49,
-    "totalDependenciesCruised": 83,
+    "totalDependenciesCruised": 86,
     "violations": [],
     "warn": 0
   }

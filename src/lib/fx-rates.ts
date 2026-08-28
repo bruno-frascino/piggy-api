@@ -1,5 +1,6 @@
 import YahooFinance from 'yahoo-finance2'
 import { prisma } from './prisma.js'
+import { getHistoricalPrices } from './fmp-client.js'
 
 const RBA_CSV_URL =
   'https://www.rba.gov.au/statistics/tables/csv/f11.1-data.csv'
@@ -172,10 +173,44 @@ async function fetchYahooFallbackRate(
   }
 }
 
+async function fetchFmpFallbackRate(
+  currency: string,
+  date: Date
+): Promise<number | null> {
+  try {
+    const from = new Date(date)
+    from.setUTCDate(from.getUTCDate() - 7)
+    const to = new Date(date)
+    to.setUTCDate(to.getUTCDate() + 1)
+    const bars = await getHistoricalPrices(
+      `AUD${currency}`,
+      toIsoDate(from),
+      toIsoDate(to)
+    )
+    const target = date.getTime()
+    let best: { time: number; close: number } | null = null
+    for (const bar of bars) {
+      const time = new Date(bar.date).getTime()
+      if (
+        Number.isFinite(time) &&
+        typeof bar.close === 'number' &&
+        bar.close > 0 &&
+        time <= target &&
+        (!best || time > best.time)
+      ) {
+        best = { time, close: bar.close }
+      }
+    }
+    return best?.close ?? null
+  } catch {
+    return null
+  }
+}
+
 export interface FxRateResult {
   /** Multiply a foreign-currency amount by this to get AUD. */
   rate: number
-  source: 'RBA' | 'YAHOO_FALLBACK'
+  source: 'RBA' | 'FMP_FALLBACK' | 'YAHOO_FALLBACK'
 }
 
 /**
@@ -204,16 +239,21 @@ export async function getHistoricalFxRateToAud(
   if (cached) {
     return {
       rate: Number(cached.rateToAud),
-      source: cached.source as 'RBA' | 'YAHOO_FALLBACK',
+      source: cached.source as 'RBA' | 'FMP_FALLBACK' | 'YAHOO_FALLBACK',
     }
   }
 
   let rawRate: number | null = null
-  let source: 'RBA' | 'YAHOO_FALLBACK' = 'RBA'
+  let source: 'RBA' | 'FMP_FALLBACK' | 'YAHOO_FALLBACK' = 'RBA'
 
   const table = await fetchRbaTable()
   if (table) {
     rawRate = findNearestRbaRate(table, normalizedCurrency, dateOnly)
+  }
+
+  if (rawRate === null) {
+    rawRate = await fetchFmpFallbackRate(normalizedCurrency, dateOnly)
+    source = 'FMP_FALLBACK'
   }
 
   if (rawRate === null) {

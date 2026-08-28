@@ -63,13 +63,13 @@
     "startLine": 19
   },
   {
-    "endLine": 12,
+    "endLine": 17,
     "file": "src/controllers/stocks.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 12
+    "startLine": 17
   },
   {
     "endLine": 13,
@@ -207,67 +207,103 @@
     "startLine": 43
   },
   {
-    "endLine": 57,
+    "endLine": 56,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "MarketQuote",
+    "signature": "export interface MarketQuote",
+    "startLine": 50
+  },
+  {
+    "endLine": 62,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "HistoricalPriceBar",
+    "signature": "export interface HistoricalPriceBar",
+    "startLine": 58
+  },
+  {
+    "endLine": 71,
     "file": "src/lib/fmp-client.ts",
     "jsdoc": "",
     "kind": "InterfaceDeclaration",
     "name": "UpcomingDividend",
     "signature": "export interface UpcomingDividend",
-    "startLine": 50
+    "startLine": 64
   },
   {
-    "endLine": 171,
+    "endLine": 204,
     "file": "src/lib/fmp-client.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "screenStocks",
     "signature": "export async function screenStocks( criteria: ScreenerCriteria ): Promise<ScreenerResult[]>",
-    "startLine": 143
+    "startLine": 176
   },
   {
-    "endLine": 187,
+    "endLine": 220,
     "file": "src/lib/fmp-client.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "searchSymbol",
     "signature": "export async function searchSymbol( q: string, limit = 20 ): Promise<SymbolSearchResult[]>",
-    "startLine": 173
+    "startLine": 206
   },
   {
-    "endLine": 209,
+    "endLine": 244,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "getQuotes",
+    "signature": "export async function getQuotes(symbols: string[]): Promise<MarketQuote[]>",
+    "startLine": 222
+  },
+  {
+    "endLine": 261,
+    "file": "src/lib/fmp-client.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "getHistoricalPrices",
+    "signature": "export async function getHistoricalPrices( symbol: string, from: string, to: string ): Promise<HistoricalPriceBar[]>",
+    "startLine": 246
+  },
+  {
+    "endLine": 283,
     "file": "src/lib/fmp-client.ts",
     "jsdoc": "Fetches all dividend ex-dates in [from, to] (max 90-day range per FMP), unfiltered by symbol.",
     "kind": "FunctionDeclaration",
     "name": "getDividendsCalendar",
     "signature": "export async function getDividendsCalendar( from: string, to: string ): Promise<UpcomingDividend[]>",
-    "startLine": 190
+    "startLine": 264
   },
   {
-    "endLine": 179,
+    "endLine": 214,
     "file": "src/lib/fx-rates.ts",
     "jsdoc": "",
     "kind": "InterfaceDeclaration",
     "name": "FxRateResult",
     "signature": "export interface FxRateResult",
-    "startLine": 175
+    "startLine": 210
   },
   {
-    "endLine": 247,
+    "endLine": 287,
     "file": "src/lib/fx-rates.ts",
     "jsdoc": "Returns the historical rate to convert 1 unit of `currency` into AUD on `date` (amountAud = amountForeign * rate). Checks the `FxRateCache` table first; on a cache miss, tries RBA's official daily rates first, falling back to Yahoo Finance only if RBA doesn't cover the date/currency. Always returns `{ rate: 1, source: 'RBA' }` for AUD without hitting the network.",
     "kind": "FunctionDeclaration",
     "name": "getHistoricalFxRateToAud",
     "signature": "export async function getHistoricalFxRateToAud( currency: string, date: Date ): Promise<FxRateResult>",
-    "startLine": 188
+    "startLine": 223
   },
   {
-    "endLine": 52,
+    "endLine": 64,
     "file": "src/lib/historical-drawdown.ts",
     "jsdoc": "Fetches daily OHLC history from Yahoo Finance for a symbol between openDate and today, then returns the worst intra-period low as a max-drawdown percentage relative to the entry price. The returned value is always positive (e.g. 6.4 means a 6.4% drawdown). Returns null when history is unavailable or there was no drawdown at all.",
     "kind": "FunctionDeclaration",
     "name": "fetchHistoricalMaxDrawdown",
     "signature": "export async function fetchHistoricalMaxDrawdown( symbol: string, entryPrice: number, openDate: Date ): Promise<number | null>",
-    "startLine": 11
+    "startLine": 12
   },
   {
     "endLine": 6,

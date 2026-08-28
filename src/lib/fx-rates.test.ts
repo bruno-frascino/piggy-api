@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { findUniqueMock, upsertMock, mockHistorical } = vi.hoisted(() => ({
-  findUniqueMock: vi.fn(),
-  upsertMock: vi.fn(),
-  mockHistorical: vi.fn(),
-}))
+const { findUniqueMock, upsertMock, mockHistorical, fmpHistoricalMock } =
+  vi.hoisted(() => ({
+    findUniqueMock: vi.fn(),
+    upsertMock: vi.fn(),
+    mockHistorical: vi.fn(),
+    fmpHistoricalMock: vi.fn(),
+  }))
 
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
@@ -22,6 +24,10 @@ vi.mock('yahoo-finance2', () => {
     },
   }
 })
+
+vi.mock('./fmp-client.js', () => ({
+  getHistoricalPrices: fmpHistoricalMock,
+}))
 
 const SAMPLE_CSV = [
   'F11.1  EXCHANGE RATES',
@@ -49,6 +55,7 @@ async function loadModule() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  fmpHistoricalMock.mockResolvedValue([])
   vi.unstubAllGlobals()
   vi.stubGlobal(
     'fetch',
@@ -121,6 +128,21 @@ describe('getHistoricalFxRateToAud', () => {
     expect(result.source).toBe('YAHOO_FALLBACK')
     expect(result.rate).toBeCloseTo(1 / 0.68, 6)
     expect(upsertMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses FMP before Yahoo Finance when RBA fetch fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
+    const { getHistoricalFxRateToAud } = await loadModule()
+    findUniqueMock.mockResolvedValue(null)
+    fmpHistoricalMock.mockResolvedValue([
+      { date: '2023-01-03', close: 0.67, low: null },
+    ])
+
+    const result = await getHistoricalFxRateToAud('USD', new Date('2023-01-03'))
+
+    expect(result.source).toBe('FMP_FALLBACK')
+    expect(result.rate).toBeCloseTo(1 / 0.67, 6)
+    expect(mockHistorical).not.toHaveBeenCalled()
   })
 
   it('throws when neither RBA nor Yahoo can resolve a rate', async () => {

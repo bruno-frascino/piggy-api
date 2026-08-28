@@ -6,6 +6,11 @@ import {
   handleValidationErrors,
 } from '../middleware/validation.js'
 import { authenticateToken } from '../middleware/auth.js'
+import {
+  FmpUnavailableError,
+  getQuotes as getFmpQuotes,
+  searchSymbol as searchFmpSymbols,
+} from '../lib/fmp-client.js'
 
 const yahooFinance = new YahooFinance()
 
@@ -39,6 +44,21 @@ const searchStocksValidation = [
 
 function normalizeSymbol(symbol: string): string {
   return symbol.trim().toUpperCase()
+}
+
+function normalizeExchange(exchange?: string | null): string {
+  const normalized = exchange?.trim()
+  if (!normalized) return 'Unknown'
+  const map: Record<string, string> = {
+    NASDAQ: 'NASDAQ',
+    NYSE: 'NYSE',
+    AMEX: 'NYSE',
+    ASX: 'ASX',
+    B3: 'B3',
+    LSE: 'LSE',
+    TSX: 'TSX',
+  }
+  return map[normalized.toUpperCase()] ?? normalized
 }
 
 function toCountryCode(region?: string): string | null {
@@ -116,7 +136,7 @@ function mapQuote(quote: YahooQuoteResult) {
  * @swagger
  * /api/stocks/search:
  *   get:
- *     summary: Search stock symbols globally
+ *     summary: Search stock symbols globally via FMP with Yahoo fallback
  *     tags: [Stocks]
  *     parameters:
  *       - in: query
@@ -146,49 +166,58 @@ router.get(
     const q = String(req.query.q || '').trim()
     const limit = Number(req.query.limit || 20)
 
-    let payload: YahooSearchResponse | null = null
-    let lastProviderError: string | null = null
+    let results!: ReturnType<typeof mapQuote>[]
+    let provider = 'fmp'
 
-    for (const host of YAHOO_SEARCH_HOSTS) {
-      const url = new URL(host)
-      url.searchParams.set('q', q)
-      url.searchParams.set('quotesCount', String(Math.max(limit * 2, 20)))
-      url.searchParams.set('newsCount', '0')
+    try {
+      const matches = await searchFmpSymbols(q, limit)
+      results = matches.map((match) => ({
+        symbol: normalizeSymbol(match.symbol),
+        name: match.name?.trim() || match.symbol,
+        exchange: normalizeExchange(match.exchange),
+        type: 'Unknown',
+        countryCode: null,
+      }))
+    } catch (error) {
+      if (!(error instanceof FmpUnavailableError)) throw error
+      provider = 'yahoo-fallback'
+      console.warn(
+        `FMP symbol search unavailable, falling back to Yahoo: ${error.message}`
+      )
 
-      const response = await fetch(url.toString(), {
-        headers: {
-          Accept: 'application/json',
-          // A minimal UA has been more reliable than full browser strings.
-          'User-Agent': 'Mozilla/5.0',
-        },
-      })
-
-      if (response.ok) {
-        payload = (await response.json()) as YahooSearchResponse
-        break
+      let payload: YahooSearchResponse | null = null
+      let lastProviderError: string | null = null
+      for (const host of YAHOO_SEARCH_HOSTS) {
+        const url = new URL(host)
+        url.searchParams.set('q', q)
+        url.searchParams.set('quotesCount', String(Math.max(limit * 2, 20)))
+        url.searchParams.set('newsCount', '0')
+        const response = await fetch(url.toString(), {
+          headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' },
+        })
+        if (response.ok) {
+          payload = (await response.json()) as YahooSearchResponse
+          break
+        }
+        const body = await response.text()
+        lastProviderError = `${response.status} ${response.statusText}: ${body.slice(0, 180)}`
+        if (response.status === 429) continue
       }
-
-      const body = await response.text()
-      lastProviderError = `${response.status} ${response.statusText}: ${body.slice(0, 180)}`
-
-      // If current host is rate-limited, try the next host immediately.
-      if (response.status === 429) {
-        continue
+      if (!payload) {
+        console.error(
+          `Symbol search failed on both providers (query="${q}"): ${lastProviderError || 'No provider response'}`
+        )
+        return res.status(503).json({
+          error: 'Upstream Unavailable',
+          message: 'Symbol search temporarily unavailable',
+          details: lastProviderError || 'No provider response',
+        })
       }
+      results = (payload.quotes || [])
+        .map(mapQuote)
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+        .slice(0, limit)
     }
-
-    if (!payload) {
-      return res.status(502).json({
-        success: false,
-        error: 'Symbol search provider failed',
-        details: lastProviderError || 'No provider response',
-      })
-    }
-
-    const results = (payload.quotes || [])
-      .map(mapQuote)
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .slice(0, limit)
 
     res.json({
       success: true,
@@ -196,7 +225,7 @@ router.get(
       meta: {
         query: q,
         count: results.length,
-        provider: 'yahoo-finance-search',
+        provider,
       },
     })
   })
@@ -211,9 +240,8 @@ router.get(
  *     summary: Fetch live quotes for a list of symbols
  *     description: |
  *       Returns the current market price, day change and day change % for each
- *       symbol via Yahoo Finance (no API key required). Symbols must use the
- *       Yahoo Finance format — include exchange suffix where applicable
- *       (e.g. BHP.AX for ASX, VOD.L for LSE). Maximum 50 symbols per request.
+ *       symbol via FMP, with Yahoo Finance as a fallback. Maximum 50 symbols
+ *       per request.
  *     tags: [Stocks]
  *     security:
  *       - bearerAuth: []
@@ -277,37 +305,54 @@ router.get(
       return res.json({ success: true, data: [] })
     }
 
-    const results = await Promise.allSettled(
-      symbols.map((s) => yahooFinance.quote(s))
+    const dataBySymbol = new Map<string, (typeof symbols)[number]>()
+    let fmpData: Awaited<ReturnType<typeof getFmpQuotes>> = []
+    try {
+      fmpData = await getFmpQuotes(symbols)
+    } catch (error) {
+      if (!(error instanceof FmpUnavailableError)) throw error
+      console.warn(
+        `FMP quotes unavailable, falling back to Yahoo for all symbols: ${error.message}`
+      )
+    }
+    const data = fmpData.map((quote) => ({
+      symbol: quote.symbol,
+      price: quote.price,
+      change: quote.change,
+      changePercent: quote.changePercent,
+      currency: quote.currency,
+    }))
+    fmpData.forEach((quote) =>
+      dataBySymbol.set(quote.symbol.toUpperCase(), quote.symbol)
     )
 
-    const data = results
-      .map((r, i) => {
-        if (r.status === 'rejected') return null
-        const q = r.value as Record<string, unknown>
-        const price =
-          typeof q['regularMarketPrice'] === 'number'
-            ? (q['regularMarketPrice'] as number)
-            : null
-        if (price === null) return null
-        return {
-          symbol: symbols[i],
-          price,
-          change:
-            typeof q['regularMarketChange'] === 'number'
-              ? (q['regularMarketChange'] as number)
-              : null,
-          changePercent:
-            typeof q['regularMarketChangePercent'] === 'number'
-              ? (q['regularMarketChangePercent'] as number)
-              : null,
-          currency:
-            typeof q['currency'] === 'string'
-              ? (q['currency'] as string)
-              : null,
-        }
+    const missingSymbols = symbols.filter((symbol) => !dataBySymbol.has(symbol))
+    const yahooResults = await Promise.allSettled(
+      missingSymbols.map((symbol) => yahooFinance.quote(symbol))
+    )
+    yahooResults.forEach((result, index) => {
+      if (result.status === 'rejected') return
+      const quote = result.value as Record<string, unknown>
+      const price =
+        typeof quote['regularMarketPrice'] === 'number'
+          ? quote['regularMarketPrice']
+          : null
+      if (price === null) return
+      data.push({
+        symbol: missingSymbols[index],
+        price,
+        change:
+          typeof quote['regularMarketChange'] === 'number'
+            ? quote['regularMarketChange']
+            : null,
+        changePercent:
+          typeof quote['regularMarketChangePercent'] === 'number'
+            ? quote['regularMarketChangePercent']
+            : null,
+        currency:
+          typeof quote['currency'] === 'string' ? quote['currency'] : null,
       })
-      .filter((item): item is NonNullable<typeof item> => item !== null)
+    })
 
     res.json({ success: true, data })
   })
