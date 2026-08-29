@@ -671,6 +671,69 @@
         ]
       }
     },
+    "/api/portfolio/realized-pnl": {
+      "get": {
+        "description": "Server-side aggregate for a single account + exchange scope. Exists so the dashboard does not have to download every close event just to total them.\n",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exchangeCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "realizedPnL": {
+                          "type": "number"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Realized P&L total for the scope"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Sum realized P&L banked from closed and partially closed positions",
+        "tags": [
+          "Portfolio"
+        ]
+      }
+    },
     "/api/portfolio/snapshot": {
       "post": {
         "description": "Upserts a single daily snapshot row. Call this at end-of-day to record the equity curve.",
@@ -903,9 +966,83 @@
     },
     "/api/positions/close-events": {
       "get": {
+        "parameters": [
+          {
+            "description": "Only include close events on or after this date",
+            "in": "query",
+            "name": "dateFrom",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only include close events on or before this date",
+            "in": "query",
+            "name": "dateTo",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 500,
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "List of SELL transactions with position and asset context"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "meta": {
+                      "properties": {
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "offset": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Paginated SELL transactions with position and asset context"
+          },
+          "400": {
+            "description": "Validation error"
           },
           "401": {
             "description": "Unauthorized"

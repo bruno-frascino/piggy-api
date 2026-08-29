@@ -12,6 +12,7 @@ const {
   positionUpdateMock,
   positionDeleteMock,
   transactionFindManyMock,
+  transactionCountMock,
   transactionFindFirstMock,
   transactionCreateMock,
   transactionUpdateMock,
@@ -30,6 +31,7 @@ const {
   positionUpdateMock: vi.fn(),
   positionDeleteMock: vi.fn(),
   transactionFindManyMock: vi.fn(),
+  transactionCountMock: vi.fn(),
   transactionFindFirstMock: vi.fn(),
   transactionCreateMock: vi.fn(),
   transactionUpdateMock: vi.fn(),
@@ -65,6 +67,7 @@ vi.mock('../lib/prisma.js', () => ({
     },
     transaction: {
       findMany: transactionFindManyMock,
+      count: transactionCountMock,
       findFirst: transactionFindFirstMock,
       create: transactionCreateMock,
       update: transactionUpdateMock,
@@ -183,6 +186,7 @@ describe('positions controller', () => {
   describe('GET /api/positions/close-events', () => {
     it('lists SELL transactions for the authenticated user', async () => {
       transactionFindManyMock.mockResolvedValue([{ id: 'tx_1', type: 'SELL' }])
+      transactionCountMock.mockResolvedValue(1)
 
       const response = await request(createApp()).get(
         '/api/positions/close-events'
@@ -190,11 +194,53 @@ describe('positions controller', () => {
 
       expect(response.status).toBe(200)
       expect(response.body.data).toHaveLength(1)
+      expect(response.body.meta).toEqual({ total: 1, limit: 500, offset: 0 })
       expect(transactionFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { type: 'SELL', position: { userId: 'u_1' } },
+          take: 500,
+          skip: 0,
         })
       )
+    })
+
+    it('applies inclusive date bounds and pagination', async () => {
+      transactionFindManyMock.mockResolvedValue([])
+      transactionCountMock.mockResolvedValue(120)
+
+      const response = await request(createApp()).get(
+        '/api/positions/close-events?dateFrom=2026-01-01&dateTo=2026-06-30&limit=50&offset=100'
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.body.meta).toEqual({
+        total: 120,
+        limit: 50,
+        offset: 100,
+      })
+      expect(transactionFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            type: 'SELL',
+            date: {
+              gte: new Date('2026-01-01T00:00:00.000Z'),
+              lte: new Date('2026-06-30T23:59:59.999Z'),
+            },
+            position: { userId: 'u_1' },
+          },
+          take: 50,
+          skip: 100,
+        })
+      )
+    })
+
+    it('rejects an out-of-range limit', async () => {
+      const response = await request(createApp()).get(
+        '/api/positions/close-events?limit=5000'
+      )
+
+      expect(response.status).toBe(400)
+      expect(transactionFindManyMock).not.toHaveBeenCalled()
     })
   })
 
@@ -261,7 +307,7 @@ describe('positions controller', () => {
       expect(transactionUpdateMock).toHaveBeenCalledWith({
         where: { id: 'tx_1' },
         data: {
-          date: '2026-02-01T00:00:00.000Z',
+          date: new Date('2026-02-01T00:00:00.000Z'),
           price: 12,
           totalValue: 60,
           fees: 1,
@@ -271,6 +317,31 @@ describe('positions controller', () => {
       expect(positionUpdateMock).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'p_1' } })
       )
+    })
+
+    it('coerces a date-only closeDate into a Date for Prisma', async () => {
+      transactionFindFirstMock.mockResolvedValue({
+        positionId: 'p_1',
+        quantity: 5,
+      })
+      transactionUpdateMock.mockResolvedValue({ id: 'tx_1' })
+      positionFindUniqueMock.mockResolvedValue({
+        id: 'p_1',
+        entryPrice: 10,
+        buyFees: 0,
+        transactions: [],
+      })
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      const response = await request(createApp())
+        .patch('/api/positions/close-events/tx_1')
+        .send({ closeDate: '2026-02-01' })
+
+      expect(response.status).toBe(200)
+      expect(transactionUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'tx_1' },
+        data: { date: new Date('2026-02-01T00:00:00.000Z') },
+      })
     })
 
     it('validates editable close-event fields', async () => {

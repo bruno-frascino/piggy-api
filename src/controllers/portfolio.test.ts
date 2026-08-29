@@ -8,6 +8,7 @@ const {
   findSnapshotManyMock,
   findTradingAccountFirstMock,
   findPositionManyMock,
+  aggregatePositionMock,
   upsertSnapshotMock,
   computeSnapshotValuesMock,
 } = vi.hoisted(() => ({
@@ -15,6 +16,7 @@ const {
   findSnapshotManyMock: vi.fn(),
   findTradingAccountFirstMock: vi.fn(),
   findPositionManyMock: vi.fn(),
+  aggregatePositionMock: vi.fn(),
   upsertSnapshotMock: vi.fn(),
   computeSnapshotValuesMock: vi.fn(),
 }))
@@ -44,6 +46,7 @@ vi.mock('../lib/prisma.js', () => ({
     },
     position: {
       findMany: findPositionManyMock,
+      aggregate: aggregatePositionMock,
     },
   },
 }))
@@ -100,6 +103,40 @@ describe('portfolio controller', () => {
       },
       orderBy: { date: 'asc' },
     })
+  })
+
+  it('sums realized P&L for the requested account and exchange scope', async () => {
+    aggregatePositionMock.mockResolvedValue({ _sum: { realizedPnL: 425.5 } })
+
+    const response = await request(createApp()).get(
+      '/api/portfolio/realized-pnl?accountId=acc1&exchangeCode=asx'
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.body).toEqual({
+      success: true,
+      data: { realizedPnL: 425.5 },
+    })
+    expect(aggregatePositionMock).toHaveBeenCalledWith({
+      where: {
+        userId: 'u_1',
+        accountId: 'acc1',
+        status: { in: ['CLOSED', 'PARTIAL'] },
+        asset: { exchange: { code: 'ASX' } },
+      },
+      _sum: { realizedPnL: true },
+    })
+  })
+
+  it('returns zero realized P&L when the scope has no closed positions', async () => {
+    aggregatePositionMock.mockResolvedValue({ _sum: { realizedPnL: null } })
+
+    const response = await request(createApp()).get(
+      '/api/portfolio/realized-pnl?accountId=acc1&exchangeCode=ASX'
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.body.data).toEqual({ realizedPnL: 0 })
   })
 
   it('returns 404 when account does not exist for snapshot', async () => {

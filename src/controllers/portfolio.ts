@@ -59,7 +59,79 @@ router.get(
   })
 )
 
+// ─── GET /api/portfolio/realized-pnl ─────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/portfolio/realized-pnl:
+ *   get:
+ *     summary: Sum realized P&L banked from closed and partially closed positions
+ *     description: >
+ *       Server-side aggregate for a single account + exchange scope. Exists so the
+ *       dashboard does not have to download every close event just to total them.
+ *     tags: [Portfolio]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: accountId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: exchangeCode
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Realized P&L total for the scope
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     realizedPnL:
+ *                       type: number
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/realized-pnl',
+  [
+    query('accountId').isString().trim().notEmpty(),
+    query('exchangeCode').isString().trim().notEmpty(),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const aggregate = await prisma.position.aggregate({
+      where: {
+        userId: req.user!.userId,
+        accountId: String(req.query.accountId),
+        status: { in: ['CLOSED', 'PARTIAL'] },
+        asset: {
+          exchange: { code: String(req.query.exchangeCode).toUpperCase() },
+        },
+      },
+      _sum: { realizedPnL: true },
+    })
+
+    res.json({
+      success: true,
+      data: { realizedPnL: Number(aggregate._sum.realizedPnL ?? 0) },
+    })
+  })
+)
+
 // ─── POST /api/portfolio/snapshot ────────────────────────────────────────────
+
 /**
  * @swagger
  * /api/portfolio/snapshot:

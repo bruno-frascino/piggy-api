@@ -367,35 +367,140 @@ router.post(
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: dateFrom
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Only include close events on or after this date
+ *       - in: query
+ *         name: dateTo
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Only include close events on or before this date
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 500
+ *           default: 500
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
  *     responses:
  *       200:
- *         description: List of SELL transactions with position and asset context
+ *         description: Paginated SELL transactions with position and asset context
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 meta:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     offset:
+ *                       type: integer
+ *       400:
+ *         description: Validation error
  *       401:
  *         description: Unauthorized
  */
 router.get(
   '/close-events',
+  [
+    query('dateFrom').optional().isISO8601(),
+    query('dateTo').optional().isISO8601(),
+    query('limit').optional().isInt({ min: 1, max: 500 }).toInt(),
+    query('offset').optional().isInt({ min: 0 }).toInt(),
+    handleValidationErrors,
+  ],
   asyncHandler(async (req: Request, res: Response) => {
-    const events = await prisma.transaction.findMany({
-      where: {
-        type: 'SELL',
-        position: {
-          userId: req.user!.userId,
-        },
-      },
-      include: {
-        position: {
-          include: {
-            asset: { include: { exchange: true } },
-            account: true,
-            transactions: { orderBy: { date: 'asc' } },
+    const limit = Number(req.query.limit) || 500
+    const offset = Number(req.query.offset) || 0
+
+    const dateFrom =
+      typeof req.query.dateFrom === 'string'
+        ? req.query.dateFrom.slice(0, 10)
+        : undefined
+    const dateTo =
+      typeof req.query.dateTo === 'string'
+        ? req.query.dateTo.slice(0, 10)
+        : undefined
+    // Both bounds are inclusive whole days, matching the date-only inputs the UI sends.
+    const dateBounds =
+      dateFrom || dateTo
+        ? {
+            ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00.000Z`) } : {}),
+            ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999Z`) } : {}),
+          }
+        : undefined
+
+    const where = {
+      type: 'SELL' as const,
+      ...(dateBounds ? { date: dateBounds } : {}),
+      position: { userId: req.user!.userId },
+    }
+
+    const [events, total] = await Promise.all([
+      prisma.transaction.findMany({
+        where,
+        select: {
+          id: true,
+          date: true,
+          quantity: true,
+          price: true,
+          fees: true,
+          notes: true,
+          position: {
+            select: {
+              id: true,
+              openDate: true,
+              entryPrice: true,
+              buyFees: true,
+              openReason: true,
+              notes: true,
+              maxDrawdownPercent: true,
+              account: { select: { id: true, name: true } },
+              asset: {
+                select: {
+                  symbol: true,
+                  name: true,
+                  exchange: { select: { code: true, currency: true } },
+                },
+              },
+              // Only BUY rows, and only the quantity — the client needs the
+              // total bought units to prorate buy fees across partial sells.
+              transactions: {
+                where: { type: 'BUY' },
+                select: { type: true, quantity: true },
+              },
+            },
           },
         },
-      },
-      orderBy: { date: 'desc' },
-    })
+        orderBy: { date: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.transaction.count({ where }),
+    ])
 
-    res.json({ success: true, data: events })
+    res.json({ success: true, data: events, meta: { total, limit, offset } })
   })
 )
 
@@ -447,7 +552,8 @@ router.patch(
   '/close-events/:id',
   [
     param('id').notEmpty(),
-    body('closeDate').optional().isISO8601(),
+    // .toDate() is required: the client sends date-only "YYYY-MM-DD", which Prisma rejects.
+    body('closeDate').optional().isISO8601().toDate(),
     body('exitPrice').optional().isFloat({ min: 0.0001 }).toFloat(),
     body('sellFees').optional().isFloat({ min: 0 }).toFloat(),
     body('notes').optional().isString(),
