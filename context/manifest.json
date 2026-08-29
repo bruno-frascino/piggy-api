@@ -2,7 +2,7 @@
   "artifacts": {
     "api-surface.md": {
       "path": "context/api-surface.md",
-      "sha256": "51ac5888615b204df0d27b5e7f6d510573755e2977e78c88400e20109593a996"
+      "sha256": "e280fc0ffe386420452ef5835d51acf44f1d07eaf0fcb2fd6679db1a5c8fa205"
     },
     "data-model.md": {
       "path": "context/data-model.md",
@@ -18,7 +18,7 @@
     },
     "openapi.json": {
       "path": "context/openapi.json",
-      "sha256": "2c9f612e3d3d0196ce87e93acb69318f2c433179857a29289b5de9ed64abb47e"
+      "sha256": "50bb53206224af7a44b9a0c7cb3449e8e137a1b7d15e9be2dd713a8fa7ebca1c"
     },
     "symbol-index.json": {
       "path": "context/symbol-index.json",
@@ -29,6 +29,6 @@
       "sha256": "ed77ac158853f264a0573c7e48c5496575468391324d12bd761d9918e27c9489"
     }
   },
-  "generatedAt": "2026-08-29T16:30:31.855Z",
+  "generatedAt": "2026-08-29T17:14:53.884Z",
   "generatorVersion": 1
 }

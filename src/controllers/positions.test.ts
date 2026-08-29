@@ -464,6 +464,70 @@ describe('positions controller', () => {
         })
       )
     })
+
+    it('rebuilds totalBuyValue from bought units, not remaining units', async () => {
+      positionFindFirstMock.mockResolvedValue({
+        id: 'p_1',
+        assetId: 'a_1',
+        quantity: 0, // fully closed — remaining units are zero
+        entryPrice: 10,
+        buyFees: 3,
+        openDate: '2026-01-01T00:00:00.000Z',
+        asset: { symbol: 'AAPL', exchange: { code: 'NASDAQ' } },
+        transactions: [
+          { id: 'tx_buy', type: 'BUY', quantity: 5 },
+          { id: 'tx_sell', type: 'SELL', quantity: 5 },
+        ],
+      })
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      const response = await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ openDate: '2026-01-05' })
+
+      expect(response.status).toBe(200)
+      expect(positionUpdateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            totalBuyValue: 50,
+            capitalAllocated: 53,
+            quantity: 0,
+          }),
+        })
+      )
+    })
+
+    it('recomputes remaining units when the bought quantity changes on a partial position', async () => {
+      positionFindFirstMock.mockResolvedValue({
+        id: 'p_1',
+        assetId: 'a_1',
+        quantity: 4,
+        entryPrice: 10,
+        buyFees: 0,
+        openDate: '2026-01-01T00:00:00.000Z',
+        asset: { symbol: 'AAPL', exchange: { code: 'NASDAQ' } },
+        transactions: [
+          { id: 'tx_buy', type: 'BUY', quantity: 6 },
+          { id: 'tx_sell', type: 'SELL', quantity: 2 },
+        ],
+      })
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      const response = await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ quantity: 10 })
+
+      expect(response.status).toBe(200)
+      expect(transactionUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'tx_buy' },
+        data: { quantity: 10, totalValue: 100 },
+      })
+      expect(positionUpdateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ quantity: 8, totalBuyValue: 100 }),
+        })
+      )
+    })
   })
 
   describe('POST /api/positions/:id/close', () => {

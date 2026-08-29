@@ -21,9 +21,9 @@
 | POST | `/api/portfolio/snapshot` | 🔒 | body ×2 | [src/controllers/portfolio.ts:149](../src/controllers/portfolio.ts#L149) |
 | GET | `/api/positions` | 🔒 | query ×6 | [src/controllers/positions.ts:69](../src/controllers/positions.ts#L69) |
 | POST | `/api/positions` | 🔒 | body ×22 | [src/controllers/positions.ts:223](../src/controllers/positions.ts#L223) |
-| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1134](../src/controllers/positions.ts#L1134) |
+| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1144](../src/controllers/positions.ts#L1144) |
 | PATCH | `/api/positions/:id` | 🔒 | param, body ×23 | [src/controllers/positions.ts:753](../src/controllers/positions.ts#L753) |
-| POST | `/api/positions/:id/close` | 🔒 | param, body ×5 | [src/controllers/positions.ts:1026](../src/controllers/positions.ts#L1026) |
+| POST | `/api/positions/:id/close` | 🔒 | param, body ×5 | [src/controllers/positions.ts:1036](../src/controllers/positions.ts#L1036) |
 | POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:636](../src/controllers/positions.ts#L636) |
 | GET | `/api/positions/close-events` | 🔒 | query ×4 | [src/controllers/positions.ts:424](../src/controllers/positions.ts#L424) |
 | PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×4 | [src/controllers/positions.ts:551](../src/controllers/positions.ts#L551) |
@@ -41,10 +41,11 @@
 | GET | `/api/stocks/quotes` | 🔒 | query | [src/controllers/stocks.ts:289](../src/controllers/stocks.ts#L289) |
 | GET | `/api/stocks/search` | — | — | [src/controllers/stocks.ts:162](../src/controllers/stocks.ts#L162) |
 | GET | `/api/tax-reports` | 🔒 | — | [src/controllers/tax-reports.ts:193](../src/controllers/tax-reports.ts#L193) |
-| DELETE | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:341](../src/controllers/tax-reports.ts#L341) |
-| GET | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:245](../src/controllers/tax-reports.ts#L245) |
-| GET | `/api/tax-reports/:id/download` | 🔒 | param | [src/controllers/tax-reports.ts:294](../src/controllers/tax-reports.ts#L294) |
+| DELETE | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:473](../src/controllers/tax-reports.ts#L473) |
+| GET | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:377](../src/controllers/tax-reports.ts#L377) |
+| GET | `/api/tax-reports/:id/download` | 🔒 | param | [src/controllers/tax-reports.ts:426](../src/controllers/tax-reports.ts#L426) |
 | POST | `/api/tax-reports/generate` | 🔒 | body ×3 | [src/controllers/tax-reports.ts:90](../src/controllers/tax-reports.ts#L90) |
+| GET | `/api/tax-reports/position-usage` | 🔒 | — | [src/controllers/tax-reports.ts:265](../src/controllers/tax-reports.ts#L265) |
 | GET | `/api/users/me` | 🔒 | — | [src/controllers/users.ts:50](../src/controllers/users.ts#L50) |
 | PATCH | `/api/users/me` | 🔒 | body ×4 | [src/controllers/users.ts:127](../src/controllers/users.ts#L127) |
 | GET | `/api/watchlists` | 🔒 | — | [src/controllers/watchlists.ts:34](../src/controllers/watchlists.ts#L34) |

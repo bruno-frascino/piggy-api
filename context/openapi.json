@@ -2381,6 +2381,64 @@
         ]
       }
     },
+    "/api/tax-reports/position-usage": {
+      "get": {
+        "description": "Derived from each report's stored line items — no denormalised flag is kept. A usage entry is `stale` when the position or any of its transactions was modified after the report was generated, meaning the PDF no longer matches the underlying data and should be regenerated.\n",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "additionalProperties": {
+                        "items": {
+                          "properties": {
+                            "financialYearLabel": {
+                              "type": "string"
+                            },
+                            "generatedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "reportId": {
+                              "type": "string"
+                            },
+                            "stale": {
+                              "type": "boolean"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Position id keyed map of report usages"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Map each position to the generated tax reports that already include it",
+        "tags": [
+          "TaxReports"
+        ]
+      }
+    },
     "/api/tax-reports/{id}": {
       "delete": {
         "parameters": [

@@ -921,8 +921,19 @@ router.patch(
       updates.accountId = account.id
     }
 
-    const resolvedQuantity =
-      typeof quantity === 'number' ? quantity : existing.quantity
+    const primaryBuy = existing.transactions.find((tx) => tx.type === 'BUY')
+    const soldQuantity = existing.transactions
+      .filter((tx) => tx.type === 'SELL')
+      .reduce((sum, tx) => sum + Number(tx.quantity), 0)
+
+    // position.quantity is REMAINING units, so it must not be used to rebuild
+    // totalBuyValue — on a closed position that would zero out the cost base.
+    const resolvedBuyQuantity =
+      typeof quantity === 'number'
+        ? quantity
+        : primaryBuy
+          ? Number(primaryBuy.quantity)
+          : existing.quantity
     const resolvedEntryPrice =
       typeof entryPrice === 'number' ? entryPrice : Number(existing.entryPrice)
     const resolvedBuyFees =
@@ -935,20 +946,19 @@ router.patch(
       buyFees !== undefined ||
       openDate !== undefined
     ) {
-      const primaryBuy = existing.transactions.find((tx) => tx.type === 'BUY')
       if (primaryBuy) {
         await prisma.transaction.update({
           where: { id: primaryBuy.id },
           data: {
             ...(openDate !== undefined && { date: resolvedOpenDate }),
-            ...(quantity !== undefined && { quantity: resolvedQuantity }),
+            ...(quantity !== undefined && { quantity: resolvedBuyQuantity }),
             ...(entryPrice !== undefined && { price: resolvedEntryPrice }),
             ...(buyFees !== undefined && { fees: resolvedBuyFees }),
             ...(quantity !== undefined ||
             entryPrice !== undefined ||
             buyFees !== undefined
               ? {
-                  totalValue: resolvedEntryPrice * resolvedQuantity,
+                  totalValue: resolvedEntryPrice * resolvedBuyQuantity,
                 }
               : {}),
           },
@@ -957,11 +967,11 @@ router.patch(
 
       updates.openDate = resolvedOpenDate
       updates.entryPrice = resolvedEntryPrice
-      updates.quantity = resolvedQuantity
+      updates.quantity = Math.max(0, resolvedBuyQuantity - soldQuantity)
       updates.buyFees = resolvedBuyFees
-      updates.totalBuyValue = resolvedEntryPrice * resolvedQuantity
+      updates.totalBuyValue = resolvedEntryPrice * resolvedBuyQuantity
       updates.capitalAllocated =
-        resolvedEntryPrice * resolvedQuantity + resolvedBuyFees
+        resolvedEntryPrice * resolvedBuyQuantity + resolvedBuyFees
     }
 
     const updated = await prisma.position.update({

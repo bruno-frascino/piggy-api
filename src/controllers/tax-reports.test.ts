@@ -9,6 +9,7 @@ const {
   taxReportFindFirstMock,
   taxReportUpsertMock,
   taxReportDeleteMock,
+  positionFindManyMock,
   computeCapitalGainsReportMock,
   buildCapitalGainsPdfMock,
 } = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ const {
   taxReportFindFirstMock: vi.fn(),
   taxReportUpsertMock: vi.fn(),
   taxReportDeleteMock: vi.fn(),
+  positionFindManyMock: vi.fn(),
   computeCapitalGainsReportMock: vi.fn(),
   buildCapitalGainsPdfMock: vi.fn(),
 }))
@@ -37,6 +39,7 @@ vi.mock('../lib/prisma.js', () => ({
       upsert: taxReportUpsertMock,
       delete: taxReportDeleteMock,
     },
+    position: { findMany: positionFindManyMock },
   },
 }))
 
@@ -159,6 +162,76 @@ describe('tax-reports controller', () => {
           ],
         })
       )
+    })
+  })
+
+  describe('GET /position-usage', () => {
+    const REPORT_WITH_ITEMS = {
+      id: 'r1',
+      financialYearLabel: 'FY2025-26',
+      generatedAt: new Date('2026-07-24T00:00:00.000Z'),
+      lineItems: [
+        { positionId: 'p_fresh' },
+        { positionId: 'p_changed' },
+        { positionId: 'p_changed' }, // two disposals of the same parcel
+        { positionId: 'p_deleted' },
+        { symbol: 'NO_POSITION_ID' },
+      ],
+    }
+
+    it('flags a usage as stale when the parcel changed after the report ran', async () => {
+      taxReportFindManyMock.mockResolvedValue([REPORT_WITH_ITEMS])
+      positionFindManyMock.mockResolvedValue([
+        {
+          id: 'p_fresh',
+          updatedAt: new Date('2026-07-01T00:00:00.000Z'),
+          transactions: [{ updatedAt: new Date('2026-07-02T00:00:00.000Z') }],
+        },
+        {
+          id: 'p_changed',
+          updatedAt: new Date('2026-07-01T00:00:00.000Z'),
+          // a later SELL edit is enough on its own
+          transactions: [{ updatedAt: new Date('2026-08-30T00:00:00.000Z') }],
+        },
+      ])
+
+      const response = await request(createApp()).get(
+        '/api/tax-reports/position-usage'
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.body.data.p_fresh).toEqual([
+        {
+          reportId: 'r1',
+          financialYearLabel: 'FY2025-26',
+          generatedAt: '2026-07-24T00:00:00.000Z',
+          stale: false,
+        },
+      ])
+      expect(response.body.data.p_changed).toHaveLength(1)
+      expect(response.body.data.p_changed[0].stale).toBe(true)
+      // a position deleted after generation can never match the report again
+      expect(response.body.data.p_deleted[0].stale).toBe(true)
+      expect(positionFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: { in: ['p_fresh', 'p_changed', 'p_deleted'] },
+            userId: 'u_1',
+          },
+        })
+      )
+    })
+
+    it('returns an empty map and skips the position query when no reports exist', async () => {
+      taxReportFindManyMock.mockResolvedValue([])
+
+      const response = await request(createApp()).get(
+        '/api/tax-reports/position-usage'
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.body.data).toEqual({})
+      expect(positionFindManyMock).not.toHaveBeenCalled()
     })
   })
 

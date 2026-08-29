@@ -218,6 +218,138 @@ router.get(
   })
 )
 
+// ─── GET /api/tax-reports/position-usage ─────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/tax-reports/position-usage:
+ *   get:
+ *     summary: Map each position to the generated tax reports that already include it
+ *     description: >
+ *       Derived from each report's stored line items — no denormalised flag is kept.
+ *       A usage entry is `stale` when the position or any of its transactions was
+ *       modified after the report was generated, meaning the PDF no longer matches
+ *       the underlying data and should be regenerated.
+ *     tags: [TaxReports]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Position id keyed map of report usages
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   additionalProperties:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       properties:
+ *                         reportId:
+ *                           type: string
+ *                         financialYearLabel:
+ *                           type: string
+ *                         generatedAt:
+ *                           type: string
+ *                           format: date-time
+ *                         stale:
+ *                           type: boolean
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/position-usage',
+  asyncHandler(async (req: Request, res: Response) => {
+    const reports = await prisma.taxReport.findMany({
+      where: { userId: req.user!.userId },
+      orderBy: [{ financialYearStartYear: 'desc' }],
+      // Never select pdfData here — it is a multi-megabyte Bytes column.
+      select: {
+        id: true,
+        financialYearLabel: true,
+        generatedAt: true,
+        lineItems: true,
+      },
+    })
+
+    const positionIdsByReport = reports.map((report) => {
+      const items = Array.isArray(report.lineItems) ? report.lineItems : []
+      const positionIds = new Set<string>()
+      for (const item of items) {
+        if (
+          typeof item === 'object' &&
+          item !== null &&
+          !Array.isArray(item) &&
+          typeof item.positionId === 'string'
+        ) {
+          positionIds.add(item.positionId)
+        }
+      }
+      return { report, positionIds }
+    })
+
+    const allPositionIds = [
+      ...new Set(
+        positionIdsByReport.flatMap(({ positionIds }) => [...positionIds])
+      ),
+    ]
+
+    const positions =
+      allPositionIds.length > 0
+        ? await prisma.position.findMany({
+            where: { id: { in: allPositionIds }, userId: req.user!.userId },
+            select: {
+              id: true,
+              updatedAt: true,
+              transactions: { select: { updatedAt: true } },
+            },
+          })
+        : []
+
+    const lastChangedAt = new Map<string, number>(
+      positions.map((position) => [
+        position.id,
+        Math.max(
+          position.updatedAt.getTime(),
+          ...position.transactions.map((tx) => tx.updatedAt.getTime())
+        ),
+      ])
+    )
+
+    const usage: Record<
+      string,
+      {
+        reportId: string
+        financialYearLabel: string
+        generatedAt: Date
+        stale: boolean
+      }[]
+    > = {}
+
+    for (const { report, positionIds } of positionIdsByReport) {
+      for (const positionId of positionIds) {
+        const changedAt = lastChangedAt.get(positionId)
+        usage[positionId] ??= []
+        usage[positionId].push({
+          reportId: report.id,
+          financialYearLabel: report.financialYearLabel,
+          generatedAt: report.generatedAt,
+          // A position missing from the lookup was deleted after the report ran.
+          stale:
+            changedAt === undefined || changedAt > report.generatedAt.getTime(),
+        })
+      }
+    }
+
+    res.json({ success: true, data: usage })
+  })
+)
+
 // ─── GET /api/tax-reports/:id ─────────────────────────────────────────────────
 
 /**
