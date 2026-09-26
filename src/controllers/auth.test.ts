@@ -1,5 +1,6 @@
 import express from 'express'
 import request from 'supertest'
+import crypto from 'crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
@@ -21,6 +22,7 @@ const {
   verifyRefreshTokenMock,
   verifyAccessTokenMock,
   refreshTokenExpiresAtMock,
+  sendPasswordResetEmailMock,
 } = vi.hoisted(() => ({
   findUserUniqueMock: vi.fn(),
   createUserMock: vi.fn(),
@@ -40,7 +42,11 @@ const {
   verifyRefreshTokenMock: vi.fn(),
   verifyAccessTokenMock: vi.fn(),
   refreshTokenExpiresAtMock: vi.fn(),
+  sendPasswordResetEmailMock: vi.fn(),
 }))
+
+const sha256 = (value: string) =>
+  crypto.createHash('sha256').update(value).digest('hex')
 
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
@@ -79,6 +85,12 @@ vi.mock('../lib/jwt.js', () => ({
   refreshTokenExpiresAt: refreshTokenExpiresAtMock,
 }))
 
+vi.mock('../lib/mailer.js', () => ({
+  sendPasswordResetEmail: sendPasswordResetEmailMock,
+  buildPasswordResetUrl: (token: string) =>
+    `http://localhost:3000/auth/reset-password?token=${token}`,
+}))
+
 import authRouter from './auth.js'
 
 function createApp() {
@@ -111,6 +123,7 @@ describe('auth controller', () => {
     createPasswordResetTokenMock.mockResolvedValue(undefined)
     findPasswordResetTokenUniqueMock.mockResolvedValue(null)
     deletePasswordResetTokenMock.mockResolvedValue(undefined)
+    sendPasswordResetEmailMock.mockResolvedValue(undefined)
 
     updateUserMock.mockResolvedValue(undefined)
   })
@@ -349,6 +362,7 @@ describe('auth controller', () => {
     expect(response.body.success).toBe(true)
     expect(response.body.message).toContain('If that email is registered')
     expect(createPasswordResetTokenMock).not.toHaveBeenCalled()
+    expect(sendPasswordResetEmailMock).not.toHaveBeenCalled()
   })
 
   it('forgot-password creates token when user exists', async () => {
@@ -370,6 +384,58 @@ describe('auth controller', () => {
     expect(response.body.resetToken.length).toBe(64)
   })
 
+  it('forgot-password stores only the hash of the emailed token', async () => {
+    findUserUniqueMock.mockResolvedValue({
+      id: 'u_1',
+      email: 'alice@example.com',
+    })
+
+    const response = await request(createApp())
+      .post('/api/auth/forgot-password')
+      .send({ email: 'alice@example.com' })
+
+    const rawToken: string = response.body.resetToken
+    const stored = createPasswordResetTokenMock.mock.calls[0][0].data.token
+
+    expect(stored).not.toBe(rawToken)
+    expect(stored).toBe(sha256(rawToken))
+  })
+
+  it('forgot-password emails a reset link containing the raw token', async () => {
+    findUserUniqueMock.mockResolvedValue({
+      id: 'u_1',
+      email: 'alice@example.com',
+    })
+
+    const response = await request(createApp())
+      .post('/api/auth/forgot-password')
+      .send({ email: 'alice@example.com' })
+
+    expect(sendPasswordResetEmailMock).toHaveBeenCalledWith(
+      'alice@example.com',
+      `http://localhost:3000/auth/reset-password?token=${response.body.resetToken}`
+    )
+  })
+
+  it('forgot-password still returns 200 when email delivery fails', async () => {
+    findUserUniqueMock.mockResolvedValue({
+      id: 'u_1',
+      email: 'alice@example.com',
+    })
+    sendPasswordResetEmailMock.mockRejectedValue(new Error('provider down'))
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined)
+
+    const response = await request(createApp())
+      .post('/api/auth/forgot-password')
+      .send({ email: 'alice@example.com' })
+
+    expect(response.status).toBe(200)
+    expect(response.body.message).toContain('If that email is registered')
+    consoleError.mockRestore()
+  })
+
   it('reset-password returns 400 for invalid token', async () => {
     findPasswordResetTokenUniqueMock.mockResolvedValue(null)
 
@@ -383,7 +449,7 @@ describe('auth controller', () => {
 
   it('reset-password updates password and revokes active tokens', async () => {
     findPasswordResetTokenUniqueMock.mockResolvedValue({
-      token: 'valid-token',
+      token: sha256('valid-token'),
       userId: 'u_1',
       expiresAt: new Date(Date.now() + 3600000),
     })
@@ -393,12 +459,15 @@ describe('auth controller', () => {
       .send({ token: 'valid-token', password: 'new-password-123' })
 
     expect(response.status).toBe(200)
+    expect(findPasswordResetTokenUniqueMock).toHaveBeenCalledWith({
+      where: { token: sha256('valid-token') },
+    })
     expect(updateUserMock).toHaveBeenCalledWith({
       where: { id: 'u_1' },
       data: { passwordHash: expect.any(String) },
     })
     expect(deletePasswordResetTokenMock).toHaveBeenCalledWith({
-      where: { token: 'valid-token' },
+      where: { token: sha256('valid-token') },
     })
     expect(deleteManyRefreshTokenMock).toHaveBeenCalledWith({
       where: { userId: 'u_1' },

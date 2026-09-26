@@ -10,12 +10,12 @@
 | PATCH | `/api/accounts/:id` | 🔒 | param, body | [src/controllers/accounts.ts:282](../src/controllers/accounts.ts#L282) |
 | POST | `/api/accounts/:id/close` | 🔒 | param | [src/controllers/accounts.ts:143](../src/controllers/accounts.ts#L143) |
 | POST | `/api/accounts/:id/reopen` | 🔒 | param | [src/controllers/accounts.ts:214](../src/controllers/accounts.ts#L214) |
-| POST | `/api/auth/forgot-password` | — | body | [src/controllers/auth.ts:402](../src/controllers/auth.ts#L402) |
-| POST | `/api/auth/login` | — | — | [src/controllers/auth.ts:185](../src/controllers/auth.ts#L185) |
-| POST | `/api/auth/logout` | 🔒 | — | [src/controllers/auth.ts:351](../src/controllers/auth.ts#L351) |
-| POST | `/api/auth/refresh` | — | — | [src/controllers/auth.ts:271](../src/controllers/auth.ts#L271) |
-| POST | `/api/auth/register` | — | — | [src/controllers/auth.ts:94](../src/controllers/auth.ts#L94) |
-| POST | `/api/auth/reset-password` | — | body ×2 | [src/controllers/auth.ts:477](../src/controllers/auth.ts#L477) |
+| POST | `/api/auth/forgot-password` | — | forgotPasswordLimiter, body | [src/controllers/auth.ts:433](../src/controllers/auth.ts#L433) |
+| POST | `/api/auth/login` | — | — | [src/controllers/auth.ts:209](../src/controllers/auth.ts#L209) |
+| POST | `/api/auth/logout` | 🔒 | — | [src/controllers/auth.ts:375](../src/controllers/auth.ts#L375) |
+| POST | `/api/auth/refresh` | — | — | [src/controllers/auth.ts:295](../src/controllers/auth.ts#L295) |
+| POST | `/api/auth/register` | — | — | [src/controllers/auth.ts:118](../src/controllers/auth.ts#L118) |
+| POST | `/api/auth/reset-password` | — | body ×2 | [src/controllers/auth.ts:518](../src/controllers/auth.ts#L518) |
 | GET | `/api/portfolio/history` | 🔒 | query ×2 | [src/controllers/portfolio.ts:30](../src/controllers/portfolio.ts#L30) |
 | GET | `/api/portfolio/realized-pnl` | 🔒 | query ×2 | [src/controllers/portfolio.ts:106](../src/controllers/portfolio.ts#L106) |
 | POST | `/api/portfolio/snapshot` | 🔒 | body ×2 | [src/controllers/portfolio.ts:149](../src/controllers/portfolio.ts#L149) |

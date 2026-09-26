@@ -16,6 +16,9 @@ dotenv.config()
 const app = express()
 const port = process.env.PORT || 4000
 
+// Single Nginx hop in production — required for rate limiters to key on the real client IP.
+app.set('trust proxy', 1)
+
 // Middleware
 app.use(helmet())
 app.use(

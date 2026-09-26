@@ -251,6 +251,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/mailer.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/mailer.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../lib/prisma.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
@@ -297,6 +314,16 @@
       ],
       "orphan": false,
       "source": "src/controllers/auth.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/controllers/auth.ts",
+        "src/lib/mailer.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/mailer.ts",
       "valid": true
     },
     {
@@ -1845,6 +1872,31 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./mailer.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/mailer.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/mailer.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./pdf-report.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/pdf-report.ts",
@@ -2048,8 +2100,8 @@
         }
       ]
     },
-    "totalCruised": 49,
-    "totalDependenciesCruised": 86,
+    "totalCruised": 51,
+    "totalDependenciesCruised": 88,
     "violations": [],
     "warn": 0
   }

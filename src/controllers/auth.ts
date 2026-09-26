@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { body } from 'express-validator'
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import { prisma } from '../lib/prisma.js'
@@ -14,6 +15,7 @@ import {
   handleValidationErrors,
 } from '../middleware/validation.js'
 import { authenticateToken } from '../middleware/auth.js'
+import { buildPasswordResetUrl, sendPasswordResetEmail } from '../lib/mailer.js'
 
 const router = Router()
 
@@ -21,6 +23,28 @@ const sanitizeEmail = (value: unknown) => {
   if (typeof value !== 'string') return value
   return value.trim().toLowerCase()
 }
+
+// Only the hash is persisted, so a leaked database cannot be replayed as a reset link.
+const hashResetToken = (rawToken: string) =>
+  crypto.createHash('sha256').update(rawToken).digest('hex')
+
+// Throttled per IP *and* per target address so neither an attacker nor a mail-bomb
+// against one user can burn the provider quota.
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+  keyGenerator: (req: Request) => {
+    const email = sanitizeEmail(req.body?.email)
+    return `${ipKeyGenerator(req.ip ?? '')}:${typeof email === 'string' ? email : ''}`
+  },
+  message: {
+    error: 'Too Many Requests',
+    message: 'Too many password reset requests. Please try again later.',
+  },
+})
 
 const registerValidation = [
   body('email')
@@ -367,9 +391,10 @@ router.post(
  *   post:
  *     summary: Request a password reset link
  *     description: >
- *       Always responds with 200 regardless of whether the email is registered
- *       (prevents user enumeration). In non-production environments the
- *       `resetToken` field is included directly in the response for testing.
+ *       Emails a reset link to the address if it is registered. Always responds
+ *       with 200 regardless of whether the email exists or whether delivery
+ *       succeeded (prevents user enumeration). In non-production environments
+ *       the `resetToken` field is also included in the response for testing.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -398,10 +423,17 @@ router.post(
  *                 resetToken:
  *                   type: string
  *                   description: Included only in non-production environments
+ *       429:
+ *         description: Too many reset requests for this IP/email
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post(
   '/forgot-password',
   [
+    forgotPasswordLimiter,
     body('email')
       .customSanitizer(sanitizeEmail)
       .isEmail()
@@ -428,11 +460,20 @@ router.post(
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
 
     await prisma.passwordResetToken.create({
-      data: { userId: user.id, token: rawToken, expiresAt },
+      data: {
+        userId: user.id,
+        token: hashResetToken(rawToken),
+        expiresAt,
+      },
     })
 
-    // TODO: send email with reset link containing `rawToken`
-    // For development the token is returned directly in the response.
+    try {
+      await sendPasswordResetEmail(user.email, buildPasswordResetUrl(rawToken))
+    } catch (error) {
+      // Never surface delivery failures — that would leak which emails are registered.
+      console.error('Failed to send password reset email', error)
+    }
+
     res.json({
       success: true,
       message: 'If that email is registered you will receive a reset link.',
@@ -485,9 +526,10 @@ router.post(
   ],
   asyncHandler(async (req: Request, res: Response) => {
     const { token, password } = req.body
+    const tokenHash = hashResetToken(token)
 
     const stored = await prisma.passwordResetToken.findUnique({
-      where: { token },
+      where: { token: tokenHash },
     })
 
     if (!stored || stored.expiresAt < new Date()) {
@@ -505,7 +547,7 @@ router.post(
     })
 
     // Invalidate the used token and all refresh tokens for this user
-    await prisma.passwordResetToken.delete({ where: { token } })
+    await prisma.passwordResetToken.delete({ where: { token: tokenHash } })
     await prisma.refreshToken.deleteMany({ where: { userId: stored.userId } })
 
     res.json({ success: true, message: 'Password updated successfully' })

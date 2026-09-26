@@ -9,13 +9,13 @@
     "startLine": 10
   },
   {
-    "endLine": 18,
+    "endLine": 20,
     "file": "src/controllers/auth.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 18
+    "startLine": 20
   },
   {
     "endLine": 13,
@@ -358,6 +358,33 @@
     "name": "refreshTokenExpiresAt",
     "signature": "export function refreshTokenExpiresAt(): Date",
     "startLine": 43
+  },
+  {
+    "endLine": 13,
+    "file": "src/lib/mailer.ts",
+    "jsdoc": "",
+    "kind": "ClassDeclaration",
+    "name": "EmailDeliveryError",
+    "signature": "export class EmailDeliveryError extends Error",
+    "startLine": 8
+  },
+  {
+    "endLine": 32,
+    "file": "src/lib/mailer.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "buildPasswordResetUrl",
+    "signature": "export function buildPasswordResetUrl(rawToken: string): string",
+    "startLine": 30
+  },
+  {
+    "endLine": 100,
+    "file": "src/lib/mailer.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "sendPasswordResetEmail",
+    "signature": "export async function sendPasswordResetEmail( to: string, resetUrl: string ): Promise<void>",
+    "startLine": 80
   },
   {
     "endLine": 8,

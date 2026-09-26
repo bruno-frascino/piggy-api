@@ -298,7 +298,7 @@
     },
     "/api/auth/forgot-password": {
       "post": {
-        "description": "Always responds with 200 regardless of whether the email is registered (prevents user enumeration). In non-production environments the `resetToken` field is included directly in the response for testing.\n",
+        "description": "Emails a reset link to the address if it is registered. Always responds with 200 regardless of whether the email exists or whether delivery succeeded (prevents user enumeration). In non-production environments the `resetToken` field is also included in the response for testing.\n",
         "requestBody": {
           "content": {
             "application/json": {
@@ -340,6 +340,16 @@
               }
             },
             "description": "Request accepted (same response whether email exists or not)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too many reset requests for this IP/email"
           }
         },
         "summary": "Request a password reset link",
