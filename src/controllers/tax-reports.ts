@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express'
-import { body, param } from 'express-validator'
+import { body, param, query } from 'express-validator'
+import crypto from 'crypto'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import {
@@ -7,17 +8,43 @@ import {
   handleValidationErrors,
 } from '../middleware/validation.js'
 import { authenticateToken } from '../middleware/auth.js'
-import { computeCapitalGainsReport } from '../lib/cgt-engine.js'
+import {
+  computeCapitalGainsReport,
+  type CgtReportResult,
+} from '../lib/cgt-engine.js'
 import { buildCapitalGainsPdf } from '../lib/pdf-report.js'
 
 const router = Router()
 router.use(authenticateToken)
+
+/** Stable fingerprint of a report's *content*, so regenerating an unchanged
+ * report returns the existing revision instead of storing another PDF copy. */
+function computeContentHash(result: CgtReportResult): string {
+  return crypto
+    .createHash('sha256')
+    .update(
+      JSON.stringify({
+        totalProceedsAud: result.totalProceedsAud,
+        totalCostBaseAud: result.totalCostBaseAud,
+        totalCapitalGainGrossAud: result.totalCapitalGainGrossAud,
+        totalCapitalLossAud: result.totalCapitalLossAud,
+        carriedForwardLossOpeningAud: result.carriedForwardLossOpeningAud,
+        discountAppliedAud: result.discountAppliedAud,
+        netCapitalGainAud: result.netCapitalGainAud,
+        carriedForwardLossClosingAud: result.carriedForwardLossClosingAud,
+        lineItems: result.lineItems,
+      })
+    )
+    .digest('hex')
+}
 
 function serializeReport(report: {
   id: string
   financialYearStartYear: number
   financialYearLabel: string
   accountIds: unknown
+  version: number
+  supersededAt: Date | null
   generatedAt: Date
   totalProceedsAud: unknown
   totalCostBaseAud: unknown
@@ -34,6 +61,9 @@ function serializeReport(report: {
     financialYearStartYear: report.financialYearStartYear,
     financialYearLabel: report.financialYearLabel,
     accountIds: report.accountIds,
+    version: report.version,
+    supersededAt: report.supersededAt,
+    isCurrent: report.supersededAt === null,
     generatedAt: report.generatedAt,
     totalProceedsAud: Number(report.totalProceedsAud),
     totalCostBaseAud: Number(report.totalCostBaseAud),
@@ -57,8 +87,11 @@ function serializeReport(report: {
  *     description: >
  *       Computes a capital gains summary for the given Australian financial
  *       year across an explicit set of Trading Accounts (a "declaration"),
- *       renders a PDF, and upserts the persisted TaxReport for that
- *       (financial year, account selection) combination.
+ *       renders a PDF, and stores it as a new revision for that
+ *       (financial year, account selection) combination. Previous revisions are
+ *       retained and stay downloadable so an already-lodged report is never
+ *       overwritten. Regenerating with unchanged content returns the existing
+ *       current revision instead of creating a new one.
  *     tags: [TaxReports]
  *     security:
  *       - bearerAuth: []
@@ -120,6 +153,41 @@ router.post(
       select: { name: true, email: true },
     })
 
+    const contentHash = computeContentHash(result)
+
+    // Unchanged regeneration must not pile up another multi-megabyte PDF.
+    const current = await prisma.taxReport.findFirst({
+      where: {
+        userId,
+        financialYearStartYear,
+        accountsKey: result.accountsKey,
+        supersededAt: null,
+      },
+      select: {
+        id: true,
+        version: true,
+        contentHash: true,
+        financialYearStartYear: true,
+        financialYearLabel: true,
+        accountIds: true,
+        supersededAt: true,
+        generatedAt: true,
+        totalProceedsAud: true,
+        totalCostBaseAud: true,
+        totalCapitalGainGrossAud: true,
+        totalCapitalLossAud: true,
+        carriedForwardLossOpeningAud: true,
+        discountAppliedAud: true,
+        netCapitalGainAud: true,
+        carriedForwardLossClosingAud: true,
+        pdfSizeBytes: true,
+      },
+    })
+
+    if (current && current.contentHash === contentHash) {
+      return res.json({ success: true, data: serializeReport(current) })
+    }
+
     const pdfBuffer = await buildCapitalGainsPdf(result, {
       name: user?.name,
       email: user?.email ?? '',
@@ -127,47 +195,38 @@ router.post(
     const pdfBytes = new Uint8Array(pdfBuffer)
     const lineItemsJson = result.lineItems as unknown as Prisma.InputJsonValue
 
-    const report = await prisma.taxReport.upsert({
-      where: {
-        userId_financialYearStartYear_accountsKey: {
+    // Append-only: the previous revision is retained (and still downloadable)
+    // so a report that was already lodged is never overwritten.
+    const report = await prisma.$transaction(async (tx) => {
+      if (current) {
+        await tx.taxReport.update({
+          where: { id: current.id },
+          data: { supersededAt: new Date() },
+        })
+      }
+
+      return tx.taxReport.create({
+        data: {
           userId,
           financialYearStartYear,
+          financialYearLabel: result.financialYearLabel,
+          accountIds,
           accountsKey: result.accountsKey,
+          version: (current?.version ?? 0) + 1,
+          contentHash,
+          totalProceedsAud: result.totalProceedsAud,
+          totalCostBaseAud: result.totalCostBaseAud,
+          totalCapitalGainGrossAud: result.totalCapitalGainGrossAud,
+          totalCapitalLossAud: result.totalCapitalLossAud,
+          carriedForwardLossOpeningAud: result.carriedForwardLossOpeningAud,
+          discountAppliedAud: result.discountAppliedAud,
+          netCapitalGainAud: result.netCapitalGainAud,
+          carriedForwardLossClosingAud: result.carriedForwardLossClosingAud,
+          lineItems: lineItemsJson,
+          pdfData: pdfBytes,
+          pdfSizeBytes: pdfBuffer.byteLength,
         },
-      },
-      create: {
-        userId,
-        financialYearStartYear,
-        financialYearLabel: result.financialYearLabel,
-        accountIds,
-        accountsKey: result.accountsKey,
-        totalProceedsAud: result.totalProceedsAud,
-        totalCostBaseAud: result.totalCostBaseAud,
-        totalCapitalGainGrossAud: result.totalCapitalGainGrossAud,
-        totalCapitalLossAud: result.totalCapitalLossAud,
-        carriedForwardLossOpeningAud: result.carriedForwardLossOpeningAud,
-        discountAppliedAud: result.discountAppliedAud,
-        netCapitalGainAud: result.netCapitalGainAud,
-        carriedForwardLossClosingAud: result.carriedForwardLossClosingAud,
-        lineItems: lineItemsJson,
-        pdfData: pdfBytes,
-        pdfSizeBytes: pdfBuffer.byteLength,
-      },
-      update: {
-        generatedAt: new Date(),
-        accountIds,
-        totalProceedsAud: result.totalProceedsAud,
-        totalCostBaseAud: result.totalCostBaseAud,
-        totalCapitalGainGrossAud: result.totalCapitalGainGrossAud,
-        totalCapitalLossAud: result.totalCapitalLossAud,
-        carriedForwardLossOpeningAud: result.carriedForwardLossOpeningAud,
-        discountAppliedAud: result.discountAppliedAud,
-        netCapitalGainAud: result.netCapitalGainAud,
-        carriedForwardLossClosingAud: result.carriedForwardLossClosingAud,
-        lineItems: lineItemsJson,
-        pdfData: pdfBytes,
-        pdfSizeBytes: pdfBuffer.byteLength,
-      },
+      })
     })
 
     res.json({ success: true, data: serializeReport(report) })
@@ -184,6 +243,14 @@ router.post(
  *     tags: [TaxReports]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: includeSuperseded
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: ['true', 'false']
+ *         description: Include earlier revisions that have been superseded by a regeneration
  *     responses:
  *       200:
  *         description: Report metadata (no PDF bytes/line items), newest financial year first
@@ -192,15 +259,29 @@ router.post(
  */
 router.get(
   '/',
+  [
+    query('includeSuperseded').optional().isIn(['true', 'false']),
+    handleValidationErrors,
+  ],
   asyncHandler(async (req: Request, res: Response) => {
+    const includeSuperseded = req.query.includeSuperseded === 'true'
     const reports = await prisma.taxReport.findMany({
-      where: { userId: req.user!.userId },
-      orderBy: [{ financialYearStartYear: 'desc' }, { generatedAt: 'desc' }],
+      where: {
+        userId: req.user!.userId,
+        ...(includeSuperseded ? {} : { supersededAt: null }),
+      },
+      orderBy: [
+        { financialYearStartYear: 'desc' },
+        { accountsKey: 'asc' },
+        { version: 'desc' },
+      ],
       select: {
         id: true,
         financialYearStartYear: true,
         financialYearLabel: true,
         accountIds: true,
+        version: true,
+        supersededAt: true,
         generatedAt: true,
         totalProceedsAud: true,
         totalCostBaseAud: true,
@@ -266,7 +347,9 @@ router.get(
   '/position-usage',
   asyncHandler(async (req: Request, res: Response) => {
     const reports = await prisma.taxReport.findMany({
-      where: { userId: req.user!.userId },
+      // Superseded revisions describe a report the user already replaced, so
+      // flagging their line items as stale would be noise.
+      where: { userId: req.user!.userId, supersededAt: null },
       orderBy: [{ financialYearStartYear: 'desc' }],
       // Never select pdfData here — it is a multi-megabyte Bytes column.
       select: {
@@ -429,7 +512,7 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const report = await prisma.taxReport.findFirst({
       where: { id: req.params.id, userId: req.user!.userId },
-      select: { pdfData: true, financialYearLabel: true },
+      select: { pdfData: true, financialYearLabel: true, version: true },
     })
     if (!report) {
       return res
@@ -437,10 +520,11 @@ router.get(
         .json({ error: 'Not Found', message: 'Tax report not found' })
     }
 
+    const suffix = report.version > 1 ? `-v${report.version}` : ''
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="capital-gains-${report.financialYearLabel}.pdf"`
+      `attachment; filename="capital-gains-${report.financialYearLabel}${suffix}.pdf"`
     )
     res.send(Buffer.from(report.pdfData))
   })
@@ -452,7 +536,10 @@ router.get(
  * @swagger
  * /api/tax-reports/{id}:
  *   delete:
- *     summary: Delete a persisted tax report
+ *     summary: Delete a persisted tax report revision
+ *     description: >
+ *       Deleting the current revision promotes the most recent remaining
+ *       revision back to current, so the carried-forward loss chain stays intact.
  *     tags: [TaxReports]
  *     security:
  *       - bearerAuth: []
@@ -476,7 +563,13 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const report = await prisma.taxReport.findFirst({
       where: { id: req.params.id, userId: req.user!.userId },
-      select: { id: true },
+      select: {
+        id: true,
+        userId: true,
+        financialYearStartYear: true,
+        accountsKey: true,
+        supersededAt: true,
+      },
     })
     if (!report) {
       return res
@@ -484,7 +577,28 @@ router.delete(
         .json({ error: 'Not Found', message: 'Tax report not found' })
     }
 
-    await prisma.taxReport.delete({ where: { id: report.id } })
+    await prisma.$transaction(async (tx) => {
+      await tx.taxReport.delete({ where: { id: report.id } })
+
+      if (report.supersededAt !== null) return
+
+      const previous = await tx.taxReport.findFirst({
+        where: {
+          userId: report.userId,
+          financialYearStartYear: report.financialYearStartYear,
+          accountsKey: report.accountsKey,
+        },
+        orderBy: { version: 'desc' },
+        select: { id: true },
+      })
+
+      if (previous) {
+        await tx.taxReport.update({
+          where: { id: previous.id },
+          data: { supersededAt: null },
+        })
+      }
+    })
 
     res.json({ success: true, message: 'Tax report deleted' })
   })

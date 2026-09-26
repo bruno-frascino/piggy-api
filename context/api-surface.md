@@ -6,16 +6,17 @@
 | ------ | ---- | ---- | ---------- | -------- |
 | GET | `/api/accounts` | 🔒 | query | [src/controllers/accounts.ts:27](../src/controllers/accounts.ts#L27) |
 | POST | `/api/accounts` | 🔒 | body | [src/controllers/accounts.ts:77](../src/controllers/accounts.ts#L77) |
-| DELETE | `/api/accounts/:id` | 🔒 | param | [src/controllers/accounts.ts:353](../src/controllers/accounts.ts#L353) |
+| DELETE | `/api/accounts/:id` | 🔒 | param | [src/controllers/accounts.ts:357](../src/controllers/accounts.ts#L357) |
 | PATCH | `/api/accounts/:id` | 🔒 | param, body | [src/controllers/accounts.ts:282](../src/controllers/accounts.ts#L282) |
 | POST | `/api/accounts/:id/close` | 🔒 | param | [src/controllers/accounts.ts:143](../src/controllers/accounts.ts#L143) |
 | POST | `/api/accounts/:id/reopen` | 🔒 | param | [src/controllers/accounts.ts:214](../src/controllers/accounts.ts#L214) |
-| POST | `/api/auth/forgot-password` | — | forgotPasswordLimiter, body | [src/controllers/auth.ts:433](../src/controllers/auth.ts#L433) |
-| POST | `/api/auth/login` | — | — | [src/controllers/auth.ts:209](../src/controllers/auth.ts#L209) |
-| POST | `/api/auth/logout` | 🔒 | — | [src/controllers/auth.ts:375](../src/controllers/auth.ts#L375) |
-| POST | `/api/auth/refresh` | — | — | [src/controllers/auth.ts:295](../src/controllers/auth.ts#L295) |
+| POST | `/api/auth/forgot-password` | — | forgotPasswordLimiter, body | [src/controllers/auth.ts:548](../src/controllers/auth.ts#L548) |
+| POST | `/api/auth/login` | — | — | [src/controllers/auth.ts:215](../src/controllers/auth.ts#L215) |
+| POST | `/api/auth/logout` | 🔒 | — | [src/controllers/auth.ts:490](../src/controllers/auth.ts#L490) |
+| POST | `/api/auth/refresh` | — | — | [src/controllers/auth.ts:410](../src/controllers/auth.ts#L410) |
 | POST | `/api/auth/register` | — | — | [src/controllers/auth.ts:118](../src/controllers/auth.ts#L118) |
-| POST | `/api/auth/reset-password` | — | body ×2 | [src/controllers/auth.ts:518](../src/controllers/auth.ts#L518) |
+| POST | `/api/auth/reset-password` | — | body ×2 | [src/controllers/auth.ts:635](../src/controllers/auth.ts#L635) |
+| POST | `/api/auth/restore` | — | — | [src/controllers/auth.ts:311](../src/controllers/auth.ts#L311) |
 | GET | `/api/portfolio/history` | 🔒 | query ×2 | [src/controllers/portfolio.ts:30](../src/controllers/portfolio.ts#L30) |
 | GET | `/api/portfolio/realized-pnl` | 🔒 | query ×2 | [src/controllers/portfolio.ts:106](../src/controllers/portfolio.ts#L106) |
 | POST | `/api/portfolio/snapshot` | 🔒 | body ×2 | [src/controllers/portfolio.ts:149](../src/controllers/portfolio.ts#L149) |
@@ -40,14 +41,15 @@
 | GET | `/api/statistics/timeseries` | 🔒 | , query ×2 | [src/controllers/statistics.ts:280](../src/controllers/statistics.ts#L280) |
 | GET | `/api/stocks/quotes` | 🔒 | query | [src/controllers/stocks.ts:289](../src/controllers/stocks.ts#L289) |
 | GET | `/api/stocks/search` | — | — | [src/controllers/stocks.ts:162](../src/controllers/stocks.ts#L162) |
-| GET | `/api/tax-reports` | 🔒 | — | [src/controllers/tax-reports.ts:193](../src/controllers/tax-reports.ts#L193) |
-| DELETE | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:473](../src/controllers/tax-reports.ts#L473) |
-| GET | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:377](../src/controllers/tax-reports.ts#L377) |
-| GET | `/api/tax-reports/:id/download` | 🔒 | param | [src/controllers/tax-reports.ts:426](../src/controllers/tax-reports.ts#L426) |
-| POST | `/api/tax-reports/generate` | 🔒 | body ×3 | [src/controllers/tax-reports.ts:90](../src/controllers/tax-reports.ts#L90) |
-| GET | `/api/tax-reports/position-usage` | 🔒 | — | [src/controllers/tax-reports.ts:265](../src/controllers/tax-reports.ts#L265) |
-| GET | `/api/users/me` | 🔒 | — | [src/controllers/users.ts:50](../src/controllers/users.ts#L50) |
-| PATCH | `/api/users/me` | 🔒 | body ×4 | [src/controllers/users.ts:127](../src/controllers/users.ts#L127) |
+| GET | `/api/tax-reports` | 🔒 | query | [src/controllers/tax-reports.ts:260](../src/controllers/tax-reports.ts#L260) |
+| DELETE | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:560](../src/controllers/tax-reports.ts#L560) |
+| GET | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:460](../src/controllers/tax-reports.ts#L460) |
+| GET | `/api/tax-reports/:id/download` | 🔒 | param | [src/controllers/tax-reports.ts:509](../src/controllers/tax-reports.ts#L509) |
+| POST | `/api/tax-reports/generate` | 🔒 | body ×3 | [src/controllers/tax-reports.ts:123](../src/controllers/tax-reports.ts#L123) |
+| GET | `/api/tax-reports/position-usage` | 🔒 | — | [src/controllers/tax-reports.ts:346](../src/controllers/tax-reports.ts#L346) |
+| DELETE | `/api/users/me` | 🔒 | body | [src/controllers/users.ts:237](../src/controllers/users.ts#L237) |
+| GET | `/api/users/me` | 🔒 | — | [src/controllers/users.ts:51](../src/controllers/users.ts#L51) |
+| PATCH | `/api/users/me` | 🔒 | body ×4 | [src/controllers/users.ts:128](../src/controllers/users.ts#L128) |
 | GET | `/api/watchlists` | 🔒 | — | [src/controllers/watchlists.ts:34](../src/controllers/watchlists.ts#L34) |
 | POST | `/api/watchlists` | 🔒 | body | [src/controllers/watchlists.ts:75](../src/controllers/watchlists.ts#L75) |
 | DELETE | `/api/watchlists/:id` | 🔒 | param | [src/controllers/watchlists.ts:212](../src/controllers/watchlists.ts#L212) |

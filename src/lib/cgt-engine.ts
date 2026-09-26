@@ -199,6 +199,9 @@ export async function computeCapitalGainsReport(
       userId,
       accountsKey,
       financialYearStartYear: { lt: financialYearStartYear },
+      // Superseded revisions record what was previously lodged; the loss chain
+      // must follow the current revision of the prior year.
+      supersededAt: null,
     },
     orderBy: { financialYearStartYear: 'desc' },
     select: { carriedForwardLossClosingAud: true },

@@ -16,6 +16,10 @@ model User {
   name         String?
   passwordHash String
   baseCurrency String   @default("AUD")
+  // Set when the user requests deletion. The row survives until purgeAfter
+  // passes (see scripts/purge-deleted-users.ts) so the request can be undone.
+  deletedAt    DateTime?
+  purgeAfter   DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -28,6 +32,7 @@ model User {
   watchlists         Watchlist[]
   savedScreens       SavedScreen[]
 
+  @@index([purgeAfter])
   @@map("users")
 }
 
@@ -187,7 +192,7 @@ model Position {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id])
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   asset        Asset         @relation(fields: [assetId], references: [id])
   account      TradingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
@@ -237,7 +242,7 @@ model PortfolioSnapshot {
   availableCash  Decimal  @default(0) @db.Decimal(12, 2)
   createdAt      DateTime @default(now())
 
-  user     User           @relation(fields: [userId], references: [id])
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   account  TradingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   exchange Exchange       @relation(fields: [exchangeId], references: [id], onDelete: Cascade)
 
@@ -275,6 +280,12 @@ model TaxReport {
   financialYearLabel           String
   accountIds                   Json
   accountsKey                  String
+  version                      Int      @default(1)
+  // Exactly one revision per (userId, financialYearStartYear, accountsKey) has
+  // supersededAt = null; that row is the current report. Enforced in application
+  // code (tax-reports.ts) inside a transaction, not by a DB constraint.
+  supersededAt                 DateTime?
+  contentHash                  String   @default("")
   generatedAt                  DateTime @default(now())
   totalProceedsAud             Decimal  @db.Decimal(15, 2)
   totalCostBaseAud             Decimal  @db.Decimal(15, 2)
@@ -292,7 +303,8 @@ model TaxReport {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, financialYearStartYear, accountsKey])
+  @@unique([userId, financialYearStartYear, accountsKey, version], map: "tax_reports_revision_key")
+  @@index([userId, financialYearStartYear, accountsKey, supersededAt], map: "tax_reports_current_revision_idx")
   @@map("tax_reports")
 }
 

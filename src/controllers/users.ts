@@ -7,6 +7,7 @@ import {
   handleValidationErrors,
 } from '../middleware/validation.js'
 import { authenticateToken } from '../middleware/auth.js'
+import { purgeAfterFrom } from '../lib/account-deletion.js'
 
 const router = Router()
 
@@ -178,6 +179,100 @@ router.patch(
       },
     })
     res.json({ success: true, data: updated })
+  })
+)
+
+// DELETE /api/users/me
+/**
+ * @swagger
+ * /api/users/me:
+ *   delete:
+ *     summary: Schedule the authenticated user's account for deletion
+ *     description: >
+ *       Marks the account deleted and revokes every session immediately. The
+ *       data is retained until the grace period expires, during which signing in
+ *       returns 403 with `accountPendingDeletion` and the account can be restored
+ *       via POST /api/auth/restore. After that a scheduled purge removes the user
+ *       and all their positions, accounts, snapshots, tax reports and watchlists.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Account scheduled for deletion
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     deletedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     purgeAfter:
+ *                       type: string
+ *                       format: date-time
+ *       401:
+ *         description: Current password incorrect or not authenticated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.delete(
+  '/me',
+  [body('currentPassword').isString().notEmpty(), handleValidationErrors],
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.user!.userId
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, passwordHash: true },
+    })
+
+    if (
+      !user ||
+      !(await bcrypt.compare(
+        String(req.body.currentPassword),
+        user.passwordHash
+      ))
+    ) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Current password is incorrect',
+      })
+    }
+
+    const deletedAt = new Date()
+    const purgeAfter = purgeAfterFrom(deletedAt)
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: { deletedAt, purgeAfter },
+      }),
+      // Every existing session dies with the request, so a stolen token cannot
+      // be used to undo the deletion.
+      prisma.refreshToken.deleteMany({ where: { userId } }),
+      prisma.passwordResetToken.deleteMany({ where: { userId } }),
+    ])
+
+    res.json({ success: true, data: { deletedAt, purgeAfter } })
   })
 )
 

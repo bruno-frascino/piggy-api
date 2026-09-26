@@ -72,22 +72,22 @@
     "startLine": 17
   },
   {
-    "endLine": 13,
+    "endLine": 17,
     "file": "src/controllers/tax-reports.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 13
+    "startLine": 17
   },
   {
-    "endLine": 11,
+    "endLine": 12,
     "file": "src/controllers/users.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 11
+    "startLine": 12
   },
   {
     "endLine": 11,
@@ -105,6 +105,33 @@
     "kind": "VariableDeclaration",
     "name": "app",
     "signature": "app = express()",
+    "startLine": 16
+  },
+  {
+    "endLine": 6,
+    "file": "src/lib/account-deletion.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "DELETION_GRACE_DAYS",
+    "signature": "DELETION_GRACE_DAYS = 30",
+    "startLine": 6
+  },
+  {
+    "endLine": 12,
+    "file": "src/lib/account-deletion.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "purgeAfterFrom",
+    "signature": "export function purgeAfterFrom(deletedAt: Date): Date",
+    "startLine": 8
+  },
+  {
+    "endLine": 29,
+    "file": "src/lib/account-deletion.ts",
+    "jsdoc": "Permanently removes accounts whose grace period has expired. Every user-scoped table cascades from `users`, so one delete per user suffices.",
+    "kind": "FunctionDeclaration",
+    "name": "purgeExpiredAccounts",
+    "signature": "export async function purgeExpiredAccounts( now = new Date() ): Promise<string[]>",
     "startLine": 16
   },
   {
@@ -144,7 +171,7 @@
     "startLine": 56
   },
   {
-    "endLine": 247,
+    "endLine": 250,
     "file": "src/lib/cgt-engine.ts",
     "jsdoc": "Computes an ATO-style capital gains report for a user, financial year, and an explicit set of Trading Accounts (a \"declaration\" — e.g. the user's own accounts vs a spouse's accounts tracked under the same login). Each `Position` is created with exactly one BUY transaction and is never appended to (see positions.ts `POST /`), so every Position IS already a discrete CGT parcel — no FIFO lot reconstruction is required. Every SELL transaction against it (full or partial close) is an unambiguous disposal of that specific parcel.",
     "kind": "FunctionDeclaration",
@@ -603,7 +630,7 @@
     "startLine": 141
   },
   {
-    "endLine": 66,
+    "endLine": 62,
     "file": "src/middleware/auth.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",

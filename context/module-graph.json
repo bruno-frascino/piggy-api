@@ -102,6 +102,7 @@
         "src/lib/cgt-engine.ts",
         "src/lib/fx-rates.ts",
         "src/controllers/users.ts",
+        "src/lib/account-deletion.ts",
         "src/controllers/watchlists.ts",
         "src/index.ts"
       ],
@@ -1228,6 +1229,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/account-deletion.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-deletion.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../lib/prisma.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
@@ -1274,6 +1292,35 @@
       ],
       "orphan": false,
       "source": "src/controllers/users.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/users.ts",
+        "src/lib/account-deletion.test.ts",
+        "src/scripts/purge-deleted-users.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/account-deletion.ts",
       "valid": true
     },
     {
@@ -1722,6 +1769,31 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./account-deletion.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-deletion.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/account-deletion.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./cgt-engine.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/cgt-engine.ts",
@@ -2007,6 +2079,31 @@
       "orphan": false,
       "source": "src/middleware/validation.test.ts",
       "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/account-deletion.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-deletion.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/scripts/purge-deleted-users.ts",
+      "valid": true
     }
   ],
   "summary": {
@@ -2100,8 +2197,8 @@
         }
       ]
     },
-    "totalCruised": 51,
-    "totalDependenciesCruised": 88,
+    "totalCruised": 54,
+    "totalDependenciesCruised": 92,
     "violations": [],
     "warn": 0
   }

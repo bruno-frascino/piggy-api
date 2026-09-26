@@ -37,6 +37,8 @@ erDiagram
 | name | `String?` | — |
 | passwordHash | `String` | — |
 | baseCurrency | `String` | @default("AUD") |
+| deletedAt | `DateTime?` | — |
+| purgeAfter | `DateTime?` | — |
 | createdAt | `DateTime` | @default(now()) |
 | updatedAt | `DateTime` | @updatedAt |
 | positions | `Position[]` | — |
@@ -47,6 +49,8 @@ erDiagram
 | taxReports | `TaxReport[]` | — |
 | watchlists | `Watchlist[]` | — |
 | savedScreens | `SavedScreen[]` | — |
+
+Constraints: `@@index([purgeAfter])`
 
 ### `RefreshToken` (table: `refresh_tokens`)
 
@@ -182,7 +186,7 @@ Constraints: `@@unique([assetId, date])`
 | lessonsLearned | `String?` | — |
 | createdAt | `DateTime` | @default(now()) |
 | updatedAt | `DateTime` | @updatedAt |
-| user | `User` | @relation(fields: [userId], references: [id]) |
+| user | `User` | @relation(fields: [userId], references: [id], onDelete: Cascade) |
 | asset | `Asset` | @relation(fields: [assetId], references: [id]) |
 | account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
 | transactions | `Transaction[]` | — |
@@ -227,7 +231,7 @@ Constraints: `@@unique([userId, assetId, openDate, entryPrice, accountId])`
 | sharpeRatio | `Decimal?` | @db.Decimal(8, 4) |
 | availableCash | `Decimal` | @default(0) @db.Decimal(12, 2) |
 | createdAt | `DateTime` | @default(now()) |
-| user | `User` | @relation(fields: [userId], references: [id]) |
+| user | `User` | @relation(fields: [userId], references: [id], onDelete: Cascade) |
 | account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
 | exchange | `Exchange` | @relation(fields: [exchangeId], references: [id], onDelete: Cascade) |
 
@@ -243,6 +247,9 @@ Constraints: `@@unique([userId, accountId, exchangeId, date])`
 | financialYearLabel | `String` | — |
 | accountIds | `Json` | — |
 | accountsKey | `String` | — |
+| version | `Int` | @default(1) |
+| supersededAt | `DateTime?` | — |
+| contentHash | `String` | @default("") |
 | generatedAt | `DateTime` | @default(now()) |
 | totalProceedsAud | `Decimal` | @db.Decimal(15, 2) |
 | totalCostBaseAud | `Decimal` | @db.Decimal(15, 2) |
@@ -259,7 +266,7 @@ Constraints: `@@unique([userId, accountId, exchangeId, date])`
 | updatedAt | `DateTime` | @updatedAt |
 | user | `User` | @relation(fields: [userId], references: [id], onDelete: Cascade) |
 
-Constraints: `@@unique([userId, financialYearStartYear, accountsKey])`
+Constraints: `@@unique([userId, financialYearStartYear, accountsKey, version], map: "tax_reports_revision_key")`, `@@index([userId, financialYearStartYear, accountsKey, supersededAt], map: "tax_reports_current_revision_idx")`
 
 ### `FxRateCache` (table: `fx_rate_cache`)
 
@@ -330,3 +337,5 @@ Constraints: `@@unique([userId, name])`
 - `20260722173150_make_open_reason_optional`
 - `20260724114014_add_tax_reports`
 - `20260814234043_add_watchlists_screener`
+- `20260926000000_tax_report_revisions`
+- `20260926000001_user_soft_delete`

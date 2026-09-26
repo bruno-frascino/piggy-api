@@ -20,8 +20,24 @@ on the History page.
 
 **accountsKey** — A deterministic hash of a sorted, user-selected set of Trading Account IDs,
 stored on `TaxReport`. Scopes both the report's uniqueness
-(`userId + financialYearStartYear + accountsKey`) and its loss carry-forward chain lookup.
-See ADR 0002.
+(`userId + financialYearStartYear + accountsKey + version`) and its loss carry-forward chain
+lookup. See ADR 0002.
+
+**Report revision** — Tax reports are append-only. Regenerating a report for the same
+`(financialYearStartYear, accountsKey)` stores a new row with `version + 1` and stamps
+`supersededAt` on the previous one, so a PDF that was already lodged is never overwritten.
+Exactly one revision per key has `supersededAt = null` — the **current** revision. See ADR 0010.
+
+**Superseded** — A tax report revision that a later regeneration replaced. Still readable and
+downloadable, excluded from listings by default, and never used for carry-forward loss chaining.
+
+**Grace period** — The 30 days between a user requesting account deletion (`User.deletedAt`)
+and the data actually being erased (`User.purgeAfter`). Signing in during this window offers a
+restore. See ADR 0011.
+
+**Purge** — The irreversible hard delete of a soft-deleted user and everything cascading from
+them, performed by `yarn db:purge-deleted-users` once `purgeAfter` has passed. If that job is
+not scheduled, nothing is ever actually erased.
 
 **Financial year** — Australian tax year, 1 July – 30 June. `TaxReport.financialYearStartYear`
 is the starting calendar year (e.g. FY2025 = 1 Jul 2025 – 30 Jun 2026 → stored as `2025`).

@@ -268,6 +268,111 @@ describe('auth controller', () => {
     expect(response.body.message).toContain('Invalid credentials')
   })
 
+  it('blocks login for an account pending deletion', async () => {
+    findUserUniqueMock.mockResolvedValueOnce({
+      id: 'u_1',
+      email: 'alice@example.com',
+      name: 'Alice',
+      baseCurrency: 'AUD',
+      passwordHash: 'hashed-password',
+      deletedAt: new Date('2026-09-01T00:00:00Z'),
+      purgeAfter: new Date('2026-10-01T00:00:00Z'),
+      createdAt: new Date('2026-05-20T00:00:00Z'),
+    })
+
+    const response = await request(createApp()).post('/api/auth/login').send({
+      email: 'alice@example.com',
+      password: 'password123',
+    })
+
+    expect(response.status).toBe(403)
+    expect(response.body.code).toBe('accountPendingDeletion')
+    expect(response.body.purgeAfter).toBe('2026-10-01T00:00:00.000Z')
+    expect(createRefreshTokenMock).not.toHaveBeenCalled()
+  })
+
+  it('never leaks deletion state to someone with the wrong password', async () => {
+    compareMock.mockResolvedValue(false)
+    findUserUniqueMock.mockResolvedValueOnce({
+      id: 'u_1',
+      email: 'alice@example.com',
+      passwordHash: 'hashed-password',
+      deletedAt: new Date('2026-09-01T00:00:00Z'),
+      purgeAfter: new Date('2026-10-01T00:00:00Z'),
+      createdAt: new Date('2026-05-20T00:00:00Z'),
+    })
+
+    const response = await request(createApp()).post('/api/auth/login').send({
+      email: 'alice@example.com',
+      password: 'wrong-password',
+    })
+
+    expect(response.status).toBe(401)
+    expect(response.body.code).toBeUndefined()
+  })
+
+  it('restores an account pending deletion and issues tokens', async () => {
+    findUserUniqueMock.mockResolvedValueOnce({
+      id: 'u_1',
+      email: 'alice@example.com',
+      name: 'Alice',
+      baseCurrency: 'AUD',
+      passwordHash: 'hashed-password',
+      deletedAt: new Date('2026-09-01T00:00:00Z'),
+      createdAt: new Date('2026-05-20T00:00:00Z'),
+    })
+
+    const response = await request(createApp()).post('/api/auth/restore').send({
+      email: 'alice@example.com',
+      password: 'password123',
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.body.data.accessToken).toBe('access-token')
+    expect(response.body.data.user).not.toHaveProperty('passwordHash')
+    expect(response.body.data.user).not.toHaveProperty('deletedAt')
+    expect(updateUserMock).toHaveBeenCalledWith({
+      where: { id: 'u_1' },
+      data: { deletedAt: null, purgeAfter: null },
+    })
+    expect(createRefreshTokenMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns 409 when restoring an account that is not pending deletion', async () => {
+    findUserUniqueMock.mockResolvedValueOnce({
+      id: 'u_1',
+      email: 'alice@example.com',
+      passwordHash: 'hashed-password',
+      deletedAt: null,
+      createdAt: new Date('2026-05-20T00:00:00Z'),
+    })
+
+    const response = await request(createApp()).post('/api/auth/restore').send({
+      email: 'alice@example.com',
+      password: 'password123',
+    })
+
+    expect(response.status).toBe(409)
+    expect(updateUserMock).not.toHaveBeenCalled()
+  })
+
+  it('does not issue a reset token for an account pending deletion', async () => {
+    findUserUniqueMock.mockResolvedValueOnce({
+      id: 'u_1',
+      email: 'alice@example.com',
+      passwordHash: 'hashed-password',
+      deletedAt: new Date('2026-09-01T00:00:00Z'),
+    })
+
+    const response = await request(createApp())
+      .post('/api/auth/forgot-password')
+      .send({ email: 'alice@example.com' })
+
+    expect(response.status).toBe(200)
+    expect(createPasswordResetTokenMock).not.toHaveBeenCalled()
+    expect(sendPasswordResetEmailMock).not.toHaveBeenCalled()
+  })
+
   it('returns 400 when refresh token is missing', async () => {
     const response = await request(createApp())
       .post('/api/auth/refresh')

@@ -38,27 +38,23 @@ export async function authenticateToken(
   try {
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true },
+      select: { id: true, deletedAt: true },
     })
-    if (!user) {
-      return res
-        .status(401)
-        .json({
-          error: 'Unauthorized',
-          message: 'Session expired. Please log in again.',
-        })
+    if (!user || user.deletedAt) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Session expired. Please log in again.',
+      })
     }
   } catch {
     console.error(
       'Auth middleware: DB lookup failed for userId',
       payload.userId
     )
-    return res
-      .status(503)
-      .json({
-        error: 'Service Unavailable',
-        message: 'Unable to verify session. Please try again.',
-      })
+    return res.status(503).json({
+      error: 'Service Unavailable',
+      message: 'Unable to verify session. Please try again.',
+    })
   }
 
   req.user = payload

@@ -7,7 +7,8 @@ const {
   userFindUniqueMock,
   taxReportFindManyMock,
   taxReportFindFirstMock,
-  taxReportUpsertMock,
+  taxReportCreateMock,
+  taxReportUpdateMock,
   taxReportDeleteMock,
   positionFindManyMock,
   computeCapitalGainsReportMock,
@@ -16,7 +17,8 @@ const {
   userFindUniqueMock: vi.fn(),
   taxReportFindManyMock: vi.fn(),
   taxReportFindFirstMock: vi.fn(),
-  taxReportUpsertMock: vi.fn(),
+  taxReportCreateMock: vi.fn(),
+  taxReportUpdateMock: vi.fn(),
   taxReportDeleteMock: vi.fn(),
   positionFindManyMock: vi.fn(),
   computeCapitalGainsReportMock: vi.fn(),
@@ -30,18 +32,22 @@ vi.mock('../middleware/auth.js', () => ({
   },
 }))
 
-vi.mock('../lib/prisma.js', () => ({
-  prisma: {
+vi.mock('../lib/prisma.js', () => {
+  const prisma = {
     user: { findUnique: userFindUniqueMock },
     taxReport: {
       findMany: taxReportFindManyMock,
       findFirst: taxReportFindFirstMock,
-      upsert: taxReportUpsertMock,
+      create: taxReportCreateMock,
+      update: taxReportUpdateMock,
       delete: taxReportDeleteMock,
     },
     position: { findMany: positionFindManyMock },
-  },
-}))
+    // The controller's transactions only need the same mocked delegates.
+    $transaction: (fn: (tx: unknown) => unknown) => fn(prisma),
+  }
+  return { prisma }
+})
 
 vi.mock('../lib/cgt-engine.js', () => ({
   computeCapitalGainsReport: computeCapitalGainsReportMock,
@@ -80,6 +86,8 @@ const SAMPLE_REPORT_ROW = {
   financialYearStartYear: 2025,
   financialYearLabel: 'FY2025-26',
   accountIds: ['acc1'],
+  version: 1,
+  supersededAt: null,
   generatedAt: new Date('2026-07-24'),
   totalProceedsAud: 1490,
   totalCostBaseAud: 1020,
@@ -103,7 +111,8 @@ describe('tax-reports controller', () => {
     })
     computeCapitalGainsReportMock.mockResolvedValue(SAMPLE_RESULT)
     buildCapitalGainsPdfMock.mockResolvedValue(Buffer.from('%PDF-fake'))
-    taxReportUpsertMock.mockResolvedValue(SAMPLE_REPORT_ROW)
+    taxReportFindFirstMock.mockResolvedValue(null)
+    taxReportCreateMock.mockResolvedValue(SAMPLE_REPORT_ROW)
   })
 
   describe('POST /generate', () => {
@@ -120,6 +129,71 @@ describe('tax-reports controller', () => {
       expect(computeCapitalGainsReportMock).toHaveBeenCalledWith('u_1', 2025, [
         'acc1',
       ])
+      expect(taxReportCreateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ version: 1 }),
+        })
+      )
+      expect(taxReportUpdateMock).not.toHaveBeenCalled()
+    })
+
+    it('supersedes the current revision and stores the next version', async () => {
+      taxReportFindFirstMock.mockResolvedValue({
+        id: 'r1',
+        version: 2,
+        contentHash: 'stale-hash',
+      })
+      taxReportCreateMock.mockResolvedValue({
+        ...SAMPLE_REPORT_ROW,
+        id: 'r2',
+        version: 3,
+      })
+
+      const response = await request(createApp())
+        .post('/api/tax-reports/generate')
+        .send({ financialYearStartYear: 2025, accountIds: ['acc1'] })
+
+      expect(response.status).toBe(200)
+      expect(response.body.data.version).toBe(3)
+      expect(taxReportUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'r1' },
+        data: { supersededAt: expect.any(Date) },
+      })
+      expect(taxReportCreateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ version: 3 }),
+        })
+      )
+    })
+
+    it('returns the existing revision when regenerating unchanged content', async () => {
+      // First generate to learn the hash the engine result produces.
+      await request(createApp())
+        .post('/api/tax-reports/generate')
+        .send({ financialYearStartYear: 2025, accountIds: ['acc1'] })
+      const storedHash = taxReportCreateMock.mock.calls[0]?.[0].data
+        .contentHash as string
+      vi.clearAllMocks()
+      computeCapitalGainsReportMock.mockResolvedValue(SAMPLE_RESULT)
+      userFindUniqueMock.mockResolvedValue({
+        name: 'Bruno',
+        email: 'bruno@example.com',
+      })
+      taxReportFindFirstMock.mockResolvedValue({
+        ...SAMPLE_REPORT_ROW,
+        contentHash: storedHash,
+      })
+
+      const response = await request(createApp())
+        .post('/api/tax-reports/generate')
+        .send({ financialYearStartYear: 2025, accountIds: ['acc1'] })
+
+      expect(response.status).toBe(200)
+      expect(response.body.data.id).toBe('r1')
+      expect(taxReportCreateMock).not.toHaveBeenCalled()
+      expect(taxReportUpdateMock).not.toHaveBeenCalled()
+      // No PDF is rendered when nothing changed.
+      expect(buildCapitalGainsPdfMock).not.toHaveBeenCalled()
     })
 
     it('returns 400 when validation fails (missing accountIds)', async () => {
@@ -145,7 +219,7 @@ describe('tax-reports controller', () => {
   })
 
   describe('GET /', () => {
-    it('lists report metadata ordered newest-first', async () => {
+    it('lists only current revisions by default', async () => {
       taxReportFindManyMock.mockResolvedValue([SAMPLE_REPORT_ROW])
 
       const response = await request(createApp()).get('/api/tax-reports')
@@ -153,14 +227,29 @@ describe('tax-reports controller', () => {
       expect(response.status).toBe(200)
       expect(response.body.data).toHaveLength(1)
       expect(response.body.data[0].pdfData).toBeUndefined()
+      expect(response.body.data[0].isCurrent).toBe(true)
       expect(taxReportFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { userId: 'u_1' },
+          where: { userId: 'u_1', supersededAt: null },
           orderBy: [
             { financialYearStartYear: 'desc' },
-            { generatedAt: 'desc' },
+            { accountsKey: 'asc' },
+            { version: 'desc' },
           ],
         })
+      )
+    })
+
+    it('includes superseded revisions when asked', async () => {
+      taxReportFindManyMock.mockResolvedValue([SAMPLE_REPORT_ROW])
+
+      const response = await request(createApp()).get(
+        '/api/tax-reports?includeSuperseded=true'
+      )
+
+      expect(response.status).toBe(200)
+      expect(taxReportFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 'u_1' } })
       )
     })
   })
@@ -220,6 +309,11 @@ describe('tax-reports controller', () => {
           },
         })
       )
+      expect(taxReportFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'u_1', supersededAt: null },
+        })
+      )
     })
 
     it('returns an empty map and skips the position query when no reports exist', async () => {
@@ -261,6 +355,7 @@ describe('tax-reports controller', () => {
       taxReportFindFirstMock.mockResolvedValue({
         pdfData: Buffer.from('%PDF-fake'),
         financialYearLabel: 'FY2025-26',
+        version: 1,
       })
 
       const response = await request(createApp()).get(
@@ -271,6 +366,22 @@ describe('tax-reports controller', () => {
       expect(response.headers['content-type']).toContain('application/pdf')
       expect(response.headers['content-disposition']).toContain(
         'capital-gains-FY2025-26.pdf'
+      )
+    })
+
+    it('suffixes the filename for later revisions', async () => {
+      taxReportFindFirstMock.mockResolvedValue({
+        pdfData: Buffer.from('%PDF-fake'),
+        financialYearLabel: 'FY2025-26',
+        version: 3,
+      })
+
+      const response = await request(createApp()).get(
+        '/api/tax-reports/r3/download'
+      )
+
+      expect(response.headers['content-disposition']).toContain(
+        'capital-gains-FY2025-26-v3.pdf'
       )
     })
 
@@ -286,13 +397,58 @@ describe('tax-reports controller', () => {
   })
 
   describe('DELETE /:id', () => {
-    it('deletes an owned report', async () => {
-      taxReportFindFirstMock.mockResolvedValue({ id: 'r1' })
+    it('deletes a superseded revision without promoting anything', async () => {
+      taxReportFindFirstMock.mockResolvedValue({
+        id: 'r1',
+        userId: 'u_1',
+        financialYearStartYear: 2025,
+        accountsKey: 'acc1',
+        supersededAt: new Date('2026-08-01'),
+      })
 
       const response = await request(createApp()).delete('/api/tax-reports/r1')
 
       expect(response.status).toBe(200)
       expect(taxReportDeleteMock).toHaveBeenCalledWith({ where: { id: 'r1' } })
+      expect(taxReportUpdateMock).not.toHaveBeenCalled()
+    })
+
+    it('promotes the previous revision when the current one is deleted', async () => {
+      taxReportFindFirstMock
+        .mockResolvedValueOnce({
+          id: 'r2',
+          userId: 'u_1',
+          financialYearStartYear: 2025,
+          accountsKey: 'acc1',
+          supersededAt: null,
+        })
+        .mockResolvedValueOnce({ id: 'r1' })
+
+      const response = await request(createApp()).delete('/api/tax-reports/r2')
+
+      expect(response.status).toBe(200)
+      expect(taxReportDeleteMock).toHaveBeenCalledWith({ where: { id: 'r2' } })
+      expect(taxReportUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'r1' },
+        data: { supersededAt: null },
+      })
+    })
+
+    it('deletes the only revision without promoting anything', async () => {
+      taxReportFindFirstMock
+        .mockResolvedValueOnce({
+          id: 'r1',
+          userId: 'u_1',
+          financialYearStartYear: 2025,
+          accountsKey: 'acc1',
+          supersededAt: null,
+        })
+        .mockResolvedValueOnce(null)
+
+      const response = await request(createApp()).delete('/api/tax-reports/r1')
+
+      expect(response.status).toBe(200)
+      expect(taxReportUpdateMock).not.toHaveBeenCalled()
     })
 
     it('returns 404 when report does not belong to user', async () => {

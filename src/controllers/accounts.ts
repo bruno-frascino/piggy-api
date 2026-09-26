@@ -330,7 +330,11 @@ router.patch(
  * /api/accounts/{id}:
  *   delete:
  *     summary: Delete a trading account
- *     description: Deletes an empty trading account owned by the authenticated user.
+ *     description: >
+ *       Permanently deletes a trading account owned by the authenticated user, along with
+ *       its derived performance history (portfolio snapshots). Refuses to delete an account
+ *       that still has positions, or one that is referenced by a generated tax report —
+ *       close the account instead to preserve that history.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -348,7 +352,7 @@ router.patch(
  *       404:
  *         description: Account not found
  *       409:
- *         description: Account has related data and cannot be deleted
+ *         description: Account has positions or is used by a tax report
  */
 router.delete(
   '/:id',
@@ -369,19 +373,44 @@ router.delete(
       })
     }
 
-    const [positionsCount, snapshotsCount] = await Promise.all([
-      prisma.position.count({ where: { accountId: id, userId } }),
-      prisma.portfolioSnapshot.count({ where: { accountId: id, userId } }),
-    ])
+    const positionsCount = await prisma.position.count({
+      where: { accountId: id, userId },
+    })
 
-    if (positionsCount > 0 || snapshotsCount > 0) {
+    if (positionsCount > 0) {
       return res.status(409).json({
         error: 'Conflict',
-        message:
-          'Account cannot be deleted while it still has positions or snapshots',
+        message: `Account '${account.name}' still has ${positionsCount} position${
+          positionsCount === 1 ? '' : 's'
+        }. Delete them first, or close the account to keep its history.`,
       })
     }
 
+    // Generated tax reports are ATO records and must stay readable, but they only
+    // reference account ids as an opaque key (no FK), so deleting would orphan them.
+    const taxReports = await prisma.taxReport.findMany({
+      where: { userId },
+      select: { financialYearLabel: true, accountsKey: true },
+    })
+    const referencingReports = taxReports.filter((report) =>
+      report.accountsKey.split(',').includes(id)
+    )
+
+    if (referencingReports.length > 0) {
+      const years = [
+        ...new Set(
+          referencingReports.map((report) => report.financialYearLabel)
+        ),
+      ].sort()
+      return res.status(409).json({
+        error: 'Conflict',
+        message: `Account '${account.name}' is included in generated tax report${
+          years.length === 1 ? '' : 's'
+        } for ${years.join(', ')}. Delete those reports first, or close the account to keep its history.`,
+      })
+    }
+
+    // Portfolio snapshots are derived data and cascade at the database level.
     await prisma.tradingAccount.delete({ where: { id } })
 
     res.json({ success: true, message: `Account '${account.name}' deleted` })

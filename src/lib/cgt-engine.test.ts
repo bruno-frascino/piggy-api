@@ -269,6 +269,8 @@ describe('computeCapitalGainsReport', () => {
           userId: 'u1',
           accountsKey: 'acc1',
           financialYearStartYear: { lt: 2025 },
+          // never chain off a revision the user has already replaced
+          supersededAt: null,
         }),
       })
     )

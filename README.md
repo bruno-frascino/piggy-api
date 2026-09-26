@@ -71,11 +71,13 @@ The API will be available at `http://localhost:4000` (configurable via the `PORT
 - `POST /api/auth/logout` - Revoke the current refresh token (requires auth)
 - `POST /api/auth/forgot-password` - Request a password reset
 - `POST /api/auth/reset-password` - Set a new password using a reset token
+- `POST /api/auth/restore` - Cancel a pending account deletion and sign in
 
 ### Users (`/api/users`) — requires auth
 
 - `GET /api/users/me` - Get the authenticated user's profile
 - `PATCH /api/users/me` - Update profile (name, baseCurrency) or change password
+- `DELETE /api/users/me` - Schedule the account for deletion (password-confirmed, 30-day grace period)
 
 ### Stocks (`/api/stocks`)
 
@@ -89,7 +91,7 @@ The API will be available at `http://localhost:4000` (configurable via the `PORT
 - `PATCH /api/accounts/:id` - Rename a trading account
 - `POST /api/accounts/:id/close` - Close a trading account (must have no open/partial positions)
 - `POST /api/accounts/:id/reopen` - Reopen a closed trading account
-- `DELETE /api/accounts/:id` - Delete an empty trading account
+- `DELETE /api/accounts/:id` - Delete a trading account (refused if it still has positions or is used by a tax report; derived snapshots cascade)
 
 ### Positions (`/api/positions`) — requires auth
 
@@ -99,18 +101,56 @@ The API will be available at `http://localhost:4000` (configurable via the `PORT
 - `POST /api/positions/:id/close` - Close or partially close a position
 - `DELETE /api/positions/:id` - Delete a position and its transactions
 - `GET /api/positions/close-events` - List close events (sell transactions) with context
+- `PATCH /api/positions/close-events/:id` - Edit a recorded close event
 - `POST /api/positions/:id/recalculate-drawdown` - Recalculate max drawdown from historical prices
 
 ### Portfolio (`/api/portfolio`) — requires auth
 
 - `GET /api/portfolio/history` - Historical portfolio snapshots (for equity-curve charting)
+- `GET /api/portfolio/realized-pnl` - Realized profit and loss over a date range
 - `POST /api/portfolio/snapshot` - Create/update today's portfolio snapshot (upsert)
+
+### Tax Reports (`/api/tax-reports`) — requires auth
+
+- `POST /api/tax-reports/generate` - Generate an ATO capital gains report for a financial year + explicit account selection. Append-only: supersedes the previous revision rather than overwriting it
+- `GET /api/tax-reports` - List reports (current revisions only; `includeSuperseded` query param supported)
+- `GET /api/tax-reports/:id` - Report metadata plus per-disposal line items
+- `GET /api/tax-reports/:id/download` - Download the persisted PDF
+- `GET /api/tax-reports/position-usage` - Map each position to the reports including it, with a staleness flag
+- `DELETE /api/tax-reports/:id` - Delete a report revision
+
+### Statistics (`/api/statistics`) — requires auth
+
+- `GET /api/statistics/summary` - Headline trading stats (win rate, expectancy, profit factor, …)
+- `GET /api/statistics/timeseries` - Performance over time
+- `GET /api/statistics/distributions` - Return/holding-period distributions
+- `GET /api/statistics/risk` - Risk metrics
+- `GET /api/statistics/breakdowns` - Breakdowns by account, exchange, asset type, etc.
+- `GET /api/statistics/closed-trades` - Closed trades behind the statistics, with filters
+
+### Screener (`/api/screener`) — requires auth
+
+- `GET /api/screener` - Run a screen over available assets
+- `GET /api/screener/upcoming-dividends` - Upcoming dividend events
+- `GET /api/screener/saved-screens` - List saved filter sets
+- `POST /api/screener/saved-screens` - Save a filter set
+- `DELETE /api/screener/saved-screens/:id` - Delete a saved filter set
+
+### Watchlists (`/api/watchlists`) — requires auth
+
+- `GET /api/watchlists` - List watchlists
+- `POST /api/watchlists` - Create a watchlist
+- `GET /api/watchlists/:id` - Get a watchlist and its items
+- `PATCH /api/watchlists/:id` - Rename a watchlist
+- `DELETE /api/watchlists/:id` - Delete a watchlist
+- `POST /api/watchlists/:id/items` - Add an asset to a watchlist
+- `DELETE /api/watchlists/:id/items/:itemId` - Remove an asset from a watchlist
 
 ## Database Schema
 
 Defined in `prisma/schema.prisma`:
 
-- **User**: user accounts
+- **User**: user accounts (soft-deleted via `deletedAt`/`purgeAfter`)
 - **RefreshToken** / **PasswordResetToken**: auth token tracking
 - **Exchange**: stock exchanges
 - **TradingAccount**: a user's trading accounts
@@ -119,6 +159,10 @@ Defined in `prisma/schema.prisma`:
 - **Position**: trading positions with entry/exit tracking
 - **Transaction**: individual buy/sell transactions tied to a position
 - **PortfolioSnapshot**: daily portfolio performance snapshots
+- **TaxReport**: generated ATO capital gains reports, stored as append-only revisions
+- **FxRateCache**: cached foreign-currency-to-AUD daily rates (RBA, Yahoo fallback), unique per `{currency, date}`
+- **Watchlist** / **WatchlistItem**: named per-user watchlists and the assets in them
+- **SavedScreen**: a user's saved screener filter sets
 
 ## Development
 
@@ -136,6 +180,7 @@ Defined in `prisma/schema.prisma`:
 - `yarn db:migrate:deploy` - Apply pending checked-in migrations (used in production deploys)
 - `yarn db:migrate:reset` - Reset the database
 - `yarn db:seed` - Run the Prisma seed script (`prisma/seed-exchanges.ts`)
+- `yarn db:purge-deleted-users` - Hard-delete users past their 30-day deletion grace period (schedule this in production — see `docs/deployment.md`)
 - `npx prisma studio` - Open Prisma Studio
 
 ### Recommended Development DB Workflow

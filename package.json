@@ -11,6 +11,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:reset": "prisma migrate reset",
     "db:seed": "prisma db seed",
+    "db:purge-deleted-users": "tsx src/scripts/purge-deleted-users.ts",
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage --run",

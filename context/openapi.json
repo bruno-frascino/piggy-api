@@ -140,7 +140,7 @@
     },
     "/api/accounts/{id}": {
       "delete": {
-        "description": "Deletes an empty trading account owned by the authenticated user.",
+        "description": "Permanently deletes a trading account owned by the authenticated user, along with its derived performance history (portfolio snapshots). Refuses to delete an account that still has positions, or one that is referenced by a generated tax report — close the account instead to preserve that history.\n",
         "parameters": [
           {
             "in": "path",
@@ -162,7 +162,7 @@
             "description": "Account not found"
           },
           "409": {
-            "description": "Account has related data and cannot be deleted"
+            "description": "Account has positions or is used by a tax report"
           }
         },
         "security": [
@@ -422,6 +422,16 @@
               }
             },
             "description": "Invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Account is scheduled for deletion — restore it to sign in"
           }
         },
         "summary": "Sign in with email and password",
@@ -655,6 +665,49 @@
           }
         },
         "summary": "Set a new password using a reset token",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/restore": {
+      "post": {
+        "description": "Valid only while the account is inside its deletion grace period. Requires the account password, so a deletion cannot be undone by anyone who merely knows the email address.\n",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "email": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Account restored — returns user object + accessToken + refreshToken"
+          },
+          "401": {
+            "description": "Invalid credentials"
+          },
+          "409": {
+            "description": "Account is not pending deletion"
+          }
+        },
+        "summary": "Cancel a pending account deletion and sign in",
         "tags": [
           "Auth"
         ]
@@ -2321,6 +2374,21 @@
     },
     "/api/tax-reports": {
       "get": {
+        "parameters": [
+          {
+            "description": "Include earlier revisions that have been superseded by a regeneration",
+            "in": "query",
+            "name": "includeSuperseded",
+            "required": false,
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Report metadata (no PDF bytes/line items), newest financial year first"
@@ -2342,7 +2410,7 @@
     },
     "/api/tax-reports/generate": {
       "post": {
-        "description": "Computes a capital gains summary for the given Australian financial year across an explicit set of Trading Accounts (a \"declaration\"), renders a PDF, and upserts the persisted TaxReport for that (financial year, account selection) combination.\n",
+        "description": "Computes a capital gains summary for the given Australian financial year across an explicit set of Trading Accounts (a \"declaration\"), renders a PDF, and stores it as a new revision for that (financial year, account selection) combination. Previous revisions are retained and stay downloadable so an already-lodged report is never overwritten. Regenerating with unchanged content returns the existing current revision instead of creating a new one.\n",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2451,6 +2519,7 @@
     },
     "/api/tax-reports/{id}": {
       "delete": {
+        "description": "Deleting the current revision promotes the most recent remaining revision back to current, so the carried-forward loss chain stays intact.\n",
         "parameters": [
           {
             "in": "path",
@@ -2477,7 +2546,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Delete a persisted tax report",
+        "summary": "Delete a persisted tax report revision",
         "tags": [
           "TaxReports"
         ]
@@ -2558,6 +2627,76 @@
       }
     },
     "/api/users/me": {
+      "delete": {
+        "description": "Marks the account deleted and revokes every session immediately. The data is retained until the grace period expires, during which signing in returns 403 with `accountPendingDeletion` and the account can be restored via POST /api/auth/restore. After that a scheduled purge removes the user and all their positions, accounts, snapshots, tax reports and watchlists.\n",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "currentPassword": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "currentPassword"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "deletedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "purgeAfter": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Account scheduled for deletion"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Current password incorrect or not authenticated"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Schedule the authenticated user's account for deletion",
+        "tags": [
+          "Users"
+        ]
+      },
       "get": {
         "responses": {
           "200": {

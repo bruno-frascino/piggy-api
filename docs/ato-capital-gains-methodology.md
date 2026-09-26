@@ -89,11 +89,17 @@ spouse's accounts also tracked in the same app).
 
 - `TaxReport.accountsKey` = the sorted, comma-joined selected account IDs —
   this is the actual "declaration identity".
-- Uniqueness/upsert key: `(userId, financialYearStartYear, accountsKey)` —
-  regenerating a report with the _same_ account selection for the same FY
-  recalculates and replaces it in place; a _different_ account combination
-  creates an entirely separate report with its own independent
-  carry-forward-loss chain.
+- Uniqueness key: `(userId, financialYearStartYear, accountsKey, version)` —
+  reports are **append-only**. Regenerating with the _same_ account selection
+  for the same FY recalculates and stores a _new revision_, marking the previous
+  one `supersededAt`; the superseded PDF is retained and stays downloadable so a
+  report that was already lodged with the ATO is never overwritten. Exactly one
+  revision per `(FY, accountsKey)` has `supersededAt = null` and is the current
+  report. Regenerating unchanged content is a no-op (compared via `contentHash`).
+  A _different_ account combination creates an entirely separate report with its
+  own independent carry-forward-loss chain. See ADR 0010.
+- Carry-forward loss chaining always reads the **current** revision of the prior
+  year (`supersededAt: null`), never a superseded one.
 
 ## FX conversion
 

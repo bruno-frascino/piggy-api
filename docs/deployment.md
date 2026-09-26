@@ -23,6 +23,20 @@ Production topology: `piggy-api` on a DigitalOcean VPS, `piggy-fe` on Vercel.
 - Root `tsconfig.json` has `noEmit: true` (editor/type-check only); the actual build uses
   `tsconfig.build.json` (`outDir: dist`, excludes `*.test.ts`) via the `build` script.
 
+### Scheduled jobs
+
+- **Account purge** — deleting a user account only sets `deletedAt`/`purgeAfter`; the row and
+  all its data survive until `yarn db:purge-deleted-users` runs after the 30-day grace period.
+  This must be scheduled on the VPS or deleted accounts are never actually erased, which
+  defeats the point of offering deletion at all (APP 11.2 / GDPR Art. 17). Daily is enough:
+
+  ```cron
+  # crontab -e as the deploy user
+  15 3 * * * cd /var/www/piggy-api && /usr/bin/node dist/scripts/purge-deleted-users.js >> /var/log/piggy-purge.log 2>&1
+  ```
+
+  The job is idempotent — running it when nothing is due is a no-op.
+
 ## piggy-fe (Vercel)
 
 - Hosted on Vercel (free Hobby tier) rather than the same VPS — the droplet's RAM is too

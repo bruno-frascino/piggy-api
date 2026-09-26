@@ -97,7 +97,7 @@ describe('authenticateToken', () => {
     expect(verifyAccessTokenMock).toHaveBeenCalledWith('valid-token')
     expect(findUniqueMock).toHaveBeenCalledWith({
       where: { id: 'user_1' },
-      select: { id: true },
+      select: { id: true, deletedAt: true },
     })
     expect(req.user).toEqual({
       userId: 'user_1',
@@ -105,5 +105,27 @@ describe('authenticateToken', () => {
     })
     expect(next).toHaveBeenCalledTimes(1)
     expect((res as unknown as MockResponse).status).not.toHaveBeenCalled()
+  })
+
+  it('rejects a token belonging to an account pending deletion', async () => {
+    verifyAccessTokenMock.mockReturnValue({
+      userId: 'user_1',
+      email: 'dev@example.com',
+    })
+    findUniqueMock.mockResolvedValue({
+      id: 'user_1',
+      deletedAt: new Date('2026-09-01T00:00:00Z'),
+    })
+
+    const req = {
+      headers: { authorization: 'Bearer valid-token' },
+    } as unknown as Request
+    const res = createMockResponse() as unknown as Response
+    const next = vi.fn() as unknown as NextFunction
+
+    await authenticateToken(req, res, next)
+
+    expect(next).not.toHaveBeenCalled()
+    expect((res as unknown as MockResponse).status).toHaveBeenCalledWith(401)
   })
 })

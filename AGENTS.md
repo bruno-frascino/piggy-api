@@ -23,6 +23,7 @@ yarn test --run        # vitest, single pass
 yarn test:coverage     # vitest --coverage --run (thresholds: 70/70/70/50)
 yarn lint              # eslint . --ext .ts,.tsx
 yarn db:migrate:dev --name <desc>   # NEVER edit 20260517140750_init directly
+yarn db:purge-deleted-users          # hard-deletes users past their 30-day grace period
 ```
 
 Package manager is **yarn only** (yarn@1.22.22 pinned) — do not introduce npm/pnpm
@@ -45,8 +46,13 @@ lockfiles. Node version per `.nvmrc`.
 8. Every `Position` = exactly one BUY transaction = one CGT parcel. There is no
    "add units to an existing position" flow and no FIFO lot reconstruction anywhere.
 9. Tax reports are scoped by an explicit account multi-select (never "all accounts");
-   see `docs/adr/0002-tax-report-accounts-key-scoping.md`.
-10. After changing `src/`, `prisma/schema.prisma`, or routes: run `yarn context:build` and
+   see `docs/adr/0002-tax-report-accounts-key-scoping.md`. They are also append-only:
+   regenerating supersedes the previous revision instead of overwriting it, and exactly
+   one revision per `(userId, financialYearStartYear, accountsKey)` has `supersededAt = null`.
+10. User accounts are soft-deleted (`deletedAt`/`purgeAfter`) with a 30-day grace period;
+    `yarn db:purge-deleted-users` must be scheduled in production or nothing is ever
+    actually erased. See `docs/deployment.md`.
+11. After changing `src/`, `prisma/schema.prisma`, or routes: run `yarn context:build` and
     commit the resulting `context/` diff (see `context/README.md`). `yarn context:check`
     verifies freshness without writing; the pre-push hook regenerates context and PR CI checks it.
 

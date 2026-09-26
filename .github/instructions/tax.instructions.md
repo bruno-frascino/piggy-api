@@ -15,9 +15,16 @@ Full write-up: `docs/ato-capital-gains-methodology.md`. Full ADR: `docs/adr/0002
   generation (`computeCapitalGainsReport` in `cgt-engine.ts`), never "all accounts" — this
   supports separate declarations (e.g. the user's own accounts vs a spouse's accounts tracked
   under one login). The exact account selection is hashed into `TaxReport.accountsKey`:
-  - Unique key: `@@unique([userId, financialYearStartYear, accountsKey])`.
-  - Loss carry-forward chain lookups match on the same `accountsKey` only — different account
-    combinations must never cross-contaminate carry-forward losses.
+  - Unique key: `@@unique([userId, financialYearStartYear, accountsKey, version])` — reports
+    are append-only, so a `(FY, accountsKey)` pair can have many revisions (see ADR 0010).
+  - Exactly one revision per `(userId, financialYearStartYear, accountsKey)` has
+    `supersededAt = null`; that row is the current report. The invariant is maintained in
+    `tax-reports.ts` inside a transaction, not by a DB constraint.
+  - Loss carry-forward chain lookups match on the same `accountsKey` only **and** must filter
+    `supersededAt: null` — different account combinations must never cross-contaminate
+    carry-forward losses, and the chain must never follow a replaced revision.
+  - Regenerating with unchanged content returns the existing revision instead of storing
+    another PDF copy (compared via `TaxReport.contentHash`).
 - FX conversion to AUD: RBA daily rates first (`fx-rates.ts`, parses
   `https://www.rba.gov.au/statistics/tables/csv/f11.1-data.csv`, 2023+ coverage; RBA publishes
   "AUD1=Xforeign" so you must invert — `1/rate` — to get AUD-per-unit). Yahoo Finance

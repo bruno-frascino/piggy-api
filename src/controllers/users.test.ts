@@ -3,14 +3,23 @@ import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { findUniqueMock, updateMock, compareMock, hashMock } = vi.hoisted(
-  () => ({
-    findUniqueMock: vi.fn(),
-    updateMock: vi.fn(),
-    compareMock: vi.fn(),
-    hashMock: vi.fn(),
-  })
-)
+const {
+  findUniqueMock,
+  updateMock,
+  compareMock,
+  hashMock,
+  deleteManyRefreshTokenMock,
+  deleteManyPasswordResetTokenMock,
+  transactionMock,
+} = vi.hoisted(() => ({
+  findUniqueMock: vi.fn(),
+  updateMock: vi.fn(),
+  compareMock: vi.fn(),
+  hashMock: vi.fn(),
+  deleteManyRefreshTokenMock: vi.fn(),
+  deleteManyPasswordResetTokenMock: vi.fn(),
+  transactionMock: vi.fn(),
+}))
 
 vi.mock('../middleware/auth.js', () => ({
   authenticateToken: (req: Request, _res: Response, next: NextFunction) => {
@@ -32,6 +41,9 @@ vi.mock('../lib/prisma.js', () => ({
       findUnique: findUniqueMock,
       update: updateMock,
     },
+    refreshToken: { deleteMany: deleteManyRefreshTokenMock },
+    passwordResetToken: { deleteMany: deleteManyPasswordResetTokenMock },
+    $transaction: transactionMock,
   },
 }))
 
@@ -49,6 +61,7 @@ describe('users controller', () => {
     vi.clearAllMocks()
     compareMock.mockResolvedValue(true)
     hashMock.mockResolvedValue('hashed-next-password')
+    transactionMock.mockResolvedValue([])
     updateMock.mockResolvedValue({
       id: 'u_1',
       email: 'alice@example.com',
@@ -157,6 +170,63 @@ describe('users controller', () => {
         baseCurrency: true,
         updatedAt: true,
       },
+    })
+  })
+
+  describe('DELETE /me', () => {
+    it('schedules deletion and revokes every session', async () => {
+      findUniqueMock.mockResolvedValue({
+        id: 'u_1',
+        passwordHash: 'stored-hash',
+      })
+
+      const response = await request(createApp()).delete('/api/users/me').send({
+        currentPassword: 'old-password-123',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.body.data.deletedAt).toEqual(expect.any(String))
+
+      const purgeAfter = new Date(response.body.data.purgeAfter).getTime()
+      const deletedAt = new Date(response.body.data.deletedAt).getTime()
+      expect(purgeAfter - deletedAt).toBe(30 * 24 * 60 * 60 * 1000)
+
+      expect(updateMock).toHaveBeenCalledWith({
+        where: { id: 'u_1' },
+        data: { deletedAt: expect.any(Date), purgeAfter: expect.any(Date) },
+      })
+      expect(deleteManyRefreshTokenMock).toHaveBeenCalledWith({
+        where: { userId: 'u_1' },
+      })
+      expect(deleteManyPasswordResetTokenMock).toHaveBeenCalledWith({
+        where: { userId: 'u_1' },
+      })
+      expect(transactionMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns 401 when the password is wrong', async () => {
+      findUniqueMock.mockResolvedValue({
+        id: 'u_1',
+        passwordHash: 'stored-hash',
+      })
+      compareMock.mockResolvedValue(false)
+
+      const response = await request(createApp()).delete('/api/users/me').send({
+        currentPassword: 'nope',
+      })
+
+      expect(response.status).toBe(401)
+      expect(response.body.message).toContain('Current password is incorrect')
+      expect(transactionMock).not.toHaveBeenCalled()
+    })
+
+    it('requires currentPassword', async () => {
+      const response = await request(createApp())
+        .delete('/api/users/me')
+        .send({})
+
+      expect(response.status).toBe(400)
+      expect(transactionMock).not.toHaveBeenCalled()
     })
   })
 })

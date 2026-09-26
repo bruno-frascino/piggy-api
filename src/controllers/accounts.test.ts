@@ -11,6 +11,7 @@ const {
   updateMock,
   deleteMock,
   positionCountMock,
+  taxReportFindManyMock,
   snapshotCountMock,
 } = vi.hoisted(() => ({
   findManyMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   updateMock: vi.fn(),
   deleteMock: vi.fn(),
   positionCountMock: vi.fn(),
+  taxReportFindManyMock: vi.fn(),
   snapshotCountMock: vi.fn(),
 }))
 
@@ -43,6 +45,9 @@ vi.mock('../lib/prisma.js', () => ({
     position: {
       count: positionCountMock,
     },
+    taxReport: {
+      findMany: taxReportFindManyMock,
+    },
     portfolioSnapshot: {
       count: snapshotCountMock,
     },
@@ -62,7 +67,8 @@ describe('accounts controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     positionCountMock.mockResolvedValue(0)
-    snapshotCountMock.mockResolvedValue(0)
+    taxReportFindManyMock.mockResolvedValue([])
+    snapshotCountMock.mockResolvedValue(12)
   })
 
   it('lists accounts for authenticated user', async () => {
@@ -176,6 +182,17 @@ describe('accounts controller', () => {
     expect(response.body.success).toBe(true)
   })
 
+  it('deletes a position-free account that still has portfolio snapshots', async () => {
+    findFirstMock.mockResolvedValue({ id: 'a2', name: 'Income' })
+    deleteMock.mockResolvedValue({ id: 'a2' })
+
+    const response = await request(createApp()).delete('/api/accounts/a2')
+
+    expect(response.status).toBe(200)
+    expect(snapshotCountMock).not.toHaveBeenCalled()
+    expect(deleteMock).toHaveBeenCalledWith({ where: { id: 'a2' } })
+  })
+
   it('returns 404 when deleting account not owned by user', async () => {
     findFirstMock.mockResolvedValue(null)
 
@@ -185,18 +202,43 @@ describe('accounts controller', () => {
     expect(response.body.message).toContain('Trading account not found')
   })
 
-  it('returns 409 when account has positions or snapshots', async () => {
+  it('returns 409 naming the position count when the account still has positions', async () => {
     findFirstMock.mockResolvedValue({ id: 'a2', name: 'Income' })
-    positionCountMock.mockResolvedValue(1)
-    snapshotCountMock.mockResolvedValue(0)
+    positionCountMock.mockResolvedValue(3)
 
     const response = await request(createApp()).delete('/api/accounts/a2')
 
     expect(response.status).toBe(409)
-    expect(response.body.message).toContain(
-      'Account cannot be deleted while it still has positions or snapshots'
-    )
+    expect(response.body.message).toContain('still has 3 positions')
     expect(deleteMock).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 naming the financial years when the account is used by tax reports', async () => {
+    findFirstMock.mockResolvedValue({ id: 'a2', name: 'Income' })
+    taxReportFindManyMock.mockResolvedValue([
+      { financialYearLabel: '2023-24', accountsKey: 'a1,a2' },
+      { financialYearLabel: '2024-25', accountsKey: 'a2' },
+      { financialYearLabel: '2024-25', accountsKey: 'a1' },
+    ])
+
+    const response = await request(createApp()).delete('/api/accounts/a2')
+
+    expect(response.status).toBe(409)
+    expect(response.body.message).toContain('2023-24, 2024-25')
+    expect(deleteMock).not.toHaveBeenCalled()
+  })
+
+  it('ignores tax reports scoped to other accounts', async () => {
+    findFirstMock.mockResolvedValue({ id: 'a2', name: 'Income' })
+    taxReportFindManyMock.mockResolvedValue([
+      { financialYearLabel: '2024-25', accountsKey: 'a1,a3' },
+    ])
+    deleteMock.mockResolvedValue({ id: 'a2' })
+
+    const response = await request(createApp()).delete('/api/accounts/a2')
+
+    expect(response.status).toBe(200)
+    expect(deleteMock).toHaveBeenCalledWith({ where: { id: 'a2' } })
   })
 
   it('closes account when no open positions remain', async () => {

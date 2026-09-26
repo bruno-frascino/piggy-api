@@ -6,23 +6,23 @@
       "dependencies": [
         {
           "col": 6,
-          "line": 45,
+          "line": 46,
           "name": "pg",
-          "pos": 1334
+          "pos": 1406
         }
       ],
       "devDependencies": [
         {
           "col": 6,
-          "line": 53,
+          "line": 54,
           "name": "@types/bcryptjs",
-          "pos": 1535
+          "pos": 1607
         },
         {
           "col": 6,
-          "line": 60,
+          "line": 61,
           "name": "@types/pg",
-          "pos": 1762
+          "pos": 1834
         }
       ],
       "duplicates": [],

@@ -16,9 +16,10 @@ grouping could leak into an unrelated grouping.
 Every tax report generation requires an explicit, user-picked multi-select of Trading
 Accounts (never an implicit "all accounts"). The exact set of selected account IDs is
 sorted, joined, and hashed into `TaxReport.accountsKey`. This key is used both as part of
-the uniqueness constraint (`@@unique([userId, financialYearStartYear, accountsKey])`, so
-regenerating for the same account combo + year upserts rather than duplicating) and as the
-lookup key for the prior-year report when chaining carry-forward losses.
+the uniqueness constraint (`@@unique([userId, financialYearStartYear, accountsKey, version])`
+— see ADR 0010, which made reports append-only; this constraint was originally
+`(userId, financialYearStartYear, accountsKey)` and regeneration upserted in place) and as
+the lookup key for the prior-year report when chaining carry-forward losses.
 
 ## Consequences
 

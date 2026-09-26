@@ -205,6 +205,12 @@ router.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Account is scheduled for deletion — restore it to sign in
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post(
   '/login',
@@ -220,6 +226,8 @@ router.post(
         name: true,
         baseCurrency: true,
         passwordHash: true,
+        deletedAt: true,
+        purgeAfter: true,
         createdAt: true,
       },
     })
@@ -228,6 +236,17 @@ router.post(
       return res
         .status(401)
         .json({ error: 'Unauthorized', message: 'Invalid credentials' })
+    }
+
+    // Only revealed after the password checks out, so this cannot be used to
+    // probe which addresses have accounts.
+    if (user.deletedAt) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        code: 'accountPendingDeletion',
+        message: 'This account is scheduled for deletion.',
+        purgeAfter: user.purgeAfter,
+      })
     }
 
     const payload = { userId: user.id, email: user.email }
@@ -242,7 +261,103 @@ router.post(
       },
     })
 
-    const { passwordHash: _, ...safeUser } = user
+    const {
+      passwordHash: _,
+      deletedAt: __,
+      purgeAfter: ___,
+      ...safeUser
+    } = user
+    res.json({
+      success: true,
+      data: { user: safeUser, accessToken, refreshToken },
+    })
+  })
+)
+
+// POST /api/auth/restore
+/**
+ * @swagger
+ * /api/auth/restore:
+ *   post:
+ *     summary: Cancel a pending account deletion and sign in
+ *     description: >
+ *       Valid only while the account is inside its deletion grace period.
+ *       Requires the account password, so a deletion cannot be undone by
+ *       anyone who merely knows the email address.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Account restored — returns user object + accessToken + refreshToken
+ *       401:
+ *         description: Invalid credentials
+ *       409:
+ *         description: Account is not pending deletion
+ */
+router.post(
+  '/restore',
+  loginValidation,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email, password } = req.body
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        baseCurrency: true,
+        passwordHash: true,
+        deletedAt: true,
+        createdAt: true,
+      },
+    })
+
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      return res
+        .status(401)
+        .json({ error: 'Unauthorized', message: 'Invalid credentials' })
+    }
+
+    if (!user.deletedAt) {
+      return res.status(409).json({
+        error: 'Conflict',
+        message: 'This account is not scheduled for deletion.',
+      })
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { deletedAt: null, purgeAfter: null },
+    })
+
+    const payload = { userId: user.id, email: user.email }
+    const accessToken = signAccessToken(payload)
+    const refreshToken = signRefreshToken(payload)
+
+    await prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        token: refreshToken,
+        expiresAt: refreshTokenExpiresAt(),
+      },
+    })
+
+    const { passwordHash: _, deletedAt: __, ...safeUser } = user
     res.json({
       success: true,
       data: { user: safeUser, accessToken, refreshToken },
@@ -445,8 +560,10 @@ router.post(
 
     const user = await prisma.user.findUnique({ where: { email } })
 
-    // Always respond with 200 to avoid leaking whether email is registered
-    if (!user) {
+    // Always respond with 200 to avoid leaking whether email is registered.
+    // An account pending deletion is treated the same way — it is restored via
+    // /auth/restore, not by resetting the password.
+    if (!user || user.deletedAt) {
       return res.json({
         success: true,
         message: 'If that email is registered you will receive a reset link.',
