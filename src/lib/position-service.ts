@@ -91,6 +91,7 @@ export async function resolveTradingAccount(
     create: {
       userId,
       name: normalizedName,
+      isDemo: false,
     },
     update: {},
   })

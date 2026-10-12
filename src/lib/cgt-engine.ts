@@ -87,10 +87,13 @@ export async function computeCapitalGainsReport(
   const accountsKey = computeAccountsKey(accountIds)
   const ownedAccounts = await prisma.tradingAccount.findMany({
     where: { id: { in: accountIds }, userId },
-    select: { id: true },
+    select: { id: true, isDemo: true },
   })
   if (ownedAccounts.length !== new Set(accountIds).size) {
     throw new Error('One or more selected accounts were not found')
+  }
+  if (ownedAccounts.some((account) => account.isDemo)) {
+    throw new Error('Demo accounts cannot be included in tax reports')
   }
 
   const { start, end, label } = getFinancialYearRange(financialYearStartYear)
@@ -102,6 +105,7 @@ export async function computeCapitalGainsReport(
       position: {
         userId,
         accountId: { in: accountIds },
+        account: { isDemo: false },
       },
     },
     include: {

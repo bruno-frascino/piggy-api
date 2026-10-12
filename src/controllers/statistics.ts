@@ -63,6 +63,7 @@ const buildPositionScope = (req: Request) => {
 
   if (accountIds.length === 1) where.accountId = accountIds[0]
   else if (accountIds.length > 1) where.accountId = { in: accountIds }
+  else where.account = { isDemo: false }
 
   if (exchangeCodes.length > 0 || assetTypes.length > 0) {
     where.asset = {
@@ -130,7 +131,7 @@ const commonValidation = [
  *         name: accountIds
  *         schema:
  *           type: string
- *         description: CSV trading account IDs
+ *         description: CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.
  *       - in: query
  *         name: exchangeCodes
  *         schema:
@@ -253,7 +254,7 @@ router.get(
  *         name: accountIds
  *         schema:
  *           type: string
- *         description: CSV trading account IDs
+ *         description: CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.
  *       - in: query
  *         name: exchangeCodes
  *         schema:
@@ -341,7 +342,7 @@ router.get(
           ? { accountId: accountIds[0] }
           : accountIds.length > 1
             ? { accountId: { in: accountIds } }
-            : {}),
+            : { account: { isDemo: false } }),
         ...(exchangeCodes.length === 1
           ? { exchange: { code: exchangeCodes[0] } }
           : exchangeCodes.length > 1
@@ -393,7 +394,7 @@ router.get(
  *         name: accountIds
  *         schema:
  *           type: string
- *         description: CSV trading account IDs
+ *         description: CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.
  *       - in: query
  *         name: exchangeCodes
  *         schema:
@@ -493,7 +494,7 @@ router.get(
  *         name: accountIds
  *         schema:
  *           type: string
- *         description: CSV trading account IDs
+ *         description: CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.
  *       - in: query
  *         name: exchangeCodes
  *         schema:
@@ -535,7 +536,7 @@ router.get(
           ? { accountId: accountIds[0] }
           : accountIds.length > 1
             ? { accountId: { in: accountIds } }
-            : {}),
+            : { account: { isDemo: false } }),
         ...(exchangeCodes.length === 1
           ? { exchange: { code: exchangeCodes[0] } }
           : exchangeCodes.length > 1
@@ -585,7 +586,7 @@ router.get(
  *         name: accountIds
  *         schema:
  *           type: string
- *         description: CSV trading account IDs
+ *         description: CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.
  *       - in: query
  *         name: exchangeCodes
  *         schema:
@@ -687,7 +688,7 @@ router.get(
  *         name: accountIds
  *         schema:
  *           type: string
- *         description: CSV trading account IDs
+ *         description: CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.
  *       - in: query
  *         name: exchangeCodes
  *         schema:

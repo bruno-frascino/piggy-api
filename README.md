@@ -176,6 +176,16 @@ Defined in `prisma/schema.prisma`:
 
 ### Database Commands
 
+- `yarn db:wipe` - Preview a data-only reset (does not connect to the database)
+- `yarn db:wipe --confirm` - Permanently clear all application data, including all users,
+  while preserving exchanges, the database schema, and Prisma migration history.
+  Uses `DATABASE_URL` from the environment or `.env`. Stop the API and other writers
+  and take a backup first; this bypasses the user-deletion grace period and cannot
+  be undone without a backup. All tables are truncated in one atomic statement,
+  without `CASCADE`; unexpected foreign-key dependencies cause the reset to fail.
+  There are no seeded symbols: assets, price history, and FX cache are cleared,
+  and symbol search continues to use Yahoo Finance. Register a new user afterward.
+
 - `yarn db:migrate:dev` - Create/apply local migrations during development
 - `yarn db:migrate:deploy` - Apply pending checked-in migrations (used in production deploys)
 - `yarn db:migrate:reset` - Reset the database

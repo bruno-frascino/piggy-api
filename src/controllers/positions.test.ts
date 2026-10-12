@@ -111,7 +111,7 @@ describe('positions controller', () => {
       expect(response.body.meta).toEqual({ total: 1, limit: 50, offset: 0 })
       expect(positionFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { userId: 'u_1' },
+          where: { userId: 'u_1', account: { isDemo: false } },
         })
       )
     })
@@ -197,7 +197,10 @@ describe('positions controller', () => {
       expect(response.body.meta).toEqual({ total: 1, limit: 500, offset: 0 })
       expect(transactionFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { type: 'SELL', position: { userId: 'u_1' } },
+          where: {
+            type: 'SELL',
+            position: { userId: 'u_1', account: { isDemo: false } },
+          },
           take: 500,
           skip: 0,
         })
@@ -226,10 +229,29 @@ describe('positions controller', () => {
               gte: new Date('2026-01-01T00:00:00.000Z'),
               lte: new Date('2026-06-30T23:59:59.999Z'),
             },
-            position: { userId: 'u_1' },
+            position: { userId: 'u_1', account: { isDemo: false } },
           },
           take: 50,
           skip: 100,
+        })
+      )
+    })
+
+    it('includes demo accounts when an accountId is explicitly requested', async () => {
+      transactionFindManyMock.mockResolvedValue([])
+      transactionCountMock.mockResolvedValue(0)
+
+      const response = await request(createApp()).get(
+        '/api/positions/close-events?accountId=demo_1'
+      )
+
+      expect(response.status).toBe(200)
+      expect(transactionFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            type: 'SELL',
+            position: { userId: 'u_1', accountId: 'demo_1' },
+          },
         })
       )
     })
@@ -401,6 +423,80 @@ describe('positions controller', () => {
         .send({ notes: 'hello' })
 
       expect(response.status).toBe(404)
+    })
+
+    describe('moving between accounts', () => {
+      const positionIn = (isDemo: boolean) => ({
+        id: 'p_1',
+        assetId: 'a_1',
+        quantity: 5,
+        entryPrice: 10,
+        buyFees: 0,
+        openDate: '2026-01-01T00:00:00.000Z',
+        account: { isDemo },
+        asset: { symbol: 'AAPL', exchange: { code: 'NASDAQ' } },
+        transactions: [],
+      })
+
+      it('rejects moving a real position into a demo account', async () => {
+        positionFindFirstMock.mockResolvedValue(positionIn(false))
+        accountFindFirstMock.mockResolvedValue({ id: 'demo_1', isDemo: true })
+
+        const response = await request(createApp())
+          .patch('/api/positions/p_1')
+          .send({ accountId: 'demo_1' })
+
+        expect(response.status).toBe(400)
+        expect(response.body).toEqual({
+          error: 'Bad Request',
+          message: 'Positions cannot be moved between demo and real accounts',
+        })
+        expect(positionUpdateMock).not.toHaveBeenCalled()
+      })
+
+      it('rejects moving a demo position into a real account', async () => {
+        positionFindFirstMock.mockResolvedValue(positionIn(true))
+        accountFindFirstMock.mockResolvedValue({ id: 'acc_2', isDemo: false })
+
+        const response = await request(createApp())
+          .patch('/api/positions/p_1')
+          .send({ accountId: 'acc_2' })
+
+        expect(response.status).toBe(400)
+        expect(response.body.message).toBe(
+          'Positions cannot be moved between demo and real accounts'
+        )
+        expect(positionUpdateMock).not.toHaveBeenCalled()
+      })
+
+      it('allows moving between two real accounts', async () => {
+        positionFindFirstMock.mockResolvedValue(positionIn(false))
+        accountFindFirstMock.mockResolvedValue({ id: 'acc_2', isDemo: false })
+        positionUpdateMock.mockResolvedValue({ id: 'p_1', accountId: 'acc_2' })
+
+        const response = await request(createApp())
+          .patch('/api/positions/p_1')
+          .send({ accountId: 'acc_2' })
+
+        expect(response.status).toBe(200)
+        expect(positionUpdateMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ accountId: 'acc_2' }),
+          })
+        )
+      })
+
+      it('allows moving between two demo accounts', async () => {
+        positionFindFirstMock.mockResolvedValue(positionIn(true))
+        accountFindFirstMock.mockResolvedValue({ id: 'demo_2', isDemo: true })
+        positionUpdateMock.mockResolvedValue({ id: 'p_1', accountId: 'demo_2' })
+
+        const response = await request(createApp())
+          .patch('/api/positions/p_1')
+          .send({ accountId: 'demo_2' })
+
+        expect(response.status).toBe(200)
+      })
     })
 
     it('updates simple metadata fields', async () => {

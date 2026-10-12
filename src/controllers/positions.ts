@@ -46,7 +46,9 @@ router.use(authenticateToken)
  *         name: accountId
  *         schema:
  *           type: string
- *         description: Filter by trading account ID
+ *         description: >
+ *           Filter by trading account ID. When omitted, positions in demo accounts are
+ *           excluded; pass a demo account's ID to list its positions.
  *       - in: query
  *         name: limit
  *         schema:
@@ -107,6 +109,7 @@ router.get(
       where.status = { in: statuses }
     }
     if (accountId) where.accountId = accountId
+    else where.account = { isDemo: false }
     if (assetType || exchangeCode) {
       where.asset = {
         ...(assetType ? { assetType } : {}),
@@ -364,10 +367,18 @@ router.post(
  * /api/positions/close-events:
  *   get:
  *     summary: List close events (SELL transactions) for the authenticated user
+ *     description: >
+ *       Without `accountId`, close events from demo accounts are excluded. Pass a demo
+ *       account's ID to list its history explicitly.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
  *     parameters:
+ *       - in: query
+ *         name: accountId
+ *         schema:
+ *           type: string
+ *         description: Only include close events for this trading account (demo accounts allowed)
  *       - in: query
  *         name: dateFrom
  *         schema:
@@ -424,6 +435,7 @@ router.post(
 router.get(
   '/close-events',
   [
+    query('accountId').optional().isString().trim().isLength({ min: 1 }),
     query('dateFrom').optional().isISO8601(),
     query('dateTo').optional().isISO8601(),
     query('limit').optional().isInt({ min: 1, max: 500 }).toInt(),
@@ -433,6 +445,10 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const limit = Number(req.query.limit) || 500
     const offset = Number(req.query.offset) || 0
+    const accountId =
+      typeof req.query.accountId === 'string' && req.query.accountId
+        ? req.query.accountId
+        : undefined
 
     const dateFrom =
       typeof req.query.dateFrom === 'string'
@@ -454,7 +470,10 @@ router.get(
     const where = {
       type: 'SELL' as const,
       ...(dateBounds ? { date: dateBounds } : {}),
-      position: { userId: req.user!.userId },
+      position: {
+        userId: req.user!.userId,
+        ...(accountId ? { accountId } : { account: { isDemo: false } }),
+      },
     }
 
     const [events, total] = await Promise.all([
@@ -476,7 +495,7 @@ router.get(
               openReason: true,
               notes: true,
               maxDrawdownPercent: true,
-              account: { select: { id: true, name: true } },
+              account: { select: { id: true, name: true, isDemo: true } },
               asset: {
                 select: {
                   symbol: true,
@@ -745,6 +764,8 @@ router.post(
  *     responses:
  *       200:
  *         description: Position updated
+ *       400:
+ *         description: Validation error, or the target account is a demo account while the position's current account is real (or vice versa) — positions cannot be moved between demo and real accounts
  *       401:
  *         description: Unauthorized
  *       404:
@@ -804,6 +825,7 @@ router.patch(
     const existing = await prisma.position.findFirst({
       where: { id: req.params.id, userId: req.user!.userId },
       include: {
+        account: { select: { isDemo: true } },
         asset: { include: { exchange: true } },
         transactions: { orderBy: { date: 'asc' } },
       },
@@ -918,6 +940,14 @@ router.patch(
         accountName,
         accountId
       )
+      // Moving a parcel across the demo/real boundary would silently add it to,
+      // or remove it from, tax reports.
+      if (account.isDemo !== existing.account.isDemo) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'Positions cannot be moved between demo and real accounts',
+        })
+      }
       updates.accountId = account.id
     }
 

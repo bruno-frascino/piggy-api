@@ -118,6 +118,33 @@ describe('computeCapitalGainsReport', () => {
     ).rejects.toThrow('One or more selected accounts were not found')
   })
 
+  it('rejects when a selected account is a demo account', async () => {
+    tradingAccountFindManyMock.mockResolvedValue([
+      { id: 'acc1', isDemo: false },
+      { id: 'demo1', isDemo: true },
+    ])
+    await expect(
+      computeCapitalGainsReport('u1', 2025, ['acc1', 'demo1'])
+    ).rejects.toThrow('Demo accounts cannot be included in tax reports')
+    expect(transactionFindManyMock).not.toHaveBeenCalled()
+  })
+
+  it('defensively filters disposals to non-demo accounts', async () => {
+    transactionFindManyMock.mockResolvedValue([])
+    await computeCapitalGainsReport('u1', 2025, ['acc1'])
+    expect(transactionFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          position: {
+            userId: 'u1',
+            accountId: { in: ['acc1'] },
+            account: { isDemo: false },
+          },
+        }),
+      })
+    )
+  })
+
   it('computes a long-term discount-eligible gain correctly (AUD only)', async () => {
     transactionFindManyMock.mockResolvedValue([
       makeDisposal({

@@ -55,3 +55,8 @@ two separate columns in `HoldingsTable.tsx` — never conflate them.
 organized around ("account-first" UX). A user can have several (e.g. personal vs a
 spouse's), each with its own set of positions and its own eligibility for tax report
 account-selection.
+
+**Demo account** — A `TradingAccount` with `isDemo = true`, chosen at creation and immutable.
+Used for practice: positions open and close normally, but the account is never eligible for
+tax reports and is excluded from "All accounts" aggregates (History, Statistics); its data
+shows only when the account is explicitly selected. See `docs/adr/0012-demo-trading-accounts.md`.

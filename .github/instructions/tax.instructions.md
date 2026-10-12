@@ -37,5 +37,7 @@ Full write-up: `docs/ato-capital-gains-methodology.md`. Full ADR: `docs/adr/0002
   because the VPS has only 1-2GB RAM. Bytes are stored directly in `TaxReport.pdfData`
   (Postgres `Bytes` column) — no S3/disk storage — so past reports can be re-downloaded via
   `GET /api/tax-reports/:id/download`. Email delivery is intentionally NOT implemented.
+- Demo accounts (`TradingAccount.isDemo`) are never part of a report: `computeCapitalGainsReport`
+  rejects them (→ `400`) and filters disposals with `account: { isDemo: false }` (ADR 0012).
 - Every report (UI and PDF) must carry a "not professional tax advice — verify with a
   registered tax agent" disclaimer.

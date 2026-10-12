@@ -75,6 +75,7 @@
   "paths": {
     "/api/accounts": {
       "get": {
+        "description": "Each account includes an immutable `isDemo` flag. Demo accounts are listed here but excluded from tax reports and \"All accounts\" aggregates.",
         "responses": {
           "200": {
             "description": "Trading accounts"
@@ -99,6 +100,11 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "isDemo": {
+                    "default": false,
+                    "description": "Practice account. Chosen at creation only and immutable afterwards. Demo accounts are excluded from ATO tax reports and from \"All accounts\" aggregates. Ignored when an account with this name already exists.\n",
+                    "type": "boolean"
+                  },
                   "name": {
                     "example": "Main",
                     "type": "string"
@@ -140,7 +146,7 @@
     },
     "/api/accounts/{id}": {
       "delete": {
-        "description": "Permanently deletes a trading account owned by the authenticated user, along with its derived performance history (portfolio snapshots). Refuses to delete an account that still has positions, or one that is referenced by a generated tax report — close the account instead to preserve that history.\n",
+        "description": "Permanently deletes a trading account owned by the authenticated user, along with its derived performance history (portfolio snapshots). Demo accounts are deleted together with everything that belongs to them (positions, transactions, snapshots). For non-demo accounts, refuses to delete an account that still has positions, or one that is referenced by a generated tax report — close the account instead to preserve that history.\n",
         "parameters": [
           {
             "in": "path",
@@ -162,7 +168,7 @@
             "description": "Account not found"
           },
           "409": {
-            "description": "Account has positions or is used by a tax report"
+            "description": "Non-demo account has positions or is used by a tax report"
           }
         },
         "security": [
@@ -176,7 +182,7 @@
         ]
       },
       "patch": {
-        "description": "Rename a trading account",
+        "description": "Rename a trading account. The `isDemo` flag is immutable; sending it returns 400.\n",
         "parameters": [
           {
             "in": "path",
@@ -209,6 +215,9 @@
         "responses": {
           "200": {
             "description": "Account updated"
+          },
+          "400": {
+            "description": "Validation error, or an attempt to change the immutable isDemo flag"
           },
           "401": {
             "description": "Unauthorized"
@@ -855,7 +864,7 @@
             }
           },
           {
-            "description": "Filter by trading account ID",
+            "description": "Filter by trading account ID. When omitted, positions in demo accounts are excluded; pass a demo account's ID to list its positions.\n",
             "in": "query",
             "name": "accountId",
             "schema": {
@@ -1029,7 +1038,16 @@
     },
     "/api/positions/close-events": {
       "get": {
+        "description": "Without `accountId`, close events from demo accounts are excluded. Pass a demo account's ID to list its history explicitly.\n",
         "parameters": [
+          {
+            "description": "Only include close events for this trading account (demo accounts allowed)",
+            "in": "query",
+            "name": "accountId",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "description": "Only include close events on or after this date",
             "in": "query",
@@ -1324,6 +1342,9 @@
         "responses": {
           "200": {
             "description": "Position updated"
+          },
+          "400": {
+            "description": "Validation error, or the target account is a demo account while the position's current account is real (or vice versa) — positions cannot be moved between demo and real accounts"
           },
           "401": {
             "description": "Unauthorized"
@@ -1758,7 +1779,7 @@
             }
           },
           {
-            "description": "CSV trading account IDs",
+            "description": "CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.",
             "in": "query",
             "name": "accountIds",
             "schema": {
@@ -1826,7 +1847,7 @@
       "get": {
         "parameters": [
           {
-            "description": "CSV trading account IDs",
+            "description": "CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.",
             "in": "query",
             "name": "accountIds",
             "schema": {
@@ -1966,7 +1987,7 @@
       "get": {
         "parameters": [
           {
-            "description": "CSV trading account IDs",
+            "description": "CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.",
             "in": "query",
             "name": "accountIds",
             "schema": {
@@ -2037,7 +2058,7 @@
       "get": {
         "parameters": [
           {
-            "description": "CSV trading account IDs",
+            "description": "CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.",
             "in": "query",
             "name": "accountIds",
             "schema": {
@@ -2095,7 +2116,7 @@
       "get": {
         "parameters": [
           {
-            "description": "CSV trading account IDs",
+            "description": "CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.",
             "in": "query",
             "name": "accountIds",
             "schema": {
@@ -2205,7 +2226,7 @@
             }
           },
           {
-            "description": "CSV trading account IDs",
+            "description": "CSV trading account IDs. When omitted, demo accounts are excluded; pass a demo account's ID to include it.",
             "in": "query",
             "name": "accountIds",
             "schema": {
@@ -2442,7 +2463,7 @@
             "description": "Report generated"
           },
           "400": {
-            "description": "Invalid input or no accounts selected"
+            "description": "Invalid input, no accounts selected, or a selected account is a demo account (demo accounts are never eligible for tax reports)"
           },
           "401": {
             "description": "Unauthorized"

@@ -171,7 +171,7 @@
     "startLine": 56
   },
   {
-    "endLine": 250,
+    "endLine": 254,
     "file": "src/lib/cgt-engine.ts",
     "jsdoc": "Computes an ATO-style capital gains report for a user, financial year, and an explicit set of Trading Accounts (a \"declaration\" — e.g. the user's own accounts vs a spouse's accounts tracked under the same login). Each `Position` is created with exactly one BUY transaction and is never appended to (see positions.ts `POST /`), so every Position IS already a discrete CGT parcel — no FIFO lot reconstruction is required. Every SELL transaction against it (full or partial close) is an unambiguous disposal of that specific parcel.",
     "kind": "FunctionDeclaration",
@@ -468,7 +468,7 @@
     "startLine": 8
   },
   {
-    "endLine": 97,
+    "endLine": 98,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
@@ -477,22 +477,22 @@
     "startLine": 71
   },
   {
-    "endLine": 103,
+    "endLine": 104,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "toDateOnly",
     "signature": "export function toDateOnly(value: Date)",
-    "startLine": 99
+    "startLine": 100
   },
   {
-    "endLine": 147,
+    "endLine": 148,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "recomputePositionFromTransactions",
     "signature": "export async function recomputePositionFromTransactions(positionId: string)",
-    "startLine": 105
+    "startLine": 106
   },
   {
     "endLine": 23,

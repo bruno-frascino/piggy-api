@@ -279,6 +279,69 @@ describe('statistics controller', () => {
     })
   })
 
+  describe('demo account scoping', () => {
+    it('excludes demo accounts from the all-accounts scope', async () => {
+      const response = await request(createApp()).get('/api/statistics/summary')
+
+      expect(response.status).toBe(200)
+      expect(transactionFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            position: { userId: 'u_1', account: { isDemo: false } },
+          }),
+        })
+      )
+      expect(positionFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ account: { isDemo: false } }),
+        })
+      )
+    })
+
+    it('includes a demo account when it is explicitly selected', async () => {
+      const response = await request(createApp()).get(
+        '/api/statistics/summary?accountIds=demo_1'
+      )
+
+      expect(response.status).toBe(200)
+      expect(transactionFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            position: { userId: 'u_1', accountId: 'demo_1' },
+          }),
+        })
+      )
+    })
+
+    it('excludes demo accounts from equity snapshots without an account filter', async () => {
+      const response = await request(createApp()).get(
+        '/api/statistics/timeseries?metric=equity'
+      )
+
+      expect(response.status).toBe(200)
+      expect(snapshotFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'u_1',
+            account: { isDemo: false },
+          }),
+        })
+      )
+    })
+
+    it('does not add the demo filter to snapshots for an explicit account', async () => {
+      await request(createApp()).get('/api/statistics/risk?accountIds=demo_1')
+
+      expect(snapshotFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ accountId: 'demo_1' }),
+        })
+      )
+      const where = snapshotFindManyMock.mock.calls[0][0].where
+      expect(where.account).toBeUndefined()
+    })
+  })
+
   describe('GET /api/statistics/risk', () => {
     it('returns computed risk metrics from snapshots', async () => {
       snapshotFindManyMock.mockResolvedValue([

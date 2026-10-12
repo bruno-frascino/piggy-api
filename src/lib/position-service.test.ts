@@ -151,7 +151,7 @@ describe('resolveTradingAccount', () => {
 
     expect(accountUpsertMock).toHaveBeenCalledWith({
       where: { userId_name: { userId: 'u_1', name: 'Main' } },
-      create: { userId: 'u_1', name: 'Main' },
+      create: { userId: 'u_1', name: 'Main', isDemo: false },
       update: {},
     })
     expect(result).toEqual({ id: 'acc_2', name: 'Main' })

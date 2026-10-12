@@ -116,7 +116,7 @@ function serializeReport(report: {
  *       200:
  *         description: Report generated
  *       400:
- *         description: Invalid input or no accounts selected
+ *         description: Invalid input, no accounts selected, or a selected account is a demo account (demo accounts are never eligible for tax reports)
  *       401:
  *         description: Unauthorized
  */

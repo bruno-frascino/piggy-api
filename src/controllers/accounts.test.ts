@@ -158,8 +158,38 @@ describe('accounts controller', () => {
       data: {
         userId: 'u_1',
         name: 'Income',
+        isDemo: false,
       },
     })
+  })
+
+  it('creates a demo account when isDemo is true', async () => {
+    findUniqueMock.mockResolvedValue(null)
+    createMock.mockResolvedValue({
+      id: 'a9',
+      userId: 'u_1',
+      name: 'Practice',
+      isDemo: true,
+    })
+
+    const response = await request(createApp())
+      .post('/api/accounts')
+      .send({ name: 'Practice', isDemo: true })
+
+    expect(response.status).toBe(201)
+    expect(response.body.data.isDemo).toBe(true)
+    expect(createMock).toHaveBeenCalledWith({
+      data: { userId: 'u_1', name: 'Practice', isDemo: true },
+    })
+  })
+
+  it('rejects a non-boolean isDemo on create', async () => {
+    const response = await request(createApp())
+      .post('/api/accounts')
+      .send({ name: 'Practice', isDemo: 'yes' })
+
+    expect(response.status).toBe(400)
+    expect(createMock).not.toHaveBeenCalled()
   })
 
   it('returns validation error for empty name', async () => {
@@ -239,6 +269,32 @@ describe('accounts controller', () => {
 
     expect(response.status).toBe(200)
     expect(deleteMock).toHaveBeenCalledWith({ where: { id: 'a2' } })
+  })
+
+  it('deletes a demo account without checking positions or tax reports', async () => {
+    findFirstMock.mockResolvedValue({ id: 'd1', name: 'Demo1', isDemo: true })
+    positionCountMock.mockResolvedValue(5)
+    taxReportFindManyMock.mockResolvedValue([
+      { financialYearLabel: '2024-25', accountsKey: 'd1' },
+    ])
+    deleteMock.mockResolvedValue({ id: 'd1' })
+
+    const response = await request(createApp()).delete('/api/accounts/d1')
+
+    expect(response.status).toBe(200)
+    expect(positionCountMock).not.toHaveBeenCalled()
+    expect(taxReportFindManyMock).not.toHaveBeenCalled()
+    expect(deleteMock).toHaveBeenCalledWith({ where: { id: 'd1' } })
+  })
+
+  it('still blocks deleting a non-demo account that has positions', async () => {
+    findFirstMock.mockResolvedValue({ id: 'a2', name: 'Income', isDemo: false })
+    positionCountMock.mockResolvedValue(1)
+
+    const response = await request(createApp()).delete('/api/accounts/a2')
+
+    expect(response.status).toBe(409)
+    expect(deleteMock).not.toHaveBeenCalled()
   })
 
   it('closes account when no open positions remain', async () => {
@@ -341,6 +397,17 @@ describe('accounts controller', () => {
     expect(response.body.message).toContain(
       'An account with this name already exists'
     )
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects attempts to change the immutable isDemo flag', async () => {
+    const response = await request(createApp())
+      .patch('/api/accounts/a2')
+      .send({ name: 'NewName', isDemo: true })
+
+    expect(response.status).toBe(400)
+    expect(response.body.message).toContain('demo flag cannot be changed')
+    expect(findFirstMock).not.toHaveBeenCalled()
     expect(updateMock).not.toHaveBeenCalled()
   })
 })

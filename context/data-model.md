@@ -99,6 +99,7 @@ Constraints: `@@index([purgeAfter])`
 | userId | `String` | — |
 | name | `String` | — |
 | status | `TradingAccountStatus` | @default(ACTIVE) |
+| isDemo | `Boolean` | @default(false) |
 | closedAt | `DateTime?` | — |
 | createdAt | `DateTime` | @default(now()) |
 | updatedAt | `DateTime` | @updatedAt |
@@ -339,3 +340,4 @@ Constraints: `@@unique([userId, name])`
 - `20260814234043_add_watchlists_screener`
 - `20260926000000_tax_report_revisions`
 - `20260926000001_user_soft_delete`
+- `20261009000000_add_demo_trading_accounts`

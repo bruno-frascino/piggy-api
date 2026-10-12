@@ -218,6 +218,24 @@ describe('tax-reports controller', () => {
     })
   })
 
+  describe('POST /generate with demo accounts', () => {
+    it('returns 400 when a selected account is a demo account', async () => {
+      computeCapitalGainsReportMock.mockRejectedValue(
+        new Error('Demo accounts cannot be included in tax reports')
+      )
+
+      const response = await request(createApp())
+        .post('/api/tax-reports/generate')
+        .send({ financialYearStartYear: 2025, accountIds: ['demo_1'] })
+
+      expect(response.status).toBe(400)
+      expect(response.body.message).toBe(
+        'Demo accounts cannot be included in tax reports'
+      )
+      expect(taxReportCreateMock).not.toHaveBeenCalled()
+    })
+  })
+
   describe('GET /', () => {
     it('lists only current revisions by default', async () => {
       taxReportFindManyMock.mockResolvedValue([SAMPLE_REPORT_ROW])

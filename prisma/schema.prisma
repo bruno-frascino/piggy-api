@@ -87,6 +87,7 @@ model TradingAccount {
   userId     String
   name       String
   status     TradingAccountStatus @default(ACTIVE)
+  isDemo     Boolean  @default(false)
   closedAt   DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

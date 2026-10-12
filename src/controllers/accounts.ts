@@ -15,6 +15,7 @@ router.use(authenticateToken)
  * /api/accounts:
  *   get:
  *     summary: List trading accounts for the authenticated user
+ *     description: Each account includes an immutable `isDemo` flag. Demo accounts are listed here but excluded from tax reports and "All accounts" aggregates.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -64,6 +65,13 @@ router.get(
  *               name:
  *                 type: string
  *                 example: Main
+ *               isDemo:
+ *                 type: boolean
+ *                 default: false
+ *                 description: >
+ *                   Practice account. Chosen at creation only and immutable afterwards.
+ *                   Demo accounts are excluded from ATO tax reports and from "All accounts"
+ *                   aggregates. Ignored when an account with this name already exists.
  *     responses:
  *       200:
  *         description: Existing account returned
@@ -78,10 +86,15 @@ router.post(
   '/',
   [
     body('name').isString().trim().isLength({ min: 1, max: 80 }),
+    body('isDemo')
+      .optional()
+      .isBoolean()
+      .withMessage('isDemo must be a boolean'),
     handleValidationErrors,
   ],
   asyncHandler(async (req: Request, res: Response) => {
     const name = String(req.body.name).trim()
+    const isDemo = req.body.isDemo === true
 
     const existing = await prisma.tradingAccount.findUnique({
       where: {
@@ -111,6 +124,7 @@ router.post(
       data: {
         userId: req.user!.userId,
         name,
+        isDemo,
       },
     })
 
@@ -247,7 +261,8 @@ router.post(
  * /api/accounts/{id}:
  *   patch:
  *     summary: Update a trading account
- *     description: Rename a trading account
+ *     description: >
+ *       Rename a trading account. The `isDemo` flag is immutable; sending it returns 400.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -272,6 +287,8 @@ router.post(
  *     responses:
  *       200:
  *         description: Account updated
+ *       400:
+ *         description: Validation error, or an attempt to change the immutable isDemo flag
  *       401:
  *         description: Unauthorized
  *       404:
@@ -290,6 +307,13 @@ router.patch(
     const id = String(req.params.id)
     const userId = req.user!.userId
     const { name } = req.body
+
+    if (req.body.isDemo !== undefined) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'The demo flag cannot be changed after an account is created',
+      })
+    }
 
     const account = await prisma.tradingAccount.findFirst({
       where: { id, userId },
@@ -332,9 +356,11 @@ router.patch(
  *     summary: Delete a trading account
  *     description: >
  *       Permanently deletes a trading account owned by the authenticated user, along with
- *       its derived performance history (portfolio snapshots). Refuses to delete an account
- *       that still has positions, or one that is referenced by a generated tax report —
- *       close the account instead to preserve that history.
+ *       its derived performance history (portfolio snapshots). Demo accounts are deleted
+ *       together with everything that belongs to them (positions, transactions, snapshots).
+ *       For non-demo accounts, refuses to delete an account that still has positions, or one
+ *       that is referenced by a generated tax report — close the account instead to preserve
+ *       that history.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -352,7 +378,7 @@ router.patch(
  *       404:
  *         description: Account not found
  *       409:
- *         description: Account has positions or is used by a tax report
+ *         description: Non-demo account has positions or is used by a tax report
  */
 router.delete(
   '/:id',
@@ -363,13 +389,24 @@ router.delete(
 
     const account = await prisma.tradingAccount.findFirst({
       where: { id, userId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, isDemo: true },
     })
 
     if (!account) {
       return res.status(404).json({
         error: 'Not Found',
         message: 'Trading account not found',
+      })
+    }
+
+    // Demo accounts are never eligible for tax reports, so nothing outside the account
+    // can reference them. Positions, transactions and snapshots cascade at the database
+    // level, which makes the whole account disposable in one statement.
+    if (account.isDemo) {
+      await prisma.tradingAccount.delete({ where: { id } })
+      return res.json({
+        success: true,
+        message: `Demo account '${account.name}' and all its data deleted`,
       })
     }
 
