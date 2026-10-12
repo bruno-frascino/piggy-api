@@ -8,11 +8,13 @@ const {
   transactionCountMock,
   positionFindManyMock,
   snapshotFindManyMock,
+  exchangeFindManyMock,
 } = vi.hoisted(() => ({
   transactionFindManyMock: vi.fn(),
   transactionCountMock: vi.fn(),
   positionFindManyMock: vi.fn(),
   snapshotFindManyMock: vi.fn(),
+  exchangeFindManyMock: vi.fn(),
 }))
 
 vi.mock('../middleware/auth.js', () => ({
@@ -34,6 +36,9 @@ vi.mock('../lib/prisma.js', () => ({
     portfolioSnapshot: {
       findMany: snapshotFindManyMock,
     },
+    exchange: {
+      findMany: exchangeFindManyMock,
+    },
   },
 }))
 
@@ -53,6 +58,7 @@ describe('statistics controller', () => {
     positionFindManyMock.mockResolvedValue([])
     transactionFindManyMock.mockResolvedValue([])
     snapshotFindManyMock.mockResolvedValue([])
+    exchangeFindManyMock.mockResolvedValue([])
   })
 
   describe('GET /api/statistics/summary', () => {
@@ -110,6 +116,34 @@ describe('statistics controller', () => {
   })
 
   describe('GET /api/statistics/timeseries', () => {
+    it('returns the exchange currency when scoped to a single exchange', async () => {
+      exchangeFindManyMock.mockResolvedValue([{ currency: 'AUD' }])
+
+      const response = await request(createApp()).get(
+        '/api/statistics/timeseries?metric=realizedPnL&exchangeCodes=asx'
+      )
+
+      expect(response.status).toBe(200)
+      expect(exchangeFindManyMock).toHaveBeenCalledWith({
+        where: { code: { in: ['ASX'] } },
+        select: { currency: true },
+      })
+      expect(response.body.data.currency).toBe('AUD')
+    })
+
+    it('falls back to USD when the scope spans several currencies', async () => {
+      exchangeFindManyMock.mockResolvedValue([
+        { currency: 'AUD' },
+        { currency: 'USD' },
+      ])
+
+      const response = await request(createApp()).get(
+        '/api/statistics/timeseries?metric=equity&exchangeCodes=ASX,NASDAQ'
+      )
+
+      expect(response.body.data.currency).toBe('USD')
+    })
+
     it('returns bucketed points for equity metric', async () => {
       snapshotFindManyMock.mockResolvedValue([
         {
@@ -404,6 +438,43 @@ describe('statistics controller', () => {
       expect(response.body.data.rows).toHaveLength(1)
       expect(response.body.data.rows[0].key).toBe('Technology')
       expect(response.body.data.total).toBe(80)
+    })
+
+    it('includes the exchange currency on exchange breakdown rows', async () => {
+      positionFindManyMock.mockResolvedValue([
+        {
+          accountId: 'acc_1',
+          realizedPnL: 100,
+          unrealizedPnL: 20,
+          capitalAllocated: 1000,
+          asset: {
+            industry: null,
+            assetType: 'EQUITY',
+            exchange: { code: 'ASX', currency: 'AUD' },
+          },
+        },
+        {
+          accountId: 'acc_1',
+          realizedPnL: 10,
+          unrealizedPnL: 0,
+          capitalAllocated: 500,
+          asset: {
+            industry: null,
+            assetType: 'EQUITY',
+            exchange: { code: 'NASDAQ', currency: 'USD' },
+          },
+        },
+      ])
+
+      const response = await request(createApp()).get(
+        '/api/statistics/breakdowns?by=exchange&metric=totalPnL'
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.body.data.rows).toEqual([
+        expect.objectContaining({ key: 'ASX', currency: 'AUD' }),
+        expect.objectContaining({ key: 'NASDAQ', currency: 'USD' }),
+      ])
     })
 
     it('validates by/metric enums', async () => {

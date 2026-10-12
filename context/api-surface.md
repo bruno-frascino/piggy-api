@@ -33,12 +33,12 @@
 | POST | `/api/screener/saved-screens` | 🔒 | body ×2 | [src/controllers/screener.ts:344](../src/controllers/screener.ts#L344) |
 | DELETE | `/api/screener/saved-screens/:id` | 🔒 | param | [src/controllers/screener.ts:385](../src/controllers/screener.ts#L385) |
 | GET | `/api/screener/upcoming-dividends` | 🔒 | query ×3 | [src/controllers/screener.ts:233](../src/controllers/screener.ts#L233) |
-| GET | `/api/statistics/breakdowns` | 🔒 | , query ×2 | [src/controllers/statistics.ts:615](../src/controllers/statistics.ts#L615) |
-| GET | `/api/statistics/closed-trades` | 🔒 | , query ×4 | [src/controllers/statistics.ts:761](../src/controllers/statistics.ts#L761) |
-| GET | `/api/statistics/distributions` | 🔒 |  | [src/controllers/statistics.ts:427](../src/controllers/statistics.ts#L427) |
-| GET | `/api/statistics/risk` | 🔒 |  | [src/controllers/statistics.ts:521](../src/controllers/statistics.ts#L521) |
-| GET | `/api/statistics/summary` | 🔒 |  | [src/controllers/statistics.ts:170](../src/controllers/statistics.ts#L170) |
-| GET | `/api/statistics/timeseries` | 🔒 | , query ×2 | [src/controllers/statistics.ts:281](../src/controllers/statistics.ts#L281) |
+| GET | `/api/statistics/breakdowns` | 🔒 | , query ×2 | [src/controllers/statistics.ts:627](../src/controllers/statistics.ts#L627) |
+| GET | `/api/statistics/closed-trades` | 🔒 | , query ×4 | [src/controllers/statistics.ts:774](../src/controllers/statistics.ts#L774) |
+| GET | `/api/statistics/distributions` | 🔒 |  | [src/controllers/statistics.ts:439](../src/controllers/statistics.ts#L439) |
+| GET | `/api/statistics/risk` | 🔒 |  | [src/controllers/statistics.ts:533](../src/controllers/statistics.ts#L533) |
+| GET | `/api/statistics/summary` | 🔒 |  | [src/controllers/statistics.ts:182](../src/controllers/statistics.ts#L182) |
+| GET | `/api/statistics/timeseries` | 🔒 | , query ×2 | [src/controllers/statistics.ts:293](../src/controllers/statistics.ts#L293) |
 | GET | `/api/stocks/quotes` | 🔒 | query | [src/controllers/stocks.ts:289](../src/controllers/stocks.ts#L289) |
 | GET | `/api/stocks/search` | — | — | [src/controllers/stocks.ts:162](../src/controllers/stocks.ts#L162) |
 | GET | `/api/tax-reports` | 🔒 | query | [src/controllers/tax-reports.ts:260](../src/controllers/tax-reports.ts#L260) |

@@ -59,6 +59,7 @@ export type BreakdownRow = {
   label: string
   value: number
   weight: number
+  currency?: string
 }
 
 type SummaryInput = {
@@ -312,6 +313,7 @@ export function computeBreakdowns(
   rows: Array<{
     accountId: string
     exchangeCode: string
+    exchangeCurrency?: string
     assetType: string
     industry: string | null
     marketValue: number
@@ -322,6 +324,7 @@ export function computeBreakdowns(
   metric: 'marketValue' | 'realizedPnL' | 'totalPnL'
 ): { rows: BreakdownRow[]; total: number } {
   const grouped = new Map<string, number>()
+  const currencies = new Map<string, string>()
 
   for (const row of rows) {
     const key =
@@ -339,6 +342,9 @@ export function computeBreakdowns(
           ? row.realizedPnL
           : row.totalPnL
     grouped.set(key, (grouped.get(key) ?? 0) + value)
+    if (by === 'exchange' && row.exchangeCurrency) {
+      currencies.set(key, row.exchangeCurrency)
+    }
   }
 
   const total = Array.from(grouped.values()).reduce((acc, v) => acc + v, 0)
@@ -349,6 +355,7 @@ export function computeBreakdowns(
       label: key,
       value: round2(value),
       weight: absTotal > 0 ? round4(value / total) : 0,
+      ...(currencies.has(key) ? { currency: currencies.get(key) } : {}),
     }))
     .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
 

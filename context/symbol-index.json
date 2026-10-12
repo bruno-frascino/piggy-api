@@ -549,7 +549,7 @@
     "startLine": 47
   },
   {
-    "endLine": 62,
+    "endLine": 63,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "TypeAliasDeclaration",
@@ -558,76 +558,76 @@
     "startLine": 57
   },
   {
-    "endLine": 80,
+    "endLine": 81,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "TypeAliasDeclaration",
     "name": "SummaryOutput",
     "signature": "export type SummaryOutput =",
-    "startLine": 69
+    "startLine": 70
   },
   {
-    "endLine": 118,
+    "endLine": 119,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "mapTradeRows",
     "signature": "export function mapTradeRows(events: TradeEventInput[]): StatisticsTradeRow[]",
-    "startLine": 82
+    "startLine": 83
   },
   {
-    "endLine": 154,
+    "endLine": 155,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "computeSummary",
     "signature": "export function computeSummary(",
-    "startLine": 120
+    "startLine": 121
   },
   {
-    "endLine": 191,
+    "endLine": 192,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "bucketSnapshotSeries",
     "signature": "export function bucketSnapshotSeries( snapshots: Array<",
-    "startLine": 156
+    "startLine": 157
   },
   {
-    "endLine": 224,
+    "endLine": 225,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "bucketRealizedSeries",
     "signature": "export function bucketRealizedSeries( trades: StatisticsTradeRow[], granularity: 'day' | 'week' | 'month' ): TimeSeriesPoint[]",
-    "startLine": 193
+    "startLine": 194
   },
   {
-    "endLine": 252,
+    "endLine": 253,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "buildHistogram",
     "signature": "export function buildHistogram( values: number[], bins: number ): HistogramBucket[]",
-    "startLine": 226
+    "startLine": 227
   },
   {
-    "endLine": 309,
+    "endLine": 310,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "computeRiskFromEquitySeries",
     "signature": "export function computeRiskFromEquitySeries( points: Array<",
-    "startLine": 254
+    "startLine": 255
   },
   {
-    "endLine": 356,
+    "endLine": 363,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "computeBreakdowns",
     "signature": "export function computeBreakdowns( rows: Array<",
-    "startLine": 311
+    "startLine": 312
   },
   {
     "endLine": 141,

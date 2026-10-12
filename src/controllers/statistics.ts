@@ -50,6 +50,18 @@ const dateSpanWithinLimit = (
   return diffDays <= MAX_RANGE_DAYS
 }
 
+// Series values are not FX-converted, so the currency is only meaningful when the
+// scope resolves to a single exchange currency; otherwise fall back to USD.
+const resolveScopeCurrency = async (exchangeCodes: string[]) => {
+  if (exchangeCodes.length === 0) return 'USD'
+  const exchanges = await prisma.exchange.findMany({
+    where: { code: { in: exchangeCodes } },
+    select: { currency: true },
+  })
+  const currencies = new Set(exchanges.map((exchange) => exchange.currency))
+  return currencies.size === 1 ? [...currencies][0] : 'USD'
+}
+
 const buildPositionScope = (req: Request) => {
   const status = parseCsv(req.query.status, true)
   const accountIds = parseCsv(req.query.accountIds)
@@ -272,7 +284,7 @@ router.get(
  *           format: date
  *     responses:
  *       200:
- *         description: Aggregated time-series points
+ *         description: Aggregated time-series points. `currency` is the ISO 4217 code shared by the scoped exchanges (USD when the scope spans several currencies or no exchange filter is given).
  *       400:
  *         description: Validation error
  *       401:
@@ -329,7 +341,7 @@ router.get(
         success: true,
         data: {
           points: bucketRealizedSeries(trades, granularity),
-          currency: 'USD',
+          currency: await resolveScopeCurrency(exchangeCodes),
           asOf: new Date().toISOString(),
         },
       })
@@ -372,7 +384,7 @@ router.get(
       success: true,
       data: {
         points,
-        currency: 'USD',
+        currency: await resolveScopeCurrency(exchangeCodes),
         asOf: new Date().toISOString(),
       },
     })
@@ -606,7 +618,7 @@ router.get(
  *         description: CSV position statuses
  *     responses:
  *       200:
- *         description: Grouped rows with weights
+ *         description: Grouped rows with weights. Rows for `by=exchange` also include the exchange's ISO 4217 `currency`.
  *       400:
  *         description: Validation error
  *       401:
@@ -643,7 +655,7 @@ router.get(
           select: {
             industry: true,
             assetType: true,
-            exchange: { select: { code: true } },
+            exchange: { select: { code: true, currency: true } },
           },
         },
       },
@@ -658,6 +670,7 @@ router.get(
         return {
           accountId: position.accountId,
           exchangeCode: position.asset.exchange.code,
+          exchangeCurrency: position.asset.exchange.currency,
           assetType: position.asset.assetType,
           industry: position.asset.industry,
           marketValue,
