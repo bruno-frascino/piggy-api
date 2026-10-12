@@ -188,6 +188,7 @@ model Position {
   realizedPnL      Decimal?       @db.Decimal(12, 2)
   returnPercentage Decimal?       @db.Decimal(8, 4)
   maxDrawdownPercent Decimal?     @db.Decimal(8, 4)
+  maxRunUpPercent  Decimal?       @db.Decimal(8, 4)
   tradeGrade       String?
   lessonsLearned   String?
   createdAt        DateTime       @default(now())

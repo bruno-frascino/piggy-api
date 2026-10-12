@@ -6,7 +6,10 @@ import {
   handleValidationErrors,
 } from '../middleware/validation.js'
 import { authenticateToken } from '../middleware/auth.js'
-import { fetchHistoricalMaxDrawdown } from '../lib/historical-drawdown.js'
+import {
+  fetchHistoricalMaxDrawdown,
+  fetchHistoricalMaxRunUp,
+} from '../lib/historical-drawdown.js'
 import {
   findOrCreateAsset,
   resolveTradingAccount,
@@ -357,6 +360,20 @@ router.post(
       .catch(() => {
         // silent — a failed history fetch must never crash the request cycle
       })
+
+    // Same for the peak (max run-up): the best unrealized gain since open.
+    void fetchHistoricalMaxRunUp(asset.symbol, entryPrice, openDate)
+      .then((runUp) => {
+        if (runUp !== null) {
+          return prisma.position.update({
+            where: { id: position.id },
+            data: { maxRunUpPercent: runUp },
+          })
+        }
+      })
+      .catch(() => {
+        // silent — a failed history fetch must never crash the request cycle
+      })
   })
 )
 
@@ -495,6 +512,7 @@ router.get(
               openReason: true,
               notes: true,
               maxDrawdownPercent: true,
+              maxRunUpPercent: true,
               account: { select: { id: true, name: true, isDemo: true } },
               asset: {
                 select: {
@@ -618,11 +636,13 @@ router.patch(
  * @swagger
  * /api/positions/{id}/recalculate-drawdown:
  *   post:
- *     summary: Recalculate max drawdown from Yahoo Finance historical data
+ *     summary: Recalculate max drawdown and max run-up from historical data
  *     description: >
- *       Fetches daily OHLC history from the position's open date to today,
- *       finds the lowest intraday low, and persists it as maxDrawdownPercent.
- *       Returns the new value (or null if history is unavailable / no drawdown).
+ *       Fetches daily OHLC history from the position's open date to today (or to the
+ *       close date for closed positions, for the run-up), finds the lowest intraday low
+ *       and persists it as maxDrawdownPercent, and finds the highest intraday high and
+ *       persists it as maxRunUpPercent (peak unrealized gain vs entry price).
+ *       Returns the new values (or null if history is unavailable / no drawdown / no run-up).
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -643,6 +663,9 @@ router.patch(
  *                 success:
  *                   type: boolean
  *                 maxDrawdownPercent:
+ *                   type: number
+ *                   nullable: true
+ *                 maxRunUpPercent:
  *                   type: number
  *                   nullable: true
  *                 message:
@@ -666,20 +689,29 @@ router.post(
         .json({ error: 'Not Found', message: 'Position not found' })
     }
 
-    const drawdown = await fetchHistoricalMaxDrawdown(
-      position.asset.symbol,
-      Number(position.entryPrice),
-      new Date(position.openDate)
-    )
+    const entryPrice = Number(position.entryPrice)
+    const openDate = new Date(position.openDate)
+    const [drawdown, runUp] = await Promise.all([
+      fetchHistoricalMaxDrawdown(position.asset.symbol, entryPrice, openDate),
+      fetchHistoricalMaxRunUp(
+        position.asset.symbol,
+        entryPrice,
+        openDate,
+        position.status === 'CLOSED' && position.closeDate
+          ? new Date(position.closeDate)
+          : undefined
+      ),
+    ])
 
     await prisma.position.update({
       where: { id: position.id },
-      data: { maxDrawdownPercent: drawdown },
+      data: { maxDrawdownPercent: drawdown, maxRunUpPercent: runUp },
     })
 
     res.json({
       success: true,
       maxDrawdownPercent: drawdown,
+      maxRunUpPercent: runUp,
       message:
         drawdown !== null
           ? `Max drawdown updated to ${drawdown.toFixed(2)}%`
@@ -760,7 +792,12 @@ router.post(
  *                 type: number
  *               currentPrice:
  *                 type: number
- *                 description: Current market price (used to calculate max drawdown)
+ *                 description: Current market price (used to calculate max drawdown and max run-up)
+ *               maxRunUpPercent:
+ *                 type: number
+ *                 nullable: true
+ *                 minimum: 0
+ *                 description: Explicit override of the peak gain vs entry price, in percent (null resets it)
  *     responses:
  *       200:
  *         description: Position updated
@@ -819,6 +856,13 @@ router.patch(
         if (typeof v === 'number' && isFinite(v) && v >= 0) return true
         throw new Error('Must be null or a non-negative number')
       }),
+    body('maxRunUpPercent')
+      .optional({ nullable: true })
+      .custom((v) => {
+        if (v === null) return true
+        if (typeof v === 'number' && isFinite(v) && v >= 0) return true
+        throw new Error('Must be null or a non-negative number')
+      }),
     handleValidationErrors,
   ],
   asyncHandler(async (req: Request, res: Response) => {
@@ -850,6 +894,7 @@ router.patch(
       unrealizedPnL,
       currentPrice,
       maxDrawdownPercent: maxDrawdownPercentBody,
+      maxRunUpPercent: maxRunUpPercentBody,
       symbol,
       exchangeCode,
       accountName,
@@ -903,6 +948,29 @@ router.patch(
         // Update if this is a new maximum drawdown
         if (absDrawdownPct > existingMaxDrawdown) {
           updates.maxDrawdownPercent = absDrawdownPct
+        }
+      }
+    }
+
+    // Same rules for the peak: explicit override wins, otherwise register a new
+    // high-water mark when currentPrice is above entry.
+    if (maxRunUpPercentBody !== undefined) {
+      updates.maxRunUpPercent =
+        maxRunUpPercentBody === null ? null : Number(maxRunUpPercentBody)
+    } else if (currentPrice !== undefined && currentPrice > 0) {
+      const entryPriceValue = Number(existing.entryPrice)
+      const runUpPct =
+        ((currentPrice - entryPriceValue) / entryPriceValue) * 100
+
+      if (runUpPct > 0) {
+        const existingMaxRunUp =
+          existing.maxRunUpPercent !== undefined &&
+          existing.maxRunUpPercent !== null
+            ? Number(existing.maxRunUpPercent)
+            : 0
+
+        if (runUpPct > existingMaxRunUp) {
+          updates.maxRunUpPercent = runUpPct
         }
       }
     }
@@ -1144,6 +1212,28 @@ router.post(
     })
 
     res.json({ success: true, data: updated })
+
+    // Register the final peak once the position is fully closed: search only
+    // the holding period (open → close date) so later price action is ignored.
+    if (updated?.status === 'CLOSED') {
+      void fetchHistoricalMaxRunUp(
+        updated.asset.symbol,
+        Number(updated.entryPrice),
+        new Date(updated.openDate),
+        new Date(closeDate)
+      )
+        .then((runUp) => {
+          if (runUp !== null) {
+            return prisma.position.update({
+              where: { id: updated.id },
+              data: { maxRunUpPercent: runUp },
+            })
+          }
+        })
+        .catch(() => {
+          // silent — a failed history fetch must never crash the request cycle
+        })
+    }
   })
 )
 

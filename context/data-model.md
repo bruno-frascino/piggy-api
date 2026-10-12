@@ -183,6 +183,7 @@ Constraints: `@@unique([assetId, date])`
 | realizedPnL | `Decimal?` | @db.Decimal(12, 2) |
 | returnPercentage | `Decimal?` | @db.Decimal(8, 4) |
 | maxDrawdownPercent | `Decimal?` | @db.Decimal(8, 4) |
+| maxRunUpPercent | `Decimal?` | @db.Decimal(8, 4) |
 | tradeGrade | `String?` | — |
 | lessonsLearned | `String?` | — |
 | createdAt | `DateTime` | @default(now()) |
@@ -341,3 +342,4 @@ Constraints: `@@unique([userId, name])`
 - `20260926000000_tax_report_revisions`
 - `20260926000001_user_soft_delete`
 - `20261009000000_add_demo_trading_accounts`
+- `20261012045355_add_max_run_up_percent`

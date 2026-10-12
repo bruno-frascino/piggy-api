@@ -57,6 +57,7 @@ export interface MarketQuote {
 
 export interface HistoricalPriceBar {
   date: string
+  high: number | null
   low: number | null
   close: number | null
 }
@@ -101,6 +102,7 @@ interface RawQuoteItem {
 
 interface RawHistoricalPriceBar {
   date?: string
+  high?: number | null
   low?: number | null
   close?: number | null
 }
@@ -255,6 +257,7 @@ export async function getHistoricalPrices(
 
   return historical.map((bar) => ({
     date: bar.date ?? '',
+    high: typeof bar.high === 'number' ? bar.high : null,
     low: typeof bar.low === 'number' ? bar.low : null,
     close: typeof bar.close === 'number' ? bar.close : null,
   }))

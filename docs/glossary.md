@@ -51,6 +51,12 @@ price-vs-entry drawdown; `maxDrawdownPercent` is the historical worst drawdown f
 `Position`, which only ratchets upward and persists server-side. They are always shown as
 two separate columns in `HoldingsTable.tsx` — never conflate them.
 
+**Max run-up (peak gain)** — The opposite of drawdown (a.k.a. MFE, maximum favorable
+excursion): `maxRunUpPercent` is the highest gain vs entry price a `Position` ever reached
+while held, e.g. 15% even if it was later closed at 8%. Like `maxDrawdownPercent` it only
+ratchets upward and persists server-side; for closed positions the historical search is
+bounded by the close date.
+
 **Trading account** — A `TradingAccount` row; the top-level grouping the dashboard is
 organized around ("account-first" UX). A user can have several (e.g. personal vs a
 spouse's), each with its own set of positions and its own eligibility for tax report

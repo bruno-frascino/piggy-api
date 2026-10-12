@@ -11,7 +11,10 @@ vi.mock('yahoo-finance2', () => {
   }
 })
 
-import { fetchHistoricalMaxDrawdown } from './historical-drawdown.js'
+import {
+  fetchHistoricalMaxDrawdown,
+  fetchHistoricalMaxRunUp,
+} from './historical-drawdown.js'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -76,5 +79,61 @@ describe('fetchHistoricalMaxDrawdown', () => {
 
     const result = await fetchHistoricalMaxDrawdown('LYC.AX', ENTRY, OPEN_DATE)
     expect(result).toBeNull()
+  })
+})
+
+describe('fetchHistoricalMaxRunUp', () => {
+  it('returns the peak gain relative to entry from the highest high', async () => {
+    mockHistorical.mockResolvedValue([
+      { high: 3.4 },
+      { high: 3.726 }, // peak — 15% above entry
+      { high: 3.5 },
+    ])
+
+    const result = await fetchHistoricalMaxRunUp('LYC.AX', ENTRY, OPEN_DATE)
+    expect(result).toBeCloseTo(15, 4)
+  })
+
+  it('returns null when price never traded above entry', async () => {
+    mockHistorical.mockResolvedValue([{ high: 3.2 }, { high: 3.24 }])
+
+    const result = await fetchHistoricalMaxRunUp('LYC.AX', ENTRY, OPEN_DATE)
+    expect(result).toBeNull()
+  })
+
+  it('returns null when yahoo-finance2 throws', async () => {
+    mockHistorical.mockRejectedValue(new Error('rate limited'))
+
+    const result = await fetchHistoricalMaxRunUp('LYC.AX', ENTRY, OPEN_DATE)
+    expect(result).toBeNull()
+  })
+
+  it('ignores bars with non-numeric highs', async () => {
+    mockHistorical.mockResolvedValue([{ high: null }, { high: undefined }])
+
+    const result = await fetchHistoricalMaxRunUp('LYC.AX', ENTRY, OPEN_DATE)
+    expect(result).toBeNull()
+  })
+
+  it('restricts the scan window to the supplied end date', async () => {
+    mockHistorical.mockResolvedValue([{ high: 4 }])
+    const endDate = new Date('2025-02-01')
+
+    await fetchHistoricalMaxRunUp('LYC.AX', ENTRY, OPEN_DATE, endDate)
+
+    const opts = mockHistorical.mock.calls[0][1]
+    expect(opts.period2.getFullYear()).toBe(2025)
+    expect(opts.period2.getMonth()).toBeLessThanOrEqual(1)
+  })
+
+  it('returns null when open date is on/after the end date', async () => {
+    const result = await fetchHistoricalMaxRunUp(
+      'LYC.AX',
+      ENTRY,
+      new Date('2025-03-01'),
+      new Date('2025-02-01')
+    )
+    expect(result).toBeNull()
+    expect(mockHistorical).not.toHaveBeenCalled()
   })
 })

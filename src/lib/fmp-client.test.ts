@@ -162,7 +162,7 @@ describe('getHistoricalPrices', () => {
         ok: true,
         json: () =>
           Promise.resolve({
-            historical: [{ date: '2026-08-14', low: 98, close: 99 }],
+            historical: [{ date: '2026-08-14', high: 101, low: 98, close: 99 }],
           }),
       })
     )
@@ -170,7 +170,7 @@ describe('getHistoricalPrices', () => {
 
     await expect(
       getHistoricalPrices('AAPL', '2026-08-01', '2026-08-17')
-    ).resolves.toEqual([{ date: '2026-08-14', low: 98, close: 99 }])
+    ).resolves.toEqual([{ date: '2026-08-14', high: 101, low: 98, close: 99 }])
   })
 })
 

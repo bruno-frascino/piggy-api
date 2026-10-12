@@ -22,6 +22,7 @@ const {
   accountFindFirstMock,
   accountUpsertMock,
   fetchHistoricalMaxDrawdownMock,
+  fetchHistoricalMaxRunUpMock,
 } = vi.hoisted(() => ({
   positionFindManyMock: vi.fn(),
   positionCountMock: vi.fn(),
@@ -41,6 +42,7 @@ const {
   accountFindFirstMock: vi.fn(),
   accountUpsertMock: vi.fn(),
   fetchHistoricalMaxDrawdownMock: vi.fn(),
+  fetchHistoricalMaxRunUpMock: vi.fn(),
 }))
 
 vi.mock('../middleware/auth.js', () => ({
@@ -52,6 +54,7 @@ vi.mock('../middleware/auth.js', () => ({
 
 vi.mock('../lib/historical-drawdown.js', () => ({
   fetchHistoricalMaxDrawdown: fetchHistoricalMaxDrawdownMock,
+  fetchHistoricalMaxRunUp: fetchHistoricalMaxRunUpMock,
 }))
 
 vi.mock('../lib/prisma.js', () => ({
@@ -96,6 +99,7 @@ describe('positions controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     fetchHistoricalMaxDrawdownMock.mockResolvedValue(null)
+    fetchHistoricalMaxRunUpMock.mockResolvedValue(null)
   })
 
   describe('GET /api/positions', () => {
@@ -160,6 +164,27 @@ describe('positions controller', () => {
       expect(response.status).toBe(201)
       expect(response.body.success).toBe(true)
       expect(response.body.data).toEqual({ id: 'p_1' })
+    })
+
+    it('registers the historical max run-up in the background', async () => {
+      exchangeFindUniqueMock.mockResolvedValue({ id: 'ex_1', code: 'NASDAQ' })
+      assetFindUniqueMock.mockResolvedValue({ id: 'a_1', symbol: 'AAPL' })
+      accountFindFirstMock.mockResolvedValue({ id: 'acc_1' })
+      positionCreateMock.mockResolvedValue({ id: 'p_1' })
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+      fetchHistoricalMaxRunUpMock.mockResolvedValue(15)
+
+      const response = await request(createApp())
+        .post('/api/positions')
+        .send({ ...validBody, accountId: 'acc_1' })
+
+      expect(response.status).toBe(201)
+      await vi.waitFor(() =>
+        expect(positionUpdateMock).toHaveBeenCalledWith({
+          where: { id: 'p_1' },
+          data: { maxRunUpPercent: 15 },
+        })
+      )
     })
 
     it('returns 400 when required fields are missing', async () => {
@@ -396,6 +421,7 @@ describe('positions controller', () => {
         asset: { symbol: 'AAPL' },
       })
       fetchHistoricalMaxDrawdownMock.mockResolvedValue(12.5)
+      fetchHistoricalMaxRunUpMock.mockResolvedValue(15)
       positionUpdateMock.mockResolvedValue({
         id: 'p_1',
         maxDrawdownPercent: 12.5,
@@ -407,10 +433,116 @@ describe('positions controller', () => {
 
       expect(response.status).toBe(200)
       expect(response.body.maxDrawdownPercent).toBe(12.5)
+      expect(response.body.maxRunUpPercent).toBe(15)
       expect(positionUpdateMock).toHaveBeenCalledWith({
         where: { id: 'p_1' },
-        data: { maxDrawdownPercent: 12.5 },
+        data: { maxDrawdownPercent: 12.5, maxRunUpPercent: 15 },
       })
+      expect(fetchHistoricalMaxRunUpMock).toHaveBeenCalledWith(
+        'AAPL',
+        10,
+        new Date('2026-01-01T00:00:00.000Z'),
+        undefined
+      )
+    })
+
+    it('bounds the run-up search to the close date for closed positions', async () => {
+      positionFindFirstMock.mockResolvedValue({
+        id: 'p_1',
+        entryPrice: 10,
+        openDate: '2026-01-01T00:00:00.000Z',
+        status: 'CLOSED',
+        closeDate: '2026-02-01T00:00:00.000Z',
+        asset: { symbol: 'AAPL' },
+      })
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      await request(createApp()).post('/api/positions/p_1/recalculate-drawdown')
+
+      expect(fetchHistoricalMaxRunUpMock).toHaveBeenCalledWith(
+        'AAPL',
+        10,
+        new Date('2026-01-01T00:00:00.000Z'),
+        new Date('2026-02-01T00:00:00.000Z')
+      )
+    })
+  })
+
+  describe('PATCH /api/positions/:id max run-up tracking', () => {
+    const existing = (maxRunUpPercent: number | null) => ({
+      id: 'p_1',
+      entryPrice: 100,
+      maxRunUpPercent,
+      account: { isDemo: false },
+      asset: { symbol: 'AAPL', exchange: { code: 'NASDAQ' } },
+      transactions: [],
+    })
+
+    it('registers a new peak when currentPrice is above entry and above the stored peak', async () => {
+      positionFindFirstMock.mockResolvedValue(existing(10))
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      const response = await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ currentPrice: 115 })
+
+      expect(response.status).toBe(200)
+      expect(positionUpdateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ maxRunUpPercent: 15 }),
+        })
+      )
+    })
+
+    it('keeps the stored peak when the price pulls back (15% peak, 8% now)', async () => {
+      positionFindFirstMock.mockResolvedValue(existing(15))
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ currentPrice: 108 })
+
+      const data = positionUpdateMock.mock.calls[0][0].data
+      expect(data).not.toHaveProperty('maxRunUpPercent')
+    })
+
+    it('does not register a run-up when the price is below entry', async () => {
+      positionFindFirstMock.mockResolvedValue(existing(null))
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ currentPrice: 90 })
+
+      const data = positionUpdateMock.mock.calls[0][0].data
+      expect(data).not.toHaveProperty('maxRunUpPercent')
+    })
+
+    it('allows an explicit override and reset', async () => {
+      positionFindFirstMock.mockResolvedValue(existing(10))
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ maxRunUpPercent: 22.5, currentPrice: 150 })
+      expect(positionUpdateMock.mock.calls[0][0].data.maxRunUpPercent).toBe(
+        22.5
+      )
+
+      await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ maxRunUpPercent: null })
+      expect(
+        positionUpdateMock.mock.calls[1][0].data.maxRunUpPercent
+      ).toBeNull()
+    })
+
+    it('rejects a negative maxRunUpPercent', async () => {
+      const response = await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ maxRunUpPercent: -1 })
+
+      expect(response.status).toBe(400)
     })
   })
 
@@ -663,7 +795,14 @@ describe('positions controller', () => {
             },
           ],
         })
-        .mockResolvedValueOnce({ id: 'p_1', status: 'CLOSED' })
+        .mockResolvedValueOnce({
+          id: 'p_1',
+          status: 'CLOSED',
+          entryPrice: 10,
+          openDate: '2026-01-01T00:00:00.000Z',
+          asset: { symbol: 'AAPL' },
+        })
+      fetchHistoricalMaxRunUpMock.mockResolvedValue(15)
       transactionCreateMock.mockResolvedValue({ id: 'tx_1' })
       positionFindUniqueMock.mockResolvedValue({
         id: 'p_1',
@@ -698,6 +837,18 @@ describe('positions controller', () => {
       expect(transactionCreateMock).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ type: 'SELL', price: 12 }),
+        })
+      )
+      expect(fetchHistoricalMaxRunUpMock).toHaveBeenCalledWith(
+        'AAPL',
+        10,
+        new Date('2026-01-01T00:00:00.000Z'),
+        new Date('2026-02-01T00:00:00.000Z')
+      )
+      await vi.waitFor(() =>
+        expect(positionUpdateMock).toHaveBeenCalledWith({
+          where: { id: 'p_1' },
+          data: { maxRunUpPercent: 15 },
         })
       )
     })
