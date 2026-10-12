@@ -49,6 +49,8 @@ lockfiles. Node version per `.nvmrc`.
    see `docs/adr/0002-tax-report-accounts-key-scoping.md`. They are also append-only:
    regenerating supersedes the previous revision instead of overwriting it, and exactly
    one revision per `(userId, financialYearStartYear, accountsKey)` has `supersededAt = null`.
+   Demo accounts (`TradingAccount.isDemo`, immutable) are never eligible for tax reports and
+   are excluded from "All accounts" aggregates; see `docs/adr/0012-demo-trading-accounts.md`.
 10. User accounts are soft-deleted (`deletedAt`/`purgeAfter`) with a 30-day grace period;
     `yarn db:purge-deleted-users` must be scheduled in production or nothing is ever
     actually erased. See `docs/deployment.md`.
