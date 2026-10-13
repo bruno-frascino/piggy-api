@@ -18,7 +18,9 @@ export function generateUnusedReport(): { report: unknown; issueCount: number } 
     ['knip', '--reporter', 'json', '--no-exit-code', '--no-progress'],
     { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }
   )
-  const report = JSON.parse(stdout) as { issues: unknown[] }
+  const report = JSON.parse(stdout) as { issues: Array<{ file?: string }> }
+  // knip emits issues in a non-deterministic order; sort so the artifact is stable between runs.
+  report.issues?.sort((a, b) => (a.file ?? '').localeCompare(b.file ?? ''))
   return { report, issueCount: report.issues?.length ?? 0 }
 }
 
