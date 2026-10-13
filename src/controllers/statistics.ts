@@ -204,6 +204,11 @@ router.get(
               quantity: true,
               entryPrice: true,
               buyFees: true,
+              // Total bought units: position.quantity is only what remains, so it can't prorate buy fees.
+              transactions: {
+                where: { type: 'BUY' as const },
+                select: { quantity: true },
+              },
               openDate: true,
               asset: {
                 select: { symbol: true, exchange: { select: { code: true } } },
@@ -328,6 +333,11 @@ router.get(
               quantity: true,
               entryPrice: true,
               buyFees: true,
+              // Total bought units: position.quantity is only what remains, so it can't prorate buy fees.
+              transactions: {
+                where: { type: 'BUY' as const },
+                select: { quantity: true },
+              },
               openDate: true,
               asset: {
                 select: { symbol: true, exchange: { select: { code: true } } },
@@ -460,6 +470,11 @@ router.get(
             quantity: true,
             entryPrice: true,
             buyFees: true,
+            // Total bought units: position.quantity is only what remains, so it can't prorate buy fees.
+            transactions: {
+              where: { type: 'BUY' as const },
+              select: { quantity: true },
+            },
             openDate: true,
             asset: {
               select: { symbol: true, exchange: { select: { code: true } } },
@@ -615,7 +630,7 @@ router.get(
  *         schema:
  *           type: string
  *           enum: [OPEN, PARTIAL, CLOSED]
- *         description: CSV position statuses
+ *         description: CSV position statuses. Defaults to OPEN,PARTIAL when `metric=marketValue` (closed positions hold nothing); all statuses otherwise. For marketValue, partial positions are prorated to the quantity still held.
  *     responses:
  *       200:
  *         description: Grouped rows with weights. Rows for `by=exchange` also include the exchange's ISO 4217 `currency`.
@@ -643,6 +658,10 @@ router.get(
       | 'realizedPnL'
       | 'totalPnL'
     const positionScope = buildPositionScope(req)
+    // Market value is what is still held, so closed positions are excluded unless a status is requested.
+    if (metric === 'marketValue' && positionScope.status === undefined) {
+      positionScope.status = { in: ['OPEN', 'PARTIAL'] }
+    }
 
     const positions = await prisma.position.findMany({
       where: positionScope,
@@ -651,6 +670,13 @@ router.get(
         realizedPnL: true,
         unrealizedPnL: true,
         capitalAllocated: true,
+        quantity: true,
+        status: true,
+        // Total bought units: position.quantity is only what remains, so it is needed to prorate capitalAllocated.
+        transactions: {
+          where: { type: 'BUY' as const },
+          select: { quantity: true },
+        },
         asset: {
           select: {
             industry: true,
@@ -665,8 +691,18 @@ router.get(
       positions.map((position) => {
         const realizedPnL = Number(position.realizedPnL ?? 0)
         const unrealizedPnL = Number(position.unrealizedPnL ?? 0)
+        const boughtQuantity = position.transactions.reduce(
+          (acc, tx) => acc + Number(tx.quantity ?? 0),
+          0
+        )
+        const heldFraction =
+          position.status === 'CLOSED'
+            ? 0
+            : boughtQuantity > 0
+              ? Math.min(Number(position.quantity ?? 0) / boughtQuantity, 1)
+              : 1
         const marketValue =
-          Number(position.capitalAllocated ?? 0) + unrealizedPnL
+          Number(position.capitalAllocated ?? 0) * heldFraction + unrealizedPnL
         return {
           accountId: position.accountId,
           exchangeCode: position.asset.exchange.code,
@@ -817,6 +853,11 @@ router.get(
                 quantity: true,
                 entryPrice: true,
                 buyFees: true,
+                // Total bought units: position.quantity is only what remains, so it can't prorate buy fees.
+                transactions: {
+                  where: { type: 'BUY' as const },
+                  select: { quantity: true },
+                },
                 openDate: true,
                 asset: {
                   select: {
@@ -862,6 +903,11 @@ router.get(
             quantity: true,
             entryPrice: true,
             buyFees: true,
+            // Total bought units: position.quantity is only what remains, so it can't prorate buy fees.
+            transactions: {
+              where: { type: 'BUY' as const },
+              select: { quantity: true },
+            },
             openDate: true,
             asset: {
               select: {

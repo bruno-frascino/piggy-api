@@ -391,6 +391,48 @@ describe('positions controller', () => {
       })
     })
 
+    it('updates and clears closeReason', async () => {
+      transactionFindFirstMock.mockResolvedValue({
+        positionId: 'p_1',
+        quantity: 5,
+      })
+      transactionUpdateMock.mockResolvedValue({ id: 'tx_1' })
+      positionFindUniqueMock.mockResolvedValue({
+        id: 'p_1',
+        entryPrice: 10,
+        buyFees: 0,
+        transactions: [],
+      })
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      const set = await request(createApp())
+        .patch('/api/positions/close-events/tx_1')
+        .send({ closeReason: 'STOP_LOSS' })
+      expect(set.status).toBe(200)
+      expect(transactionUpdateMock).toHaveBeenLastCalledWith({
+        where: { id: 'tx_1' },
+        data: { closeReason: 'STOP_LOSS' },
+      })
+
+      const cleared = await request(createApp())
+        .patch('/api/positions/close-events/tx_1')
+        .send({ closeReason: null })
+      expect(cleared.status).toBe(200)
+      expect(transactionUpdateMock).toHaveBeenLastCalledWith({
+        where: { id: 'tx_1' },
+        data: { closeReason: null },
+      })
+    })
+
+    it('rejects an unknown closeReason on update', async () => {
+      const response = await request(createApp())
+        .patch('/api/positions/close-events/tx_1')
+        .send({ closeReason: 'WHIM' })
+
+      expect(response.status).toBe(400)
+      expect(transactionFindFirstMock).not.toHaveBeenCalled()
+    })
+
     it('validates editable close-event fields', async () => {
       const response = await request(createApp())
         .patch('/api/positions/close-events/tx_1')
@@ -851,6 +893,78 @@ describe('positions controller', () => {
           data: { maxRunUpPercent: 15 },
         })
       )
+    })
+  })
+
+  describe('POST /api/positions/:id/close closeReason', () => {
+    const openPosition = {
+      id: 'p_1',
+      status: 'OPEN',
+      transactions: [
+        {
+          type: 'BUY',
+          quantity: 5,
+          price: 10,
+          totalValue: 50,
+          fees: 0,
+          date: new Date('2026-01-01'),
+        },
+      ],
+    }
+
+    const arrange = () => {
+      positionFindFirstMock
+        .mockResolvedValueOnce(openPosition)
+        .mockResolvedValueOnce({ id: 'p_1', status: 'OPEN' })
+      transactionCreateMock.mockResolvedValue({ id: 'tx_1' })
+      positionFindUniqueMock.mockResolvedValue({
+        id: 'p_1',
+        entryPrice: 10,
+        buyFees: 0,
+        transactions: [],
+      })
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+    }
+
+    it('defaults closeReason to MANUAL', async () => {
+      arrange()
+      const response = await request(createApp())
+        .post('/api/positions/p_1/close')
+        .send({ closeDate: '2026-02-01T00:00:00.000Z', exitPrice: 12 })
+
+      expect(response.status).toBe(200)
+      expect(transactionCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({ closeReason: 'MANUAL' }),
+      })
+    })
+
+    it('stores an explicit closeReason', async () => {
+      arrange()
+      const response = await request(createApp())
+        .post('/api/positions/p_1/close')
+        .send({
+          closeDate: '2026-02-01T00:00:00.000Z',
+          exitPrice: 9,
+          closeReason: 'STOP_LOSS',
+        })
+
+      expect(response.status).toBe(200)
+      expect(transactionCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({ closeReason: 'STOP_LOSS' }),
+      })
+    })
+
+    it('rejects an unknown closeReason', async () => {
+      const response = await request(createApp())
+        .post('/api/positions/p_1/close')
+        .send({
+          closeDate: '2026-02-01T00:00:00.000Z',
+          exitPrice: 9,
+          closeReason: 'WHIM',
+        })
+
+      expect(response.status).toBe(400)
+      expect(transactionCreateMock).not.toHaveBeenCalled()
     })
   })
 

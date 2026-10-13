@@ -410,6 +410,9 @@ describe('statistics controller', () => {
           realizedPnL: 100,
           unrealizedPnL: 20,
           capitalAllocated: 1000,
+          quantity: 10,
+          status: 'OPEN',
+          transactions: [{ quantity: 10 }],
           asset: {
             industry: 'Technology',
             assetType: 'EQUITY',
@@ -421,6 +424,9 @@ describe('statistics controller', () => {
           realizedPnL: -50,
           unrealizedPnL: 10,
           capitalAllocated: 500,
+          quantity: 5,
+          status: 'OPEN',
+          transactions: [{ quantity: 5 }],
           asset: {
             industry: 'Technology',
             assetType: 'EQUITY',
@@ -447,6 +453,9 @@ describe('statistics controller', () => {
           realizedPnL: 100,
           unrealizedPnL: 20,
           capitalAllocated: 1000,
+          quantity: 10,
+          status: 'OPEN',
+          transactions: [{ quantity: 10 }],
           asset: {
             industry: null,
             assetType: 'EQUITY',
@@ -458,6 +467,9 @@ describe('statistics controller', () => {
           realizedPnL: 10,
           unrealizedPnL: 0,
           capitalAllocated: 500,
+          quantity: 5,
+          status: 'OPEN',
+          transactions: [{ quantity: 5 }],
           asset: {
             industry: null,
             assetType: 'EQUITY',
@@ -475,6 +487,80 @@ describe('statistics controller', () => {
         expect.objectContaining({ key: 'ASX', currency: 'AUD' }),
         expect.objectContaining({ key: 'NASDAQ', currency: 'USD' }),
       ])
+    })
+
+    it('excludes closed positions and prorates partial positions for marketValue', async () => {
+      positionFindManyMock.mockResolvedValue([
+        {
+          accountId: 'acc_1',
+          realizedPnL: 0,
+          unrealizedPnL: 50,
+          capitalAllocated: 1000,
+          quantity: 10,
+          status: 'OPEN',
+          transactions: [{ quantity: 10 }],
+          asset: {
+            industry: null,
+            assetType: 'EQUITY',
+            exchange: { code: 'ASX', currency: 'AUD' },
+          },
+        },
+        {
+          accountId: 'acc_1',
+          realizedPnL: 20,
+          unrealizedPnL: 10,
+          capitalAllocated: 1000,
+          quantity: 4,
+          status: 'PARTIAL',
+          transactions: [{ quantity: 10 }],
+          asset: {
+            industry: null,
+            assetType: 'EQUITY',
+            exchange: { code: 'ASX', currency: 'AUD' },
+          },
+        },
+        {
+          accountId: 'acc_1',
+          realizedPnL: 80,
+          unrealizedPnL: null,
+          capitalAllocated: 700,
+          quantity: 0,
+          status: 'CLOSED',
+          transactions: [{ quantity: 7 }],
+          asset: {
+            industry: null,
+            assetType: 'EQUITY',
+            exchange: { code: 'ASX', currency: 'AUD' },
+          },
+        },
+      ])
+
+      const response = await request(createApp()).get(
+        '/api/statistics/breakdowns?by=assetType&metric=marketValue&exchangeCodes=ASX'
+      )
+
+      expect(response.status).toBe(200)
+      expect(positionFindManyMock.mock.calls[0][0].where.status).toEqual({
+        in: ['OPEN', 'PARTIAL'],
+      })
+      // 1000 + 50 (open) + 1000 * 0.4 + 10 (partial); closed contributes nothing.
+      expect(response.body.data.total).toBe(1460)
+    })
+
+    it('does not add a status filter for non-marketValue metrics', async () => {
+      await request(createApp()).get(
+        '/api/statistics/breakdowns?by=exchange&metric=totalPnL'
+      )
+
+      expect(positionFindManyMock.mock.calls[0][0].where.status).toBeUndefined()
+    })
+
+    it('honors an explicit status filter for marketValue', async () => {
+      await request(createApp()).get(
+        '/api/statistics/breakdowns?by=assetType&metric=marketValue&status=OPEN'
+      )
+
+      expect(positionFindManyMock.mock.calls[0][0].where.status).toBe('OPEN')
     })
 
     it('validates by/metric enums', async () => {

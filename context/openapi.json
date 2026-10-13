@@ -1120,7 +1120,7 @@
                 }
               }
             },
-            "description": "Paginated SELL transactions with position and asset context"
+            "description": "Paginated SELL transactions with position and asset context. Each event carries `closeReason` (STOP_LOSS | TARGET | MANUAL | OTHER, or null when unknown).\n"
           },
           "400": {
             "description": "Validation error"
@@ -1159,6 +1159,17 @@
                 "properties": {
                   "closeDate": {
                     "format": "date-time",
+                    "type": "string"
+                  },
+                  "closeReason": {
+                    "description": "Why the position was closed; null clears it (unknown)",
+                    "enum": [
+                      "STOP_LOSS",
+                      "TARGET",
+                      "MANUAL",
+                      "OTHER"
+                    ],
+                    "nullable": true,
                     "type": "string"
                   },
                   "exitPrice": {
@@ -1389,6 +1400,16 @@
                 "properties": {
                   "closeDate": {
                     "format": "date-time",
+                    "type": "string"
+                  },
+                  "closeReason": {
+                    "description": "Why the position was closed. Defaults to MANUAL when omitted. Whether a stop-out was a loss, break-even or gain is derived from realised P&L, not stored.\n",
+                    "enum": [
+                      "STOP_LOSS",
+                      "TARGET",
+                      "MANUAL",
+                      "OTHER"
+                    ],
                     "type": "string"
                   },
                   "exitPrice": {
@@ -1818,7 +1839,7 @@
             }
           },
           {
-            "description": "CSV position statuses",
+            "description": "CSV position statuses. Defaults to OPEN,PARTIAL when `metric=marketValue` (closed positions hold nothing); all statuses otherwise. For marketValue, partial positions are prorated to the quantity still held.",
             "in": "query",
             "name": "status",
             "schema": {

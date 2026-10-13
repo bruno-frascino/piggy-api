@@ -19,6 +19,9 @@ import {
 const router = Router()
 router.use(authenticateToken)
 
+// Mirrors the Prisma `CloseReason` enum (only lib/prisma.ts may import @prisma/client).
+const CLOSE_REASONS = ['STOP_LOSS', 'TARGET', 'MANUAL', 'OTHER']
+
 // ─── GET /api/positions ───────────────────────────────────────────────────────
 
 /**
@@ -423,7 +426,9 @@ router.post(
  *           default: 0
  *     responses:
  *       200:
- *         description: Paginated SELL transactions with position and asset context
+ *         description: >
+ *           Paginated SELL transactions with position and asset context. Each event
+ *           carries `closeReason` (STOP_LOSS | TARGET | MANUAL | OTHER, or null when unknown).
  *         content:
  *           application/json:
  *             schema:
@@ -503,6 +508,7 @@ router.get(
           price: true,
           fees: true,
           notes: true,
+          closeReason: true,
           position: {
             select: {
               id: true,
@@ -575,6 +581,11 @@ router.get(
  *                 minimum: 0
  *               notes:
  *                 type: string
+ *               closeReason:
+ *                 type: string
+ *                 nullable: true
+ *                 enum: [STOP_LOSS, TARGET, MANUAL, OTHER]
+ *                 description: Why the position was closed; null clears it (unknown)
  *     responses:
  *       200:
  *         description: Updated SELL transaction
@@ -594,6 +605,10 @@ router.patch(
     body('exitPrice').optional().isFloat({ min: 0.0001 }).toFloat(),
     body('sellFees').optional().isFloat({ min: 0 }).toFloat(),
     body('notes').optional().isString(),
+    body('closeReason')
+      .optional({ values: 'null' })
+      .isIn(CLOSE_REASONS)
+      .withMessage(`closeReason must be one of ${CLOSE_REASONS.join(', ')}`),
     handleValidationErrors,
   ],
   asyncHandler(async (req: Request, res: Response) => {
@@ -611,7 +626,7 @@ router.patch(
         .json({ error: 'Not Found', message: 'Close event not found' })
     }
 
-    const { closeDate, exitPrice, sellFees, notes } = req.body
+    const { closeDate, exitPrice, sellFees, notes, closeReason } = req.body
     const updated = await prisma.transaction.update({
       where: { id: req.params.id },
       data: {
@@ -622,6 +637,7 @@ router.patch(
         }),
         ...(sellFees !== undefined && { fees: sellFees }),
         ...(notes !== undefined && { notes: notes.trim() || null }),
+        ...(closeReason !== undefined && { closeReason }),
       },
     })
 
@@ -1121,6 +1137,13 @@ router.patch(
  *                 default: 0
  *               notes:
  *                 type: string
+ *               closeReason:
+ *                 type: string
+ *                 enum: [STOP_LOSS, TARGET, MANUAL, OTHER]
+ *                 description: >
+ *                   Why the position was closed. Defaults to MANUAL when omitted.
+ *                   Whether a stop-out was a loss, break-even or gain is derived
+ *                   from realised P&L, not stored.
  *     responses:
  *       200:
  *         description: Position closed (or partially closed — status becomes PARTIAL)
@@ -1140,6 +1163,10 @@ router.post(
     body('quantity').optional().isFloat({ min: 0.000001 }).toFloat(),
     body('fees').optional().isFloat({ min: 0 }).toFloat(),
     body('notes').optional().isString().trim(),
+    body('closeReason')
+      .optional()
+      .isIn(CLOSE_REASONS)
+      .withMessage(`closeReason must be one of ${CLOSE_REASONS.join(', ')}`),
     handleValidationErrors,
   ],
   asyncHandler(async (req: Request, res: Response) => {
@@ -1160,7 +1187,13 @@ router.post(
         .json({ error: 'Bad Request', message: 'Position is already closed' })
     }
 
-    const { closeDate, exitPrice, fees = 0, notes } = req.body
+    const {
+      closeDate,
+      exitPrice,
+      fees = 0,
+      notes,
+      closeReason = 'MANUAL',
+    } = req.body
     const normalizedCloseNotes =
       typeof notes === 'string' && notes.trim() ? notes.trim() : null
     const buyQty = position.transactions
@@ -1198,6 +1231,7 @@ router.post(
         totalValue: totalSellValue,
         fees,
         notes: normalizedCloseNotes,
+        closeReason,
       },
     })
 

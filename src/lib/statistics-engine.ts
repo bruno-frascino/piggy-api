@@ -9,6 +9,7 @@ type TradeEventInput = {
     entryPrice: number
     buyFees: number | null
     quantity: number
+    transactions?: { quantity: number }[]
     accountId: string
     asset: {
       symbol: string
@@ -88,9 +89,16 @@ export function mapTradeRows(events: TradeEventInput[]): StatisticsTradeRow[] {
 
     const entryPrice = Number(event.position.entryPrice)
     const positionBuyFees = Number(event.position.buyFees ?? 0)
-    const positionQty = Math.max(Number(event.position.quantity), 0)
+    // Prorate by total bought units. position.quantity is only the remaining
+    // quantity (0 once fully closed), so it is just a fallback.
+    const boughtQty = event.position.transactions?.length
+      ? event.position.transactions.reduce(
+          (sum, tx) => sum + Number(tx.quantity),
+          0
+        )
+      : Math.max(Number(event.position.quantity), 0)
     const allocatedBuyFees =
-      positionQty > 0 ? positionBuyFees * (quantity / positionQty) : 0
+      boughtQty > 0 ? positionBuyFees * (quantity / boughtQty) : 0
 
     const proceeds = quantity * sellPrice - sellFees
     const cost = quantity * entryPrice + allocatedBuyFees

@@ -217,6 +217,7 @@ model Transaction {
   executionTime DateTime?
   brokerRef     String?
   orderType     String?
+  closeReason   CloseReason?
   notes         String?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
@@ -263,6 +264,14 @@ enum PositionStatus {
   OPEN
   CLOSED
   PARTIAL
+}
+
+// Why a SELL transaction closed (part of) a position. Null = unknown (legacy rows, non-SELL).
+enum CloseReason {
+  STOP_LOSS
+  TARGET
+  MANUAL
+  OTHER
 }
 
 enum TransactionType {

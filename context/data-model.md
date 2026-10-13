@@ -210,6 +210,7 @@ Constraints: `@@unique([userId, assetId, openDate, entryPrice, accountId])`
 | executionTime | `DateTime?` | — |
 | brokerRef | `String?` | — |
 | orderType | `String?` | — |
+| closeReason | `CloseReason?` | — |
 | notes | `String?` | — |
 | createdAt | `DateTime` | @default(now()) |
 | updatedAt | `DateTime` | @updatedAt |
@@ -330,6 +331,7 @@ Constraints: `@@unique([userId, name])`
 - **AssetType**: EQUITY, ETF, CRYPTO
 - **PositionType**: LONG, SHORT
 - **PositionStatus**: OPEN, CLOSED, PARTIAL
+- **CloseReason**: STOP_LOSS, TARGET, MANUAL, OTHER
 - **TransactionType**: BUY, SELL, DIVIDEND, SPLIT, BONUS
 
 ## Migrations
@@ -343,3 +345,4 @@ Constraints: `@@unique([userId, name])`
 - `20260926000001_user_soft_delete`
 - `20261009000000_add_demo_trading_accounts`
 - `20261012045355_add_max_run_up_percent`
+- `20261013042800_add_transaction_close_reason`

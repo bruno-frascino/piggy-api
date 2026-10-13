@@ -924,7 +924,8 @@
     {
       "dependencies": [],
       "dependents": [
-        "src/controllers/statistics.ts"
+        "src/controllers/statistics.ts",
+        "src/lib/statistics-engine.test.ts"
       ],
       "orphan": false,
       "source": "src/lib/statistics-engine.ts",
@@ -2044,6 +2045,31 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./statistics-engine.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/statistics-engine.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/statistics-engine.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./auth.js",
           "moduleSystem": "es6",
           "resolved": "src/middleware/auth.ts",
@@ -2197,8 +2223,8 @@
         }
       ]
     },
-    "totalCruised": 54,
-    "totalDependenciesCruised": 92,
+    "totalCruised": 55,
+    "totalDependenciesCruised": 93,
     "violations": [],
     "warn": 0
   }
