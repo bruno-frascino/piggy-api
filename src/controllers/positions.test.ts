@@ -23,6 +23,7 @@ const {
   accountUpsertMock,
   fetchHistoricalMaxDrawdownMock,
   fetchHistoricalMaxRunUpMock,
+  fetchHistoricalStopLossHitMock,
 } = vi.hoisted(() => ({
   positionFindManyMock: vi.fn(),
   positionCountMock: vi.fn(),
@@ -43,6 +44,7 @@ const {
   accountUpsertMock: vi.fn(),
   fetchHistoricalMaxDrawdownMock: vi.fn(),
   fetchHistoricalMaxRunUpMock: vi.fn(),
+  fetchHistoricalStopLossHitMock: vi.fn(),
 }))
 
 vi.mock('../middleware/auth.js', () => ({
@@ -55,6 +57,7 @@ vi.mock('../middleware/auth.js', () => ({
 vi.mock('../lib/historical-drawdown.js', () => ({
   fetchHistoricalMaxDrawdown: fetchHistoricalMaxDrawdownMock,
   fetchHistoricalMaxRunUp: fetchHistoricalMaxRunUpMock,
+  fetchHistoricalStopLossHit: fetchHistoricalStopLossHitMock,
 }))
 
 vi.mock('../lib/prisma.js', () => ({
@@ -100,6 +103,7 @@ describe('positions controller', () => {
     vi.clearAllMocks()
     fetchHistoricalMaxDrawdownMock.mockResolvedValue(null)
     fetchHistoricalMaxRunUpMock.mockResolvedValue(null)
+    fetchHistoricalStopLossHitMock.mockResolvedValue(null)
   })
 
   describe('GET /api/positions', () => {
@@ -507,6 +511,207 @@ describe('positions controller', () => {
         new Date('2026-01-01T00:00:00.000Z'),
         new Date('2026-02-01T00:00:00.000Z')
       )
+    })
+  })
+
+  describe('POST /api/positions/:id/check-stop-loss', () => {
+    const openLong = (overrides: Record<string, unknown> = {}) => ({
+      id: 'p_1',
+      status: 'OPEN',
+      positionType: 'LONG',
+      stopLossPrice: 95,
+      stopLossSetAt: null,
+      stopLossHitAt: null,
+      openDate: new Date('2026-01-01T00:00:00.000Z'),
+      asset: { symbol: 'AAPL' },
+      ...overrides,
+    })
+
+    it('returns 404 when the position does not exist', async () => {
+      positionFindFirstMock.mockResolvedValue(null)
+
+      const response = await request(createApp()).post(
+        '/api/positions/missing/check-stop-loss'
+      )
+
+      expect(response.status).toBe(404)
+    })
+
+    it('flags the stop from price history since the open date', async () => {
+      const hitAt = new Date('2026-02-03T00:00:00.000Z')
+      positionFindFirstMock.mockResolvedValue(openLong())
+      fetchHistoricalStopLossHitMock.mockResolvedValue(hitAt)
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      const response = await request(createApp()).post(
+        '/api/positions/p_1/check-stop-loss'
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.body.stopLossHitAt).toBe(hitAt.toISOString())
+      expect(fetchHistoricalStopLossHitMock).toHaveBeenCalledWith(
+        'AAPL',
+        95,
+        new Date('2026-01-01T00:00:00.000Z')
+      )
+      expect(positionUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'p_1' },
+        data: { stopLossHitAt: hitAt },
+      })
+    })
+
+    it('scans from when the stop was last set when that is known', async () => {
+      const setAt = new Date('2026-03-01T00:00:00.000Z')
+      positionFindFirstMock.mockResolvedValue(
+        openLong({ stopLossSetAt: setAt })
+      )
+
+      await request(createApp()).post('/api/positions/p_1/check-stop-loss')
+
+      expect(fetchHistoricalStopLossHitMock).toHaveBeenCalledWith(
+        'AAPL',
+        95,
+        setAt
+      )
+    })
+
+    it('does not persist anything when the stop was never reached', async () => {
+      positionFindFirstMock.mockResolvedValue(openLong())
+
+      const response = await request(createApp()).post(
+        '/api/positions/p_1/check-stop-loss'
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.body.stopLossHitAt).toBeNull()
+      expect(positionUpdateMock).not.toHaveBeenCalled()
+    })
+
+    it('flags immediately from currentPrice without scanning history', async () => {
+      positionFindFirstMock.mockResolvedValue(openLong())
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      const response = await request(createApp())
+        .post('/api/positions/p_1/check-stop-loss')
+        .send({ currentPrice: 94 })
+
+      expect(response.status).toBe(200)
+      expect(response.body.stopLossHitAt).not.toBeNull()
+      expect(fetchHistoricalStopLossHitMock).not.toHaveBeenCalled()
+      expect(positionUpdateMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('falls back to history when currentPrice is above the stop', async () => {
+      positionFindFirstMock.mockResolvedValue(openLong())
+
+      await request(createApp())
+        .post('/api/positions/p_1/check-stop-loss')
+        .send({ currentPrice: 110 })
+
+      expect(fetchHistoricalStopLossHitMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns an existing flag without re-checking', async () => {
+      const hitAt = new Date('2026-02-03T00:00:00.000Z')
+      positionFindFirstMock.mockResolvedValue(
+        openLong({ stopLossHitAt: hitAt })
+      )
+
+      const response = await request(createApp()).post(
+        '/api/positions/p_1/check-stop-loss'
+      )
+
+      expect(response.body.stopLossHitAt).toBe(hitAt.toISOString())
+      expect(fetchHistoricalStopLossHitMock).not.toHaveBeenCalled()
+      expect(positionUpdateMock).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['no stop loss', { stopLossPrice: null }],
+      ['a closed position', { status: 'CLOSED' }],
+      ['a short position', { positionType: 'SHORT' }],
+    ])('is a no-op for %s', async (_label, overrides) => {
+      positionFindFirstMock.mockResolvedValue(openLong(overrides))
+
+      const response = await request(createApp())
+        .post('/api/positions/p_1/check-stop-loss')
+        .send({ currentPrice: 1 })
+
+      expect(response.status).toBe(200)
+      expect(response.body.stopLossHitAt).toBeNull()
+      expect(fetchHistoricalStopLossHitMock).not.toHaveBeenCalled()
+      expect(positionUpdateMock).not.toHaveBeenCalled()
+    })
+
+    it('rejects a negative currentPrice', async () => {
+      const response = await request(createApp())
+        .post('/api/positions/p_1/check-stop-loss')
+        .send({ currentPrice: -1 })
+
+      expect(response.status).toBe(400)
+    })
+  })
+
+  describe('PATCH /api/positions/:id stop loss tracking', () => {
+    const existing = (stopLossPrice: number | null) => ({
+      id: 'p_1',
+      entryPrice: 100,
+      stopLossPrice,
+      account: { isDemo: false },
+      asset: { symbol: 'AAPL', exchange: { code: 'NASDAQ' } },
+      transactions: [],
+    })
+
+    it('restarts tracking when the stop loss price changes', async () => {
+      positionFindFirstMock.mockResolvedValue(existing(95))
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ stopLossPrice: 90 })
+
+      const data = positionUpdateMock.mock.calls[0][0].data
+      expect(data.stopLossPrice).toBe(90)
+      expect(data.stopLossSetAt).toBeInstanceOf(Date)
+      expect(data.stopLossHitAt).toBeNull()
+    })
+
+    it('clears tracking when the stop loss is removed', async () => {
+      positionFindFirstMock.mockResolvedValue(existing(95))
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ stopLossPrice: null })
+
+      const data = positionUpdateMock.mock.calls[0][0].data
+      expect(data.stopLossSetAt).toBeNull()
+      expect(data.stopLossHitAt).toBeNull()
+    })
+
+    it('keeps tracking when the same stop loss price is resent', async () => {
+      positionFindFirstMock.mockResolvedValue(existing(95))
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ stopLossPrice: 95 })
+
+      const data = positionUpdateMock.mock.calls[0][0].data
+      expect(data).not.toHaveProperty('stopLossSetAt')
+      expect(data).not.toHaveProperty('stopLossHitAt')
+    })
+
+    it('leaves tracking alone when the stop loss is not part of the update', async () => {
+      positionFindFirstMock.mockResolvedValue(existing(95))
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+
+      await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({ notes: 'x' })
+
+      const data = positionUpdateMock.mock.calls[0][0].data
+      expect(data).not.toHaveProperty('stopLossHitAt')
     })
   })
 

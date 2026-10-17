@@ -173,6 +173,8 @@ model Position {
   totalSellValue   Decimal?       @db.Decimal(12, 2)
   sellFees         Decimal?       @default(0) @db.Decimal(8, 2)
   stopLossPrice    Decimal?       @db.Decimal(10, 4)
+  stopLossSetAt    DateTime?
+  stopLossHitAt    DateTime?
   takeProfitPrice  Decimal?       @db.Decimal(10, 4)
   riskAmount       Decimal?       @db.Decimal(12, 2)
   riskPercentage   Decimal?       @db.Decimal(5, 2)

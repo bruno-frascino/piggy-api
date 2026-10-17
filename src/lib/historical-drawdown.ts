@@ -2,6 +2,7 @@ import YahooFinance from 'yahoo-finance2'
 import { getHistoricalPrices } from './fmp-client.js'
 
 interface DailyBar {
+  date?: string | Date | null
   high?: number | null
   low?: number | null
 }
@@ -114,4 +115,36 @@ export async function fetchHistoricalMaxRunUp(
   if (!isFinite(maxHigh) || maxHigh <= entryPrice) return null
 
   return ((maxHigh - entryPrice) / entryPrice) * 100
+}
+
+/**
+ * Finds when a long position's stop loss was first reached: the earliest daily
+ * bar since `since` whose intraday low is at or below `stopLossPrice`.
+ *
+ * Returns that bar's date, or null when history is unavailable or the stop was
+ * never reached. Bars are daily, so the timestamp is day-granular.
+ */
+export async function fetchHistoricalStopLossHit(
+  symbol: string,
+  stopLossPrice: number,
+  since: Date
+): Promise<Date | null> {
+  const bars = await fetchDailyBars(symbol, since)
+  if (!bars) return null
+
+  let earliest: Date | null = null
+  for (const bar of bars) {
+    if (
+      typeof bar.low !== 'number' ||
+      !isFinite(bar.low) ||
+      bar.low > stopLossPrice ||
+      !bar.date
+    ) {
+      continue
+    }
+    const barDate = new Date(bar.date)
+    if (isNaN(barDate.getTime())) continue
+    if (!earliest || barDate < earliest) earliest = barDate
+  }
+  return earliest
 }

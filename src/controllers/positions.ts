@@ -9,6 +9,7 @@ import { authenticateToken } from '../middleware/auth.js'
 import {
   fetchHistoricalMaxDrawdown,
   fetchHistoricalMaxRunUp,
+  fetchHistoricalStopLossHit,
 } from '../lib/historical-drawdown.js'
 import {
   findOrCreateAsset,
@@ -736,6 +737,117 @@ router.post(
   })
 )
 
+// ─── POST /api/positions/:id/check-stop-loss ─────────────────────────────────
+
+/**
+ * @swagger
+ * /api/positions/{id}/check-stop-loss:
+ *   post:
+ *     summary: Check whether a position's stop loss has been reached and remember it
+ *     description: >
+ *       For an open long position with a stop loss that is not already flagged, decides
+ *       whether the stop has been reached and, if so, persists stopLossHitAt so the flag
+ *       survives the price recovering. If currentPrice is supplied and at or below the stop,
+ *       the stop is flagged immediately. Otherwise daily lows are scanned from the time the
+ *       stop was last set (or the open date, if never changed) to today; the first day whose
+ *       low reached the stop becomes stopLossHitAt (day-granular). Editing the stop loss
+ *       price clears the flag. Already-flagged, closed, short, or stop-less positions are
+ *       returned unchanged.
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               currentPrice:
+ *                 type: number
+ *                 minimum: 0
+ *                 description: Live market price; when at or below the stop the history scan is skipped
+ *     responses:
+ *       200:
+ *         description: Current stop loss hit state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 stopLossHitAt:
+ *                   type: string
+ *                   format: date-time
+ *                   nullable: true
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Position not found
+ */
+router.post(
+  '/:id/check-stop-loss',
+  [
+    param('id').isString(),
+    body('currentPrice').optional().isFloat({ min: 0 }).toFloat(),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const position = await prisma.position.findFirst({
+      where: { id: req.params.id, userId: req.user!.userId },
+      include: { asset: true },
+    })
+    if (!position) {
+      return res
+        .status(404)
+        .json({ error: 'Not Found', message: 'Position not found' })
+    }
+
+    const stopLossPrice =
+      position.stopLossPrice === null ? null : Number(position.stopLossPrice)
+    const isTrackable =
+      position.status !== 'CLOSED' &&
+      position.positionType === 'LONG' &&
+      stopLossPrice !== null &&
+      stopLossPrice > 0
+
+    if (position.stopLossHitAt || !isTrackable) {
+      return res.json({
+        success: true,
+        stopLossHitAt: position.stopLossHitAt,
+      })
+    }
+
+    const currentPrice: number | undefined = req.body?.currentPrice
+    const hitAt =
+      currentPrice !== undefined && currentPrice <= stopLossPrice
+        ? new Date()
+        : await fetchHistoricalStopLossHit(
+            position.asset.symbol,
+            stopLossPrice,
+            position.stopLossSetAt ?? position.openDate
+          )
+
+    if (hitAt) {
+      await prisma.position.update({
+        where: { id: position.id },
+        data: { stopLossHitAt: hitAt },
+      })
+    }
+
+    res.json({ success: true, stopLossHitAt: hitAt })
+  })
+)
+
 // ─── PATCH /api/positions/:id ─────────────────────────────────────────────────
 
 /**
@@ -782,6 +894,7 @@ router.post(
  *                 type: string
  *               stopLossPrice:
  *                 type: number
+ *                 description: Changing the stop loss restarts stop-loss-reached tracking (clears stopLossHitAt)
  *               takeProfitPrice:
  *                 type: number
  *               strategy:
@@ -940,6 +1053,17 @@ router.patch(
       ...(tradeGrade !== undefined && { tradeGrade }),
       ...(lessonsLearned !== undefined && { lessonsLearned }),
       ...(unrealizedPnL !== undefined && { unrealizedPnL }),
+    }
+
+    // A changed stop loss is a new stop: restart the "reached" tracking from now.
+    if (stopLossPrice !== undefined) {
+      const previousStop =
+        existing.stopLossPrice === null ? null : Number(existing.stopLossPrice)
+      const nextStop = stopLossPrice === null ? null : Number(stopLossPrice)
+      if (previousStop !== nextStop) {
+        updates.stopLossSetAt = nextStop === null ? null : new Date()
+        updates.stopLossHitAt = null
+      }
     }
 
     // Allow explicit maxDrawdownPercent override (null resets it; a number sets it directly).

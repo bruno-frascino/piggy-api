@@ -168,6 +168,8 @@ Constraints: `@@unique([assetId, date])`
 | totalSellValue | `Decimal?` | @db.Decimal(12, 2) |
 | sellFees | `Decimal?` | @default(0) @db.Decimal(8, 2) |
 | stopLossPrice | `Decimal?` | @db.Decimal(10, 4) |
+| stopLossSetAt | `DateTime?` | — |
+| stopLossHitAt | `DateTime?` | — |
 | takeProfitPrice | `Decimal?` | @db.Decimal(10, 4) |
 | riskAmount | `Decimal?` | @db.Decimal(12, 2) |
 | riskPercentage | `Decimal?` | @db.Decimal(5, 2) |
@@ -346,3 +348,4 @@ Constraints: `@@unique([userId, name])`
 - `20261009000000_add_demo_trading_accounts`
 - `20261012045355_add_max_run_up_percent`
 - `20261013042800_add_transaction_close_reason`
+- `20261014113000_add_stop_loss_hit_tracking`

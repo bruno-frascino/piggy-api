@@ -36,13 +36,13 @@
     "startLine": 11
   },
   {
-    "endLine": 19,
+    "endLine": 20,
     "file": "src/controllers/positions.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 19
+    "startLine": 20
   },
   {
     "endLine": 17,
@@ -324,22 +324,31 @@
     "startLine": 223
   },
   {
-    "endLine": 82,
+    "endLine": 83,
     "file": "src/lib/historical-drawdown.ts",
     "jsdoc": "Returns the worst intra-period low as a max-drawdown percentage relative to the entry price. The returned value is always positive (e.g. 6.4 means a 6.4% drawdown). Returns null when history is unavailable or there was no drawdown at all.",
     "kind": "FunctionDeclaration",
     "name": "fetchHistoricalMaxDrawdown",
     "signature": "export async function fetchHistoricalMaxDrawdown( symbol: string, entryPrice: number, openDate: Date ): Promise<number | null>",
-    "startLine": 61
+    "startLine": 62
   },
   {
-    "endLine": 117,
+    "endLine": 118,
     "file": "src/lib/historical-drawdown.ts",
     "jsdoc": "Opposite of max drawdown: the best intra-period high as a max run-up (peak unrealized gain) percentage relative to the entry price. Pass `endDate` (the close date) for closed positions so the peak is only searched while the position was actually held. The returned value is always positive (e.g. 15 means the price peaked 15% above entry). Returns null when history is unavailable or the price never traded above the entry price.",
     "kind": "FunctionDeclaration",
     "name": "fetchHistoricalMaxRunUp",
     "signature": "export async function fetchHistoricalMaxRunUp( symbol: string, entryPrice: number, openDate: Date, endDate?: Date ): Promise<number | null>",
-    "startLine": 94
+    "startLine": 95
+  },
+  {
+    "endLine": 150,
+    "file": "src/lib/historical-drawdown.ts",
+    "jsdoc": "Finds when a long position's stop loss was first reached: the earliest daily bar since `since` whose intraday low is at or below `stopLossPrice`. Returns that bar's date, or null when history is unavailable or the stop was never reached. Bars are daily, so the timestamp is day-granular.",
+    "kind": "FunctionDeclaration",
+    "name": "fetchHistoricalStopLossHit",
+    "signature": "export async function fetchHistoricalStopLossHit( symbol: string, stopLossPrice: number, since: Date ): Promise<Date | null>",
+    "startLine": 127
   },
   {
     "endLine": 6,

@@ -14,6 +14,7 @@ vi.mock('yahoo-finance2', () => {
 import {
   fetchHistoricalMaxDrawdown,
   fetchHistoricalMaxRunUp,
+  fetchHistoricalStopLossHit,
 } from './historical-drawdown.js'
 
 beforeEach(() => {
@@ -135,5 +136,48 @@ describe('fetchHistoricalMaxRunUp', () => {
     )
     expect(result).toBeNull()
     expect(mockHistorical).not.toHaveBeenCalled()
+  })
+})
+
+describe('fetchHistoricalStopLossHit', () => {
+  const SINCE = new Date('2025-01-10')
+
+  it('returns the earliest bar date whose low reached the stop', async () => {
+    mockHistorical.mockResolvedValue([
+      { date: new Date('2025-02-05'), low: 2.9 },
+      { date: new Date('2025-01-20'), low: 3.0 }, // earliest hit (low == stop)
+      { date: new Date('2025-01-15'), low: 3.2 },
+    ])
+
+    const result = await fetchHistoricalStopLossHit('LYC.AX', 3.0, SINCE)
+    expect(result).toEqual(new Date('2025-01-20'))
+  })
+
+  it('returns null when no low reached the stop', async () => {
+    mockHistorical.mockResolvedValue([
+      { date: new Date('2025-01-15'), low: 3.2 },
+      { date: new Date('2025-01-16'), low: 3.01 },
+    ])
+
+    const result = await fetchHistoricalStopLossHit('LYC.AX', 3.0, SINCE)
+    expect(result).toBeNull()
+  })
+
+  it('ignores bars with a missing low or date', async () => {
+    mockHistorical.mockResolvedValue([
+      { date: new Date('2025-01-15'), low: null },
+      { low: 1 },
+      { date: 'not-a-date', low: 1 },
+    ])
+
+    const result = await fetchHistoricalStopLossHit('LYC.AX', 3.0, SINCE)
+    expect(result).toBeNull()
+  })
+
+  it('returns null when history is unavailable', async () => {
+    mockHistorical.mockRejectedValue(new Error('rate limited'))
+
+    const result = await fetchHistoricalStopLossHit('LYC.AX', 3.0, SINCE)
+    expect(result).toBeNull()
   })
 })
