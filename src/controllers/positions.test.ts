@@ -3,6 +3,11 @@ import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const { krakenMarkets } = vi.hoisted(() => ({ krakenMarkets: vi.fn() }))
+vi.mock('../lib/crypto/kraken-markets.js', () => ({
+  getKrakenMarkets: krakenMarkets,
+  KrakenMarketsUnavailable: class extends Error {},
+}))
 const {
   positionFindManyMock,
   positionCountMock,
@@ -89,6 +94,7 @@ vi.mock('../lib/prisma.js', () => ({
 
 import positionsRouter from './positions.js'
 import { errorHandler } from '../middleware/validation.js'
+import { KrakenMarketsUnavailable } from '../lib/crypto/kraken-markets.js'
 
 function createApp() {
   const app = express()
@@ -101,6 +107,10 @@ function createApp() {
 describe('positions controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    krakenMarkets.mockResolvedValue([
+      { symbol: 'BTC-AUD', exchangeCode: 'KRAKEN' },
+      { symbol: 'SHIB-AUD', exchangeCode: 'KRAKEN' },
+    ])
     fetchHistoricalMaxDrawdownMock.mockResolvedValue(null)
     fetchHistoricalMaxRunUpMock.mockResolvedValue(null)
     fetchHistoricalStopLossHitMock.mockResolvedValue(null)
@@ -169,6 +179,93 @@ describe('positions controller', () => {
       expect(response.body.success).toBe(true)
       expect(response.body.data).toEqual({ id: 'p_1' })
     })
+
+    it('accepts sub-cent crypto entry prices and passes them to Prisma unchanged', async () => {
+      exchangeFindUniqueMock.mockResolvedValue({ id: 'ex_1', code: 'KRAKEN' })
+      assetFindUniqueMock.mockResolvedValue({ id: 'a_1', symbol: 'SHIB-AUD' })
+      accountFindFirstMock.mockResolvedValue({ id: 'acc_1' })
+      positionCreateMock.mockResolvedValue({ id: 'p_1' })
+
+      const response = await request(createApp())
+        .post('/api/positions')
+        .send({
+          ...validBody,
+          symbol: 'SHIB-AUD',
+          exchangeCode: 'KRAKEN',
+          assetType: 'CRYPTO',
+          entryPrice: 0.00001234,
+          accountId: 'acc_1',
+        })
+
+      expect(response.status).toBe(201)
+      expect(positionCreateMock.mock.calls[0][0].data.entryPrice).toBe(
+        0.00001234
+      )
+    })
+
+    it('reports a catalogue outage without writing a position', async () => {
+      krakenMarkets.mockRejectedValueOnce(
+        new KrakenMarketsUnavailable('offline')
+      )
+      const response = await request(createApp())
+        .post('/api/positions')
+        .send({ ...validBody, symbol: 'BTC-AUD', exchangeCode: 'KRAKEN' })
+      expect(response.status).toBe(503)
+      expect(positionCreateMock).not.toHaveBeenCalled()
+    })
+
+    it('still rejects a zero entry price', async () => {
+      const response = await request(createApp())
+        .post('/api/positions')
+        .send({ ...validBody, entryPrice: 0 })
+
+      expect(response.status).toBe(400)
+    })
+
+    it('normalizes Kraken aliases, infers crypto and accepts tiny quantities', async () => {
+      exchangeFindUniqueMock.mockResolvedValue({ id: 'kraken', code: 'KRAKEN' })
+      assetFindUniqueMock.mockResolvedValue(null)
+      assetCreateMock.mockResolvedValue({ id: 'btc', symbol: 'BTC-AUD' })
+      accountFindFirstMock.mockResolvedValue({ id: 'acc_1' })
+      positionCreateMock.mockResolvedValue({ id: 'p_1' })
+      const response = await request(createApp())
+        .post('/api/positions')
+        .send({
+          ...validBody,
+          symbol: 'XBT-AUD',
+          exchangeCode: 'KRAKEN',
+          quantity: 0.00000001,
+          accountId: 'acc_1',
+        })
+      expect(response.status).toBe(201)
+      expect(assetCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          symbol: 'BTC-AUD',
+          assetType: 'CRYPTO',
+        }),
+      })
+      expect(positionCreateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ quantity: 0.00000001 }),
+        })
+      )
+    })
+
+    it.each([
+      { symbol: 'BTC-USD', exchangeCode: 'KRAKEN', assetType: 'CRYPTO' },
+      { symbol: 'BTC-AUD', exchangeCode: 'ASX', assetType: 'CRYPTO' },
+      { symbol: 'BTC-AUD', exchangeCode: 'KRAKEN', assetType: 'EQUITY' },
+      { symbol: 'NOPE-AUD', exchangeCode: 'KRAKEN', assetType: 'CRYPTO' },
+    ])(
+      'rejects invalid crypto combinations before creating a position: %j',
+      async (identity) => {
+        const response = await request(createApp())
+          .post('/api/positions')
+          .send({ ...validBody, ...identity })
+        expect(response.status).toBe(400)
+        expect(positionCreateMock).not.toHaveBeenCalled()
+      }
+    )
 
     it('registers the historical max run-up in the background', async () => {
       exchangeFindUniqueMock.mockResolvedValue({ id: 'ex_1', code: 'NASDAQ' })
@@ -794,6 +891,35 @@ describe('positions controller', () => {
   })
 
   describe('PATCH /api/positions/:id', () => {
+    it('keeps an unchanged historical crypto instrument editable during a catalogue outage', async () => {
+      const asset = {
+        id: 'a_1',
+        symbol: 'OLD-AUD',
+        assetType: 'CRYPTO',
+        exchange: { code: 'KRAKEN' },
+      }
+      positionFindFirstMock.mockResolvedValue({
+        id: 'p_1',
+        asset,
+        transactions: [],
+        quantity: 1,
+        entryPrice: 1,
+        buyFees: 0,
+      })
+      exchangeFindUniqueMock.mockResolvedValue({ id: 'kraken', code: 'KRAKEN' })
+      assetFindUniqueMock.mockResolvedValue(asset)
+      positionUpdateMock.mockResolvedValue({ id: 'p_1' })
+      krakenMarkets.mockRejectedValue(new KrakenMarketsUnavailable('offline'))
+      const response = await request(createApp())
+        .patch('/api/positions/p_1')
+        .send({
+          symbol: 'OLD-AUD',
+          exchangeCode: 'KRAKEN',
+          assetName: 'Historical coin',
+        })
+      expect(response.status).toBe(200)
+      expect(krakenMarkets).not.toHaveBeenCalled()
+    })
     it('returns 404 when the position does not exist', async () => {
       positionFindFirstMock.mockResolvedValue(null)
 
@@ -1006,6 +1132,23 @@ describe('positions controller', () => {
   })
 
   describe('POST /api/positions/:id/close', () => {
+    it('rejects overselling a tiny balance rather than accepting an absolute epsilon', async () => {
+      positionFindFirstMock.mockResolvedValue({
+        id: 'tiny',
+        status: 'OPEN',
+        transactions: [{ type: 'BUY', quantity: 0.00000000001 }],
+      })
+      const response = await request(createApp())
+        .post('/api/positions/tiny/close')
+        .send({
+          closeDate: '2026-02-01',
+          exitPrice: 100000,
+          quantity: 0.00000000002,
+        })
+      expect(response.status).toBe(400)
+      expect(response.body.message).toMatch(/exceeds remaining/)
+      expect(transactionCreateMock).not.toHaveBeenCalled()
+    })
     it('returns 404 when the position does not exist', async () => {
       positionFindFirstMock.mockResolvedValue(null)
 

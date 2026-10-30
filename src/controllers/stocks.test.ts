@@ -3,10 +3,12 @@ import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { fetchMock, quoteMock } = vi.hoisted(() => ({
+const { fetchMock, quoteMock, cryptoQuote } = vi.hoisted(() => ({
+  cryptoQuote: vi.fn(),
   fetchMock: vi.fn(),
   quoteMock: vi.fn(),
 }))
+vi.mock('../lib/crypto/pricing.js', () => ({ getCryptoQuote: cryptoQuote }))
 
 vi.mock('yahoo-finance2', () => ({
   default: class YahooFinanceMock {
@@ -67,6 +69,26 @@ describe('stocks controller', () => {
         countryCode: 'US',
       },
     ])
+  })
+
+  it('uses the crypto quote pipeline without substituting a USD price for AUD', async () => {
+    cryptoQuote.mockResolvedValueOnce(0.00001234).mockResolvedValueOnce(null)
+    const response = await request(createApp()).get(
+      '/api/stocks/quotes?symbols=SHIB-AUD,BTC-USD'
+    )
+    expect(response.status).toBe(200)
+    expect(response.body.data).toEqual([
+      {
+        symbol: 'SHIB-AUD',
+        price: 0.00001234,
+        change: null,
+        changePercent: null,
+        currency: 'AUD',
+      },
+    ])
+    expect(cryptoQuote).toHaveBeenCalledWith('SHIB', 'AUD')
+    expect(cryptoQuote).toHaveBeenCalledWith('BTC', 'USD')
+    expect(quoteMock).not.toHaveBeenCalled()
   })
 
   it('falls back to second yahoo host when first is rate limited', async () => {

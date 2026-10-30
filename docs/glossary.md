@@ -66,3 +66,26 @@ account-selection.
 Used for practice: positions open and close normally, but the account is never eligible for
 tax reports and is excluded from "All accounts" aggregates (History, Statistics); its data
 shows only when the account is explicitly selected. See `docs/adr/0012-demo-trading-accounts.md`.
+
+**Venue** — A crypto exchange operator (Kraken, Binance, Coinbase). Each venue has one
+`Exchange` row per quote currency (e.g. `KRAKEN` = AUD, `KRAKEN_USD` = USD) so every Exchange
+keeps a single currency. See `docs/adr/0014-crypto-venues-split-by-quote-currency.md`.
+
+**Position origin** — `Position.origin`: `MANUAL` (entered by the user), `IMPORT_TRADE`
+(created from an exchange import of one order) or `STAKING_REWARD` (monthly staking parcel).
+`Position.externalRef` holds the source order/month key for imported parcels (`""` for manual)
+and is part of the Position unique key.
+
+**Allocation** — The user-confirmed mapping of an imported SELL to the parcels it disposes of
+(`[{ positionId, quantity }]`), pre-filled with a FIFO suggestion. See
+`docs/adr/0013-exchange-imports-sell-allocation.md`.
+
+**Import batch / Imported event** — One upload of exchange CSVs (`ImportBatch`) and the
+normalised rows parsed from it (`ImportedEvent`: BUY, SELL, STAKING_REWARD, UNSUPPORTED…).
+Nothing touches positions until the batch is committed. Events are de-duplicated per user by
+`(source, externalId)`, so re-uploading overlapping files is safe.
+
+**Staking parcel** — A `Position` with `origin = STAKING_REWARD` holding one calendar month
+(Australia/Sydney) of one asset's rewards, valued at receipt, opened on the last reward date.
+Months below the dust threshold are skipped; the current month is deferred. See
+`docs/adr/0015-crypto-staking-parcels.md`.

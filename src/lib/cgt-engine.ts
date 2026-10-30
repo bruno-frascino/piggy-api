@@ -113,6 +113,11 @@ export async function computeCapitalGainsReport(
         include: {
           asset: { include: { exchange: true } },
           account: true,
+          transactions: {
+            where: { type: 'BUY' },
+            select: { quantity: true },
+            take: 1,
+          },
         },
       },
     },
@@ -127,10 +132,15 @@ export async function computeCapitalGainsReport(
     const acquireDate = new Date(position.openDate)
     const disposeDate = new Date(tx.date)
 
+    // totalBuyValue is only 2dp, so derive the parcel size from the BUY
+    // transaction; the value/price formula is a fallback for legacy rows.
+    const buyTxQty = Number(position.transactions?.[0]?.quantity)
     const originalBuyQty =
-      Number(position.entryPrice) > 0
-        ? Number(position.totalBuyValue) / Number(position.entryPrice)
-        : 0
+      Number.isFinite(buyTxQty) && buyTxQty > 0
+        ? buyTxQty
+        : Number(position.entryPrice) > 0
+          ? Number(position.totalBuyValue) / Number(position.entryPrice)
+          : 0
     const quantity = Number(tx.quantity)
     const proratedBuyFee =
       originalBuyQty > 0

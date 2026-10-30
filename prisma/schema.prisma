@@ -25,6 +25,7 @@ model User {
 
   positions          Position[]
   tradingAccounts    TradingAccount[]
+  importBatches      ImportBatch[]
   portfolioSnapshots PortfolioSnapshot[]
   refreshTokens      RefreshToken[]
   passwordResetTokens PasswordResetToken[]
@@ -95,6 +96,7 @@ model TradingAccount {
   user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   positions         Position[]
   portfolioSnapshots PortfolioSnapshot[]
+  importBatches     ImportBatch[]
 
   @@unique([userId, name])
   @@map("trading_accounts")
@@ -141,10 +143,10 @@ model PriceHistory {
   id        String   @id @default(cuid())
   assetId   String
   date      DateTime
-  open      Decimal  @db.Decimal(10, 4)
-  high      Decimal  @db.Decimal(10, 4)
-  low       Decimal  @db.Decimal(10, 4)
-  close     Decimal  @db.Decimal(10, 4)
+  open      Decimal  @db.Decimal(24, 12)
+  high      Decimal  @db.Decimal(24, 12)
+  low       Decimal  @db.Decimal(24, 12)
+  close     Decimal  @db.Decimal(24, 12)
   volume    BigInt?
   createdAt DateTime @default(now())
 
@@ -162,20 +164,20 @@ model Position {
   assetId          String
   accountId        String
   openDate         DateTime
-  entryPrice       Decimal        @db.Decimal(10, 4)
+  entryPrice       Decimal        @db.Decimal(24, 12)
   quantity         Float
   positionType     PositionType   @default(LONG)
   status           PositionStatus @default(OPEN)
   totalBuyValue    Decimal        @db.Decimal(12, 2)
-  buyFees          Decimal        @default(0) @db.Decimal(8, 2)
+  buyFees          Decimal        @default(0) @db.Decimal(18, 8)
   closeDate        DateTime?
-  exitPrice        Decimal?       @db.Decimal(10, 4)
+  exitPrice        Decimal?       @db.Decimal(24, 12)
   totalSellValue   Decimal?       @db.Decimal(12, 2)
-  sellFees         Decimal?       @default(0) @db.Decimal(8, 2)
-  stopLossPrice    Decimal?       @db.Decimal(10, 4)
+  sellFees         Decimal?       @default(0) @db.Decimal(18, 8)
+  stopLossPrice    Decimal?       @db.Decimal(24, 12)
   stopLossSetAt    DateTime?
   stopLossHitAt    DateTime?
-  takeProfitPrice  Decimal?       @db.Decimal(10, 4)
+  takeProfitPrice  Decimal?       @db.Decimal(24, 12)
   riskAmount       Decimal?       @db.Decimal(12, 2)
   riskPercentage   Decimal?       @db.Decimal(5, 2)
   capitalAllocated Decimal        @db.Decimal(12, 2)
@@ -193,6 +195,8 @@ model Position {
   maxRunUpPercent  Decimal?       @db.Decimal(8, 4)
   tradeGrade       String?
   lessonsLearned   String?
+  origin           PositionOrigin @default(MANUAL)
+  externalRef      String         @default("")
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
@@ -201,7 +205,7 @@ model Position {
   account      TradingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
 
-  @@unique([userId, assetId, openDate, entryPrice, accountId])
+  @@unique([userId, assetId, openDate, entryPrice, accountId, externalRef])
   @@map("positions")
 }
 
@@ -213,9 +217,9 @@ model Transaction {
   type          TransactionType
   date          DateTime
   quantity      Float
-  price         Decimal         @db.Decimal(10, 4)
+  price         Decimal         @db.Decimal(24, 12)
   totalValue    Decimal         @db.Decimal(12, 2)
-  fees          Decimal         @default(0) @db.Decimal(8, 2)
+  fees          Decimal         @default(0) @db.Decimal(18, 8)
   executionTime DateTime?
   brokerRef     String?
   orderType     String?
@@ -260,6 +264,12 @@ model PortfolioSnapshot {
 enum PositionType {
   LONG
   SHORT
+}
+
+enum PositionOrigin {
+  MANUAL
+  IMPORT_TRADE
+  STAKING_REWARD
 }
 
 enum PositionStatus {
@@ -374,4 +384,95 @@ model SavedScreen {
 
   @@unique([userId, name])
   @@map("saved_screens")
+}
+// ─── Exchange imports ────────────────────────────────────────────────────────
+
+enum ImportSource {
+  KRAKEN
+  BINANCE
+  COINBASE
+}
+
+enum ImportMethod {
+  CSV
+  API
+}
+
+enum ImportBatchStatus {
+  PENDING_REVIEW
+  PARTIALLY_APPLIED
+  COMMITTED
+  DISCARDED
+  FAILED
+}
+
+enum ImportedEventKind {
+  BUY
+  SELL
+  STAKING_REWARD
+  DEPOSIT
+  WITHDRAWAL
+  UNSUPPORTED
+}
+
+enum ImportedEventStatus {
+  PENDING
+  DEFERRED
+  APPLIED
+  SKIPPED
+  DUPLICATE
+}
+
+model ImportBatch {
+  id          String            @id @default(cuid())
+  userId      String
+  accountId   String
+  source      ImportSource
+  method      ImportMethod
+  status      ImportBatchStatus @default(PENDING_REVIEW)
+  fileNames   String[]
+  fileHash    String?
+  warnings    Json              @default("[]")
+  // Parser by-products needed to re-plan later (e.g. ledger balances for reconciliation)
+  meta        Json              @default("{}")
+  createdAt   DateTime          @default(now())
+  committedAt DateTime?
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account TradingAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  events  ImportedEvent[]
+
+  @@index([userId, createdAt])
+  @@map("import_batches")
+}
+
+model ImportedEvent {
+  id                 String              @id @default(cuid())
+  batchId            String
+  userId             String
+  source             ImportSource
+  externalId         String
+  kind               ImportedEventKind
+  status             ImportedEventStatus @default(PENDING)
+  occurredAt         DateTime
+  baseAsset          String
+  quoteCurrency      String?
+  exchangeCode       String?
+  quantity           Decimal             @db.Decimal(28, 12)
+  price              Decimal?            @db.Decimal(24, 12)
+  grossValue         Decimal?            @db.Decimal(20, 8)
+  fee                Decimal             @default(0) @db.Decimal(18, 8)
+  feeCurrency        String?
+  fmvAud             Decimal?            @db.Decimal(20, 8)
+  resolution         Json?
+  appliedPositionIds String[]
+  warning            String?
+  raw                Json
+  createdAt          DateTime            @default(now())
+
+  batch ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source, externalId])
+  @@index([userId, kind, status])
+  @@map("imported_events")
 }

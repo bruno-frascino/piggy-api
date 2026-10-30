@@ -10,7 +10,9 @@ Full write-up: `docs/ato-capital-gains-methodology.md`. Full ADR: `docs/adr/0002
   already a discrete CGT parcel (`openDate`/`entryPrice`/`buyFees` = acquisition
   date/cost/incidental costs). Every SELL `Transaction` against it (partial or full) is an
   unambiguous disposal of that parcel. **No FIFO lot reconstruction** is implemented or needed
-  — do not add any.
+  — do not add any. (Exchange imports pick the parcel for each sell at import time via
+  user-confirmed allocation; the engine still does no matching — see
+  `docs/adr/0013-exchange-imports-sell-allocation.md`.)
 - Reports are scoped by an explicit, user-picked multi-select of Trading Accounts each
   generation (`computeCapitalGainsReport` in `cgt-engine.ts`), never "all accounts" — this
   supports separate declarations (e.g. the user's own accounts vs a spouse's accounts tracked

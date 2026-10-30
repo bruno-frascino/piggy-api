@@ -30,3 +30,6 @@ If a user buys more of the same symbol, they open a **new, separate** `Position`
   metrics stay per-parcel meaningful.
 - If a future requirement needs true FIFO/lot-blending, it would need a new data model
   concept (e.g. a Lot entity separate from Position) — this ADR should be revisited then.
+- Exchange imports keep this model: sells are allocated to specific parcels at import time
+  (see [0013](./0013-exchange-imports-sell-allocation.md)); the CGT engine still does no
+  lot matching.

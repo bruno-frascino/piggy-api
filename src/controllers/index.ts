@@ -9,6 +9,8 @@ import taxReportRoutes from './tax-reports.js'
 import statisticsRoutes from './statistics.js'
 import screenerRoutes from './screener.js'
 import watchlistRoutes from './watchlists.js'
+import exchangeRoutes from './exchanges.js'
+import importRoutes from './imports.js'
 
 const router = Router()
 
@@ -22,5 +24,7 @@ router.use('/tax-reports', taxReportRoutes)
 router.use('/statistics', statisticsRoutes)
 router.use('/screener', screenerRoutes)
 router.use('/watchlists', watchlistRoutes)
+router.use('/exchanges', exchangeRoutes)
+router.use('/imports', importRoutes)
 
 export default router

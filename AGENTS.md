@@ -54,7 +54,10 @@ lockfiles. Node version per `.nvmrc`.
 10. User accounts are soft-deleted (`deletedAt`/`purgeAfter`) with a 30-day grace period;
     `yarn db:purge-deleted-users` must be scheduled in production or nothing is ever
     actually erased. See `docs/deployment.md`.
-11. After changing `src/`, `prisma/schema.prisma`, or routes: run `yarn context:build` and
+11. Exchange imports (`src/lib/imports/`, `/api/imports`) never append to an existing `Position`:
+    each imported order / staking month becomes its own parcel, and sells are allocated to
+    parcels at import time (see `docs/adr/0013-exchange-imports-sell-allocation.md`).
+12. After changing `src/`, `prisma/schema.prisma`, or routes: run `yarn context:build` and
     commit the resulting `context/` diff (see `context/README.md`). `yarn context:check`
     verifies freshness without writing; the pre-push hook regenerates context and PR CI checks it.
 

@@ -1,6 +1,7 @@
 import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
+import crypto from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
@@ -162,6 +163,55 @@ describe('tax-reports controller', () => {
       expect(taxReportCreateMock).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ version: 3 }),
+        })
+      )
+    })
+
+    it('creates a new revision for the date format change even when financial data is unchanged', async () => {
+      const legacyHash = crypto
+        .createHash('sha256')
+        .update(
+          JSON.stringify({
+            totalProceedsAud: SAMPLE_RESULT.totalProceedsAud,
+            totalCostBaseAud: SAMPLE_RESULT.totalCostBaseAud,
+            totalCapitalGainGrossAud: SAMPLE_RESULT.totalCapitalGainGrossAud,
+            totalCapitalLossAud: SAMPLE_RESULT.totalCapitalLossAud,
+            carriedForwardLossOpeningAud:
+              SAMPLE_RESULT.carriedForwardLossOpeningAud,
+            discountAppliedAud: SAMPLE_RESULT.discountAppliedAud,
+            netCapitalGainAud: SAMPLE_RESULT.netCapitalGainAud,
+            carriedForwardLossClosingAud:
+              SAMPLE_RESULT.carriedForwardLossClosingAud,
+            lineItems: SAMPLE_RESULT.lineItems,
+          })
+        )
+        .digest('hex')
+      taxReportFindFirstMock.mockResolvedValue({
+        ...SAMPLE_REPORT_ROW,
+        contentHash: legacyHash,
+      })
+      taxReportCreateMock.mockResolvedValue({
+        ...SAMPLE_REPORT_ROW,
+        id: 'r2',
+        version: 2,
+      })
+
+      const response = await request(createApp())
+        .post('/api/tax-reports/generate')
+        .send({ financialYearStartYear: 2025, accountIds: ['acc1'] })
+
+      expect(response.status).toBe(200)
+      expect(response.body.data.version).toBe(2)
+      expect(buildCapitalGainsPdfMock).toHaveBeenCalled()
+      expect(taxReportUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'r1' },
+        data: { supersededAt: expect.any(Date) },
+      })
+      expect(taxReportCreateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            contentHash: expect.not.stringMatching(legacyHash),
+          }),
         })
       )
     })

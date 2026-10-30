@@ -104,6 +104,15 @@ const options = {
         description: 'Symbol search via Yahoo Finance',
       },
       {
+        name: 'Exchanges',
+        description: 'Exchange catalogue (equity exchanges and crypto venues)',
+      },
+      {
+        name: 'Imports',
+        description:
+          'Exchange CSV imports (Kraken): upload, review plan, commit',
+      },
+      {
         name: 'Positions',
         description: 'Trading position lifecycle (open, update, close, delete)',
       },

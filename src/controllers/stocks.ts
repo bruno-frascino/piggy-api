@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { query } from 'express-validator'
 import YahooFinance from 'yahoo-finance2'
+import { getCryptoQuote } from '../lib/crypto/pricing.js'
 import {
   asyncHandler,
   handleValidationErrors,
@@ -242,6 +243,9 @@ router.get(
  *       Returns the current market price, day change and day change % for each
  *       symbol via FMP, with Yahoo Finance as a fallback. Maximum 50 symbols
  *       per request.
+ *       BASE-AUD and BASE-USD crypto symbols use the crypto quote provider with
+ *       AUD FX fallback when necessary. Crypto day changes are unavailable (null).
+ *       Unresolved symbols are omitted; crypto quotes retain the requested currency.
  *     tags: [Stocks]
  *     security:
  *       - bearerAuth: []
@@ -305,10 +309,16 @@ router.get(
       return res.json({ success: true, data: [] })
     }
 
+    const cryptoSymbols = symbols.filter((symbol) =>
+      /^[A-Z0-9]+-(AUD|USD)$/.test(symbol)
+    )
+    const stockSymbols = symbols.filter(
+      (symbol) => !cryptoSymbols.includes(symbol)
+    )
     const dataBySymbol = new Map<string, (typeof symbols)[number]>()
     let fmpData: Awaited<ReturnType<typeof getFmpQuotes>> = []
     try {
-      fmpData = await getFmpQuotes(symbols)
+      fmpData = stockSymbols.length ? await getFmpQuotes(stockSymbols) : []
     } catch (error) {
       if (!(error instanceof FmpUnavailableError)) throw error
       console.warn(
@@ -326,7 +336,9 @@ router.get(
       dataBySymbol.set(quote.symbol.toUpperCase(), quote.symbol)
     )
 
-    const missingSymbols = symbols.filter((symbol) => !dataBySymbol.has(symbol))
+    const missingSymbols = stockSymbols.filter(
+      (symbol) => !dataBySymbol.has(symbol)
+    )
     const yahooResults = await Promise.allSettled(
       missingSymbols.map((symbol) => yahooFinance.quote(symbol))
     )
@@ -353,6 +365,24 @@ router.get(
           typeof quote['currency'] === 'string' ? quote['currency'] : null,
       })
     })
+
+    await Promise.all(
+      cryptoSymbols.map(async (symbol) => {
+        const [base, currency] = symbol.split('-')
+        const price = await getCryptoQuote(base, currency)
+        if (price === null) {
+          console.warn(`No crypto quote available for ${symbol}`)
+          return
+        }
+        data.push({
+          symbol,
+          price,
+          change: null,
+          changePercent: null,
+          currency,
+        })
+      })
+    )
 
     res.json({ success: true, data })
   })

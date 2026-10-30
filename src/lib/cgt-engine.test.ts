@@ -43,6 +43,7 @@ function makeDisposal({
   currency = 'AUD',
   accountId = 'acc1',
   accountName = 'Main',
+  buyQty,
 }: {
   id: string
   quantity: number
@@ -56,6 +57,7 @@ function makeDisposal({
   currency?: string
   accountId?: string
   accountName?: string
+  buyQty?: number
 }) {
   return {
     id,
@@ -77,6 +79,7 @@ function makeDisposal({
         exchange: { code: 'ASX', currency },
       },
       account: { name: accountName },
+      transactions: buyQty === undefined ? [] : [{ quantity: buyQty }],
     },
   }
 }
@@ -326,5 +329,49 @@ describe('computeCapitalGainsReport', () => {
     expect(result.lineItems[0].proceedsAud).toBeCloseTo(300)
     expect(result.lineItems[0].costBaseAud).toBeCloseTo(150)
     expect(result.lineItems[0].capitalGainAud).toBeCloseTo(150)
+  })
+
+  it('prorates buy fees from the BUY transaction quantity for tiny parcels', async () => {
+    // totalBuyValue is rounded to 2dp (0.00), so value/price would give 0 qty.
+    transactionFindManyMock.mockResolvedValue([
+      makeDisposal({
+        id: 't-tiny',
+        quantity: 500000,
+        totalValue: 20,
+        fees: 0,
+        date: '2026-03-01',
+        entryPrice: 0.00002,
+        buyFees: 1,
+        totalBuyValue: 10,
+        openDate: '2026-01-01',
+        buyQty: 1000000,
+      }),
+    ])
+
+    const report = await computeCapitalGainsReport('u1', 2025, ['acc1'])
+
+    // half of the 1,000,000 coin parcel => half of the A$1 buy fee
+    expect(report.lineItems[0].costBaseForeign).toBeCloseTo(10 + 0.5, 6)
+  })
+
+  it('falls back to totalBuyValue / entryPrice when no BUY transaction exists', async () => {
+    transactionFindManyMock.mockResolvedValue([
+      makeDisposal({
+        id: 't-legacy',
+        quantity: 50,
+        totalValue: 1000,
+        fees: 0,
+        date: '2026-03-01',
+        entryPrice: 10,
+        buyFees: 20,
+        totalBuyValue: 1000,
+        openDate: '2026-01-01',
+      }),
+    ])
+
+    const report = await computeCapitalGainsReport('u1', 2025, ['acc1'])
+
+    // original qty 100 -> 50 sold => 10 of the 20 buy fee
+    expect(report.lineItems[0].costBaseForeign).toBeCloseTo(500 + 10, 6)
   })
 })

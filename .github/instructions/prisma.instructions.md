@@ -25,4 +25,6 @@ applyTo: 'prisma/**'
 - Every `Position` = exactly one BUY transaction at creation, never appended to. Don't add a
   schema shape that implies multiple BUYs feeding one Position (that would need FIFO lot
   tracking, which this codebase deliberately does not implement — see
-  `docs/adr/0001-one-buy-per-position.md`).
+  `docs/adr/0001-one-buy-per-position.md`). Import-time sell allocation to parcels is
+  user-confirmed specific identification, not FIFO lot tracking — see
+  `docs/adr/0013-exchange-imports-sell-allocation.md`.

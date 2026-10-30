@@ -28,7 +28,13 @@ app.use(
   })
 )
 app.use(morgan('combined'))
-app.use(express.json())
+// The imports upload route parses its own (larger) JSON body.
+const defaultJson = express.json()
+app.use((req, res, next) =>
+  req.method === 'POST' && /^\/api\/imports\/?$/.test(req.path)
+    ? next()
+    : defaultJson(req, res, next)
+)
 app.use(express.urlencoded({ extended: true }))
 
 // Health check endpoint

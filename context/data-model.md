@@ -24,6 +24,9 @@ erDiagram
     Watchlist ||--o{ WatchlistItem : "watchlist"
     Asset ||--o{ WatchlistItem : "asset"
     User ||--o{ SavedScreen : "user"
+    User ||--o{ ImportBatch : "user"
+    TradingAccount ||--o{ ImportBatch : "account"
+    ImportBatch ||--o{ ImportedEvent : "batch"
 ```
 
 ## Models
@@ -43,6 +46,7 @@ erDiagram
 | updatedAt | `DateTime` | @updatedAt |
 | positions | `Position[]` | — |
 | tradingAccounts | `TradingAccount[]` | — |
+| importBatches | `ImportBatch[]` | — |
 | portfolioSnapshots | `PortfolioSnapshot[]` | — |
 | refreshTokens | `RefreshToken[]` | — |
 | passwordResetTokens | `PasswordResetToken[]` | — |
@@ -106,6 +110,7 @@ Constraints: `@@index([purgeAfter])`
 | user | `User` | @relation(fields: [userId], references: [id], onDelete: Cascade) |
 | positions | `Position[]` | — |
 | portfolioSnapshots | `PortfolioSnapshot[]` | — |
+| importBatches | `ImportBatch[]` | — |
 
 Constraints: `@@unique([userId, name])`
 
@@ -138,10 +143,10 @@ Constraints: `@@unique([symbol, exchangeId])`
 | id | `String` | @id @default(cuid()) |
 | assetId | `String` | — |
 | date | `DateTime` | — |
-| open | `Decimal` | @db.Decimal(10, 4) |
-| high | `Decimal` | @db.Decimal(10, 4) |
-| low | `Decimal` | @db.Decimal(10, 4) |
-| close | `Decimal` | @db.Decimal(10, 4) |
+| open | `Decimal` | @db.Decimal(24, 12) |
+| high | `Decimal` | @db.Decimal(24, 12) |
+| low | `Decimal` | @db.Decimal(24, 12) |
+| close | `Decimal` | @db.Decimal(24, 12) |
 | volume | `BigInt?` | — |
 | createdAt | `DateTime` | @default(now()) |
 | asset | `Asset` | @relation(fields: [assetId], references: [id], onDelete: Cascade) |
@@ -157,20 +162,20 @@ Constraints: `@@unique([assetId, date])`
 | assetId | `String` | — |
 | accountId | `String` | — |
 | openDate | `DateTime` | — |
-| entryPrice | `Decimal` | @db.Decimal(10, 4) |
+| entryPrice | `Decimal` | @db.Decimal(24, 12) |
 | quantity | `Float` | — |
 | positionType | `PositionType` | @default(LONG) |
 | status | `PositionStatus` | @default(OPEN) |
 | totalBuyValue | `Decimal` | @db.Decimal(12, 2) |
-| buyFees | `Decimal` | @default(0) @db.Decimal(8, 2) |
+| buyFees | `Decimal` | @default(0) @db.Decimal(18, 8) |
 | closeDate | `DateTime?` | — |
-| exitPrice | `Decimal?` | @db.Decimal(10, 4) |
+| exitPrice | `Decimal?` | @db.Decimal(24, 12) |
 | totalSellValue | `Decimal?` | @db.Decimal(12, 2) |
-| sellFees | `Decimal?` | @default(0) @db.Decimal(8, 2) |
-| stopLossPrice | `Decimal?` | @db.Decimal(10, 4) |
+| sellFees | `Decimal?` | @default(0) @db.Decimal(18, 8) |
+| stopLossPrice | `Decimal?` | @db.Decimal(24, 12) |
 | stopLossSetAt | `DateTime?` | — |
 | stopLossHitAt | `DateTime?` | — |
-| takeProfitPrice | `Decimal?` | @db.Decimal(10, 4) |
+| takeProfitPrice | `Decimal?` | @db.Decimal(24, 12) |
 | riskAmount | `Decimal?` | @db.Decimal(12, 2) |
 | riskPercentage | `Decimal?` | @db.Decimal(5, 2) |
 | capitalAllocated | `Decimal` | @db.Decimal(12, 2) |
@@ -188,6 +193,8 @@ Constraints: `@@unique([assetId, date])`
 | maxRunUpPercent | `Decimal?` | @db.Decimal(8, 4) |
 | tradeGrade | `String?` | — |
 | lessonsLearned | `String?` | — |
+| origin | `PositionOrigin` | @default(MANUAL) |
+| externalRef | `String` | @default("") |
 | createdAt | `DateTime` | @default(now()) |
 | updatedAt | `DateTime` | @updatedAt |
 | user | `User` | @relation(fields: [userId], references: [id], onDelete: Cascade) |
@@ -195,7 +202,7 @@ Constraints: `@@unique([assetId, date])`
 | account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
 | transactions | `Transaction[]` | — |
 
-Constraints: `@@unique([userId, assetId, openDate, entryPrice, accountId])`
+Constraints: `@@unique([userId, assetId, openDate, entryPrice, accountId, externalRef])`
 
 ### `Transaction` (table: `transactions`)
 
@@ -206,9 +213,9 @@ Constraints: `@@unique([userId, assetId, openDate, entryPrice, accountId])`
 | type | `TransactionType` | — |
 | date | `DateTime` | — |
 | quantity | `Float` | — |
-| price | `Decimal` | @db.Decimal(10, 4) |
+| price | `Decimal` | @db.Decimal(24, 12) |
 | totalValue | `Decimal` | @db.Decimal(12, 2) |
-| fees | `Decimal` | @default(0) @db.Decimal(8, 2) |
+| fees | `Decimal` | @default(0) @db.Decimal(18, 8) |
 | executionTime | `DateTime?` | — |
 | brokerRef | `String?` | — |
 | orderType | `String?` | — |
@@ -327,14 +334,72 @@ Constraints: `@@unique([watchlistId, assetId])`
 
 Constraints: `@@unique([userId, name])`
 
+### `ImportBatch` (table: `import_batches`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| userId | `String` | — |
+| accountId | `String` | — |
+| source | `ImportSource` | — |
+| method | `ImportMethod` | — |
+| status | `ImportBatchStatus` | @default(PENDING_REVIEW) |
+| fileNames | `String[]` | — |
+| fileHash | `String?` | — |
+| warnings | `Json` | @default("[]") |
+| meta | `Json` | @default("{}") |
+| createdAt | `DateTime` | @default(now()) |
+| committedAt | `DateTime?` | — |
+| user | `User` | @relation(fields: [userId], references: [id], onDelete: Cascade) |
+| account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
+| events | `ImportedEvent[]` | — |
+
+Constraints: `@@index([userId, createdAt])`
+
+### `ImportedEvent` (table: `imported_events`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| batchId | `String` | — |
+| userId | `String` | — |
+| source | `ImportSource` | — |
+| externalId | `String` | — |
+| kind | `ImportedEventKind` | — |
+| status | `ImportedEventStatus` | @default(PENDING) |
+| occurredAt | `DateTime` | — |
+| baseAsset | `String` | — |
+| quoteCurrency | `String?` | — |
+| exchangeCode | `String?` | — |
+| quantity | `Decimal` | @db.Decimal(28, 12) |
+| price | `Decimal?` | @db.Decimal(24, 12) |
+| grossValue | `Decimal?` | @db.Decimal(20, 8) |
+| fee | `Decimal` | @default(0) @db.Decimal(18, 8) |
+| feeCurrency | `String?` | — |
+| fmvAud | `Decimal?` | @db.Decimal(20, 8) |
+| resolution | `Json?` | — |
+| appliedPositionIds | `String[]` | — |
+| warning | `String?` | — |
+| raw | `Json` | — |
+| createdAt | `DateTime` | @default(now()) |
+| batch | `ImportBatch` | @relation(fields: [batchId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, status])`
+
 ## Enums
 
 - **TradingAccountStatus**: ACTIVE, CLOSED
 - **AssetType**: EQUITY, ETF, CRYPTO
 - **PositionType**: LONG, SHORT
+- **PositionOrigin**: MANUAL, IMPORT_TRADE, STAKING_REWARD
 - **PositionStatus**: OPEN, CLOSED, PARTIAL
 - **CloseReason**: STOP_LOSS, TARGET, MANUAL, OTHER
 - **TransactionType**: BUY, SELL, DIVIDEND, SPLIT, BONUS
+- **ImportSource**: KRAKEN, BINANCE, COINBASE
+- **ImportMethod**: CSV, API
+- **ImportBatchStatus**: PENDING_REVIEW, PARTIALLY_APPLIED, COMMITTED, DISCARDED, FAILED
+- **ImportedEventKind**: BUY, SELL, STAKING_REWARD, DEPOSIT, WITHDRAWAL, UNSUPPORTED
+- **ImportedEventStatus**: PENDING, DEFERRED, APPLIED, SKIPPED, DUPLICATE
 
 ## Migrations
 
@@ -349,3 +414,5 @@ Constraints: `@@unique([userId, name])`
 - `20261012045355_add_max_run_up_percent`
 - `20261013042800_add_transaction_close_reason`
 - `20261014113000_add_stop_loss_hit_tracking`
+- `20261018100000_crypto_foundation`
+- `20261018120000_exchange_imports`

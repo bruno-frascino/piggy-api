@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import PDFDocument from 'pdfkit'
 import { buildCapitalGainsPdf } from './pdf-report.js'
 import type { CgtReportResult } from './cgt-engine.js'
 
@@ -45,6 +46,33 @@ function makeResult(overrides: Partial<CgtReportResult> = {}): CgtReportResult {
 }
 
 describe('buildCapitalGainsPdf', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  it('renders all report dates as dd/MM/yyyy without changing the report data', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 0, 5, 12))
+    const text = vi.spyOn(PDFDocument.prototype, 'text')
+    const result = makeResult()
+    await buildCapitalGainsPdf(result, { email: 'test@example.com' })
+
+    const labels = text.mock.calls.map(([label]) => label)
+    expect(labels).toContain('01/01/2024')
+    expect(labels).toContain('01/03/2026')
+    expect(labels).toContain('FY2025-26 (01/07/2025 – 30/06/2026)')
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^Generated: 05\/01\/2026/),
+      ])
+    )
+    expect(labels).not.toContain('2024-01-01')
+    expect(labels).not.toContain('2026-03-01')
+    expect(result.lineItems[0].acquireDate).toBe('2024-01-01')
+    expect(result.lineItems[0].disposeDate).toBe('2026-03-01')
+  })
+
   it('produces a valid, non-trivial PDF buffer', async () => {
     const buffer = await buildCapitalGainsPdf(makeResult(), {
       name: 'Bruno',

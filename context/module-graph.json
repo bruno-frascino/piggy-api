@@ -93,14 +93,17 @@
         "src/controllers/accounts.ts",
         "src/middleware/auth.ts",
         "src/controllers/auth.ts",
+        "src/controllers/exchanges.ts",
+        "src/lib/imports/service.ts",
+        "src/lib/fx-rates.ts",
+        "src/lib/position-service.ts",
+        "src/controllers/imports.ts",
         "src/controllers/portfolio.ts",
         "src/controllers/positions.ts",
-        "src/lib/position-service.ts",
         "src/controllers/screener.ts",
         "src/controllers/statistics.ts",
         "src/controllers/tax-reports.ts",
         "src/lib/cgt-engine.ts",
-        "src/lib/fx-rates.ts",
         "src/controllers/users.ts",
         "src/lib/account-deletion.ts",
         "src/controllers/watchlists.ts",
@@ -150,6 +153,8 @@
       "dependents": [
         "src/controllers/accounts.ts",
         "src/controllers/auth.ts",
+        "src/controllers/exchanges.ts",
+        "src/controllers/imports.ts",
         "src/controllers/portfolio.ts",
         "src/controllers/positions.ts",
         "src/controllers/screener.ts",
@@ -180,6 +185,8 @@
       "dependents": [
         "src/controllers/accounts.ts",
         "src/controllers/auth.ts",
+        "src/controllers/exchanges.ts",
+        "src/controllers/imports.ts",
         "src/controllers/portfolio.ts",
         "src/controllers/positions.ts",
         "src/controllers/screener.ts",
@@ -341,6 +348,854 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/crypto/kraken-markets.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/kraken-markets.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./exchanges.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/exchanges.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/exchanges.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./symbols.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/symbols.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/exchanges.test.ts",
+        "src/controllers/exchanges.ts",
+        "src/controllers/positions.ts",
+        "src/controllers/positions.test.ts",
+        "src/lib/crypto/kraken-markets.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/crypto/kraken-markets.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/lib/crypto/kraken-markets.ts",
+        "src/lib/crypto/pricing.ts",
+        "src/lib/crypto/instrument.ts",
+        "src/lib/imports/adapters/kraken-csv.ts",
+        "src/lib/imports/planner.ts",
+        "src/lib/crypto/symbols.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/crypto/symbols.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/crypto/kraken-markets.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/kraken-markets.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/crypto/venues.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/venues.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/exchanges.test.ts",
+        "src/controllers/index.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/exchanges.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/controllers/exchanges.ts",
+        "src/lib/imports/service.ts",
+        "src/lib/crypto/instrument.ts",
+        "src/lib/imports/planner.ts",
+        "src/lib/crypto/venues.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/crypto/venues.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/imports/service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./imports.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/imports.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/imports.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../crypto/pricing.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/pricing.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../crypto/venues.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/venues.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../fx-rates.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fx-rates.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../historical-drawdown.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/historical-drawdown.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../position-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./adapters/kraken-csv.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/adapters/kraken-csv.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./decimal.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/decimal.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./planner.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/planner.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/imports.test.ts",
+        "src/controllers/imports.ts",
+        "src/lib/imports/service.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/imports/service.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../fmp-client.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fmp-client.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../fx-rates.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fx-rates.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./symbols.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/symbols.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/imports/service.ts",
+        "src/controllers/stocks.ts",
+        "src/lib/crypto/pricing.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/crypto/pricing.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/lib/crypto/pricing.ts",
+        "src/lib/fx-rates.ts",
+        "src/lib/historical-drawdown.ts",
+        "src/controllers/screener.ts",
+        "src/controllers/stocks.ts",
+        "src/controllers/screener.test.ts",
+        "src/lib/fmp-client.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/fmp-client.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./fmp-client.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fmp-client.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/imports/service.ts",
+        "src/lib/crypto/pricing.ts",
+        "src/lib/cgt-engine.ts",
+        "src/lib/fx-rates.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/fx-rates.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./fmp-client.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/fmp-client.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/imports/service.ts",
+        "src/controllers/positions.ts",
+        "src/lib/historical-drawdown.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/historical-drawdown.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./crypto/instrument.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/instrument.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/imports/service.ts",
+        "src/controllers/positions.ts",
+        "src/controllers/watchlists.ts",
+        "src/lib/position-service.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/position-service.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./symbols.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/symbols.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./venues.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/venues.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/position-service.ts",
+        "src/controllers/positions.ts",
+        "src/lib/crypto/instrument.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/crypto/instrument.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../../crypto/symbols.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/symbols.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../decimal.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/decimal.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/imports/service.ts",
+        "src/lib/imports/adapters/kraken-csv.test.ts",
+        "src/lib/imports/planner.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/imports/adapters/kraken-csv.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/lib/imports/service.ts",
+        "src/lib/imports/adapters/kraken-csv.ts",
+        "src/lib/imports/planner.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/imports/decimal.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../crypto/symbols.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/symbols.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../crypto/venues.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/venues.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./decimal.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/decimal.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/imports/service.ts",
+        "src/lib/imports/planner.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/imports/planner.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/imports/service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/imports.test.ts",
+        "src/controllers/index.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/imports.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./accounts.js",
           "moduleSystem": "es6",
           "resolved": "src/controllers/accounts.ts",
@@ -361,6 +1216,40 @@
           "module": "./auth.js",
           "moduleSystem": "es6",
           "resolved": "src/controllers/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./exchanges.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/exchanges.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./imports.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/imports.ts",
           "valid": true
         },
         {
@@ -610,6 +1499,40 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/crypto/instrument.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/instrument.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/crypto/kraken-markets.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/kraken-markets.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../lib/historical-drawdown.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/historical-drawdown.ts",
@@ -690,77 +1613,6 @@
       ],
       "orphan": false,
       "source": "src/controllers/positions.ts",
-      "valid": true
-    },
-    {
-      "dependencies": [
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./fmp-client.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/fmp-client.ts",
-          "valid": true
-        }
-      ],
-      "dependents": [
-        "src/controllers/positions.ts",
-        "src/lib/historical-drawdown.test.ts"
-      ],
-      "orphan": false,
-      "source": "src/lib/historical-drawdown.ts",
-      "valid": true
-    },
-    {
-      "dependencies": [],
-      "dependents": [
-        "src/lib/historical-drawdown.ts",
-        "src/controllers/screener.ts",
-        "src/controllers/stocks.ts",
-        "src/lib/fx-rates.ts",
-        "src/controllers/screener.test.ts",
-        "src/lib/fmp-client.test.ts"
-      ],
-      "orphan": false,
-      "source": "src/lib/fmp-client.ts",
-      "valid": true
-    },
-    {
-      "dependencies": [
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./prisma.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/prisma.ts",
-          "valid": true
-        }
-      ],
-      "dependents": [
-        "src/controllers/positions.ts",
-        "src/controllers/watchlists.ts",
-        "src/lib/position-service.test.ts"
-      ],
-      "orphan": false,
-      "source": "src/lib/position-service.ts",
       "valid": true
     },
     {
@@ -933,6 +1785,23 @@
     },
     {
       "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/crypto/pricing.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/pricing.ts",
+          "valid": true
+        },
         {
           "circular": false,
           "coreModule": false,
@@ -1132,51 +2001,6 @@
       ],
       "orphan": false,
       "source": "src/lib/cgt-engine.ts",
-      "valid": true
-    },
-    {
-      "dependencies": [
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./fmp-client.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/fmp-client.ts",
-          "valid": true
-        },
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./prisma.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/prisma.ts",
-          "valid": true
-        }
-      ],
-      "dependents": [
-        "src/lib/cgt-engine.ts",
-        "src/lib/fx-rates.test.ts"
-      ],
-      "orphan": false,
-      "source": "src/lib/fx-rates.ts",
       "valid": true
     },
     {
@@ -1437,6 +2261,23 @@
     },
     {
       "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/crypto/kraken-markets.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/kraken-markets.ts",
+          "valid": true
+        },
         {
           "circular": false,
           "coreModule": false,
@@ -1820,6 +2661,131 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./instrument.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/instrument.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/crypto/instrument.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./kraken-markets.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/kraken-markets.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/crypto/kraken-markets.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./pricing.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/pricing.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/crypto/pricing.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./symbols.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/symbols.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/crypto/symbols.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./venues.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/crypto/venues.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/crypto/venues.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./exchange-sync.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/exchange-sync.ts",
@@ -1904,6 +2870,167 @@
       "dependents": [],
       "orphan": false,
       "source": "src/lib/historical-drawdown.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../kraken-fixture.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/kraken-fixture.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./kraken-csv.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/adapters/kraken-csv.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/imports/adapters/kraken-csv.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/lib/imports/adapters/kraken-csv.test.ts",
+        "src/lib/imports/planner.test.ts",
+        "src/lib/imports/service.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/imports/kraken-fixture.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./adapters/kraken-csv.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/adapters/kraken-csv.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./kraken-fixture.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/kraken-fixture.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./planner.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/planner.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/imports/planner.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./kraken-fixture.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/kraken-fixture.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/service.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/imports/service.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [],
+      "orphan": true,
+      "source": "src/lib/imports/types.ts",
       "valid": true
     },
     {
@@ -2223,8 +3350,8 @@
         }
       ]
     },
-    "totalCruised": 55,
-    "totalDependenciesCruised": 93,
+    "totalCruised": 78,
+    "totalDependenciesCruised": 145,
     "violations": [],
     "warn": 0
   }

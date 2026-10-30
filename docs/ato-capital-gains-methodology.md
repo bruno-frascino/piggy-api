@@ -19,6 +19,15 @@ precisely what assumptions were made.
   individuals (and trusts, with complexity not modelled here) — not
   companies.
 
+## Date presentation
+
+User-facing full dates in the app and newly generated PDFs use `dd/MM/yyyy`
+(for example, `01/11/2025`); month-only staking periods use `MM/yyyy`.
+API payloads and stored report line items retain ISO dates for calculations.
+Date-only values keep their calendar day regardless of the viewer's time zone.
+Existing PDF revisions remain unchanged. Regenerating a report created with the
+older date format produces a new revision, even if its financial data is unchanged.
+
 ## Why no FIFO parcel matching is needed
 
 A `Position` (see `prisma/schema.prisma`) is created with exactly one BUY

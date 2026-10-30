@@ -18,13 +18,31 @@
     "startLine": 20
   },
   {
-    "endLine": 13,
+    "endLine": 15,
+    "file": "src/controllers/exchanges.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 15
+  },
+  {
+    "endLine": 20,
+    "file": "src/controllers/imports.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 20
+  },
+  {
+    "endLine": 15,
     "file": "src/controllers/index.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 13
+    "startLine": 15
   },
   {
     "endLine": 11,
@@ -36,13 +54,13 @@
     "startLine": 11
   },
   {
-    "endLine": 20,
+    "endLine": 26,
     "file": "src/controllers/positions.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 20
+    "startLine": 26
   },
   {
     "endLine": 17,
@@ -63,13 +81,13 @@
     "startLine": 19
   },
   {
-    "endLine": 17,
+    "endLine": 18,
     "file": "src/controllers/stocks.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 17
+    "startLine": 18
   },
   {
     "endLine": 17,
@@ -171,7 +189,7 @@
     "startLine": 56
   },
   {
-    "endLine": 254,
+    "endLine": 264,
     "file": "src/lib/cgt-engine.ts",
     "jsdoc": "Computes an ATO-style capital gains report for a user, financial year, and an explicit set of Trading Accounts (a \"declaration\" — e.g. the user's own accounts vs a spouse's accounts tracked under the same login). Each `Position` is created with exactly one BUY transaction and is never appended to (see positions.ts `POST /`), so every Position IS already a discrete CGT parcel — no FIFO lot reconstruction is required. Every SELL transaction against it (full or partial close) is an unambiguous disposal of that specific parcel.",
     "kind": "FunctionDeclaration",
@@ -180,22 +198,166 @@
     "startLine": 78
   },
   {
-    "endLine": 178,
+    "endLine": 39,
+    "file": "src/lib/crypto/instrument.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "normalizeInstrument",
+    "signature": "export function normalizeInstrument( symbol: string, exchangeCode: string, assetType?: string ):",
+    "startLine": 4
+  },
+  {
+    "endLine": 3,
+    "file": "src/lib/crypto/kraken-markets.ts",
+    "jsdoc": "",
+    "kind": "ClassDeclaration",
+    "name": "KrakenMarketsUnavailable",
+    "signature": "export class KrakenMarketsUnavailable extends Error",
+    "startLine": 3
+  },
+  {
+    "endLine": 11,
+    "file": "src/lib/crypto/kraken-markets.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "KrakenMarket",
+    "signature": "export interface KrakenMarket",
+    "startLine": 5
+  },
+  {
+    "endLine": 93,
+    "file": "src/lib/crypto/kraken-markets.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "getKrakenMarkets",
+    "signature": "export async function getKrakenMarkets(): Promise<KrakenMarket[]>",
+    "startLine": 80
+  },
+  {
+    "endLine": 106,
+    "file": "src/lib/crypto/kraken-markets.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "searchKrakenMarkets",
+    "signature": "export async function searchKrakenMarkets(quote: 'AUD' | 'USD', query: string)",
+    "startLine": 95
+  },
+  {
+    "endLine": 99,
+    "file": "src/lib/crypto/pricing.ts",
+    "jsdoc": "Latest price of `base` in `quote` (AUD or USD). When the AUD pair isn't listed, falls back to the USD pair converted at the current USD->AUD rate.",
+    "kind": "FunctionDeclaration",
+    "name": "getCryptoQuote",
+    "signature": "export async function getCryptoQuote( base: string, quote: string ): Promise<number | null>",
+    "startLine": 85
+  },
+  {
+    "endLine": 127,
+    "file": "src/lib/crypto/pricing.ts",
+    "jsdoc": "Daily closes keyed by UTC `YYYY-MM-DD`. When the AUD pair has no history, the USD closes are converted with the RBA-first rate of each day.",
+    "kind": "FunctionDeclaration",
+    "name": "getCryptoDailyCloses",
+    "signature": "export async function getCryptoDailyCloses( base: string, quote: string, from: Date, to: Date ): Promise<Map<string, number>>",
+    "startLine": 105
+  },
+  {
+    "endLine": 55,
+    "file": "src/lib/crypto/symbols.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "normalizeAssetCode",
+    "signature": "export function normalizeAssetCode(venue: CryptoVenue, raw: string): string",
+    "startLine": 49
+  },
+  {
+    "endLine": 83,
+    "file": "src/lib/crypto/symbols.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "parsePair",
+    "signature": "export function parsePair( venue: CryptoVenue, raw: string ):",
+    "startLine": 57
+  },
+  {
+    "endLine": 87,
+    "file": "src/lib/crypto/symbols.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "toCanonicalSymbol",
+    "signature": "export function toCanonicalSymbol(base: string, quote: string): string",
+    "startLine": 85
+  },
+  {
+    "endLine": 7,
+    "file": "src/lib/crypto/venues.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "CRYPTO_VENUES",
+    "signature": "CRYPTO_VENUES =",
+    "startLine": 3
+  },
+  {
+    "endLine": 9,
+    "file": "src/lib/crypto/venues.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "CryptoVenue",
+    "signature": "export type CryptoVenue = keyof typeof CRYPTO_VENUES",
+    "startLine": 9
+  },
+  {
+    "endLine": 15,
+    "file": "src/lib/crypto/venues.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "isCryptoVenue",
+    "signature": "export function isCryptoVenue(value: string): value is CryptoVenue",
+    "startLine": 13
+  },
+  {
+    "endLine": 23,
+    "file": "src/lib/crypto/venues.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "exchangeCodeFor",
+    "signature": "export function exchangeCodeFor( venue: CryptoVenue, quote: string ): string | null",
+    "startLine": 17
+  },
+  {
+    "endLine": 32,
+    "file": "src/lib/crypto/venues.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "venueOfExchangeCode",
+    "signature": "export function venueOfExchangeCode(code: string): CryptoVenue | null",
+    "startLine": 25
+  },
+  {
+    "endLine": 38,
+    "file": "src/lib/crypto/venues.ts",
+    "jsdoc": "All exchange codes of the same venue, e.g. KRAKEN -> [KRAKEN, KRAKEN_USD].",
+    "kind": "FunctionDeclaration",
+    "name": "sameVenueExchangeCodes",
+    "signature": "export function sameVenueExchangeCodes(code: string): string[]",
+    "startLine": 35
+  },
+  {
+    "endLine": 205,
     "file": "src/lib/exchange-sync.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "ensureCoreExchanges",
     "signature": "export async function ensureCoreExchanges( prisma: PrismaClient ): Promise<SyncResult>",
-    "startLine": 158
+    "startLine": 185
   },
   {
-    "endLine": 194,
+    "endLine": 221,
     "file": "src/lib/exchange-sync.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "seedExchangesIfEmpty",
     "signature": "export async function seedExchangesIfEmpty(prisma: PrismaClient): Promise<",
-    "startLine": 180
+    "startLine": 207
   },
   {
     "endLine": 14,
@@ -351,6 +513,348 @@
     "startLine": 127
   },
   {
+    "endLine": 11,
+    "file": "src/lib/imports/adapters/kraken-csv.ts",
+    "jsdoc": "",
+    "kind": "ClassDeclaration",
+    "name": "ImportParseError",
+    "signature": "export class ImportParseError extends Error",
+    "startLine": 6
+  },
+  {
+    "endLine": 109,
+    "file": "src/lib/imports/adapters/kraken-csv.ts",
+    "jsdoc": "Kraken times are UTC `YYYY-MM-DD HH:mm:ss[.ffff]`.",
+    "kind": "FunctionDeclaration",
+    "name": "parseKrakenTime",
+    "signature": "export function parseKrakenTime(value: string): Date",
+    "startLine": 98
+  },
+  {
+    "endLine": 552,
+    "file": "src/lib/imports/adapters/kraken-csv.ts",
+    "jsdoc": "Parses Kraken's spot `trades.csv` + `ledgers.csv`. Both are required.",
+    "kind": "FunctionDeclaration",
+    "name": "parseKrakenCsv",
+    "signature": "export function parseKrakenCsv( tradesCsv: string, ledgersCsv: string ): ParseResult",
+    "startLine": 492
+  },
+  {
+    "endLine": 17,
+    "file": "src/lib/imports/kraken-fixture.ts",
+    "jsdoc": "Anonymised copy of a real Kraken export (ids replaced, amounts and times kept).",
+    "kind": "FunctionDeclaration",
+    "name": "loadKrakenFixture",
+    "signature": "export function loadKrakenFixture()",
+    "startLine": 12
+  },
+  {
+    "endLine": 20,
+    "file": "src/lib/imports/kraken-fixture.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "LEDGER_HEADER",
+    "signature": "LEDGER_HEADER = 'txid,refid,time,type,subtype,aclass,subclass,asset,wallet,amount,fee,balance,amountusd,feeusd,balanceusd,feecurrency'",
+    "startLine": 19
+  },
+  {
+    "endLine": 22,
+    "file": "src/lib/imports/kraken-fixture.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "TRADES_HEADER",
+    "signature": "TRADES_HEADER = 'txid,ordertxid,pair,aclass,subclass,time,type,ordertype,price,cost,fee,vol,margin,misc,ledgers,posttxid,posstatuscode,cprice,ccost,cfee,cvol,cmargin,net,trades'",
+    "startLine": 21
+  },
+  {
+    "endLine": 57,
+    "file": "src/lib/imports/kraken-fixture.ts",
+    "jsdoc": "Builds a ledger CSV row (synthetic fixtures) with the real 16-column layout.",
+    "kind": "FunctionDeclaration",
+    "name": "ledgerRow",
+    "signature": "export function ledgerRow(r:",
+    "startLine": 25
+  },
+  {
+    "endLine": 100,
+    "file": "src/lib/imports/kraken-fixture.ts",
+    "jsdoc": "Builds a trades CSV row (synthetic fixtures).",
+    "kind": "FunctionDeclaration",
+    "name": "tradeRow",
+    "signature": "export function tradeRow(r:",
+    "startLine": 60
+  },
+  {
+    "endLine": 34,
+    "file": "src/lib/imports/planner.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "PlannerOptions",
+    "signature": "export interface PlannerOptions",
+    "startLine": 23
+  },
+  {
+    "endLine": 58,
+    "file": "src/lib/imports/planner.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "sydneyDateKey",
+    "signature": "export function sydneyDateKey(date: Date): string",
+    "startLine": 56
+  },
+  {
+    "endLine": 63,
+    "file": "src/lib/imports/planner.ts",
+    "jsdoc": "Sydney calendar date at 00:00Z — the repo's representation of a manual date entry.",
+    "kind": "FunctionDeclaration",
+    "name": "sydneyDate",
+    "signature": "export function sydneyDate(date: Date): Date",
+    "startLine": 61
+  },
+  {
+    "endLine": 586,
+    "file": "src/lib/imports/planner.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "buildPlan",
+    "signature": "export function buildPlan( events: PlannerEvent[], options: PlannerOptions ): ImportPlan",
+    "startLine": 91
+  },
+  {
+    "endLine": 37,
+    "file": "src/lib/imports/service.ts",
+    "jsdoc": "",
+    "kind": "ClassDeclaration",
+    "name": "ImportError",
+    "signature": "export class ImportError extends Error",
+    "startLine": 27
+  },
+  {
+    "endLine": 43,
+    "file": "src/lib/imports/service.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "UploadedFile",
+    "signature": "export interface UploadedFile",
+    "startLine": 39
+  },
+  {
+    "endLine": 219,
+    "file": "src/lib/imports/service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "createImportBatch",
+    "signature": "export async function createImportBatch(params:",
+    "startLine": 85
+  },
+  {
+    "endLine": 367,
+    "file": "src/lib/imports/service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "planBatch",
+    "signature": "export async function planBatch(batchId: string, userId: string)",
+    "startLine": 315
+  },
+  {
+    "endLine": 405,
+    "file": "src/lib/imports/service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "saveResolution",
+    "signature": "export async function saveResolution( batchId: string, eventId: string, userId: string, resolution: EventResolution )",
+    "startLine": 369
+  },
+  {
+    "endLine": 418,
+    "file": "src/lib/imports/service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "discardBatch",
+    "signature": "export async function discardBatch(batchId: string, userId: string)",
+    "startLine": 407
+  },
+  {
+    "endLine": 687,
+    "file": "src/lib/imports/service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "commitBatch",
+    "signature": "export async function commitBatch( batchId: string, userId: string, eventIds?: string[] )",
+    "startLine": 503
+  },
+  {
+    "endLine": 1,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "ImportSourceName",
+    "signature": "export type ImportSourceName = 'KRAKEN' | 'BINANCE' | 'COINBASE'",
+    "startLine": 1
+  },
+  {
+    "endLine": 9,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "ImportEventKind",
+    "signature": "export type ImportEventKind = | 'BUY' | 'SELL' | 'STAKING_REWARD' | 'DEPOSIT' | 'WITHDRAWAL' | 'UNSUPPORTED'",
+    "startLine": 3
+  },
+  {
+    "endLine": 11,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "QuoteCurrency",
+    "signature": "export type QuoteCurrency = 'AUD' | 'USD'",
+    "startLine": 11
+  },
+  {
+    "endLine": 36,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "One exchange-agnostic event. All amounts are decimal strings.",
+    "kind": "InterfaceDeclaration",
+    "name": "NormalizedEvent",
+    "signature": "export interface NormalizedEvent",
+    "startLine": 14
+  },
+  {
+    "endLine": 43,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "ParseResult",
+    "signature": "export interface ParseResult",
+    "startLine": 38
+  },
+  {
+    "endLine": 45,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "CloseReasonName",
+    "signature": "export type CloseReasonName = 'STOP_LOSS' | 'TARGET' | 'MANUAL' | 'OTHER'",
+    "startLine": 45
+  },
+  {
+    "endLine": 55,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "EventResolution",
+    "signature": "export interface EventResolution",
+    "startLine": 47
+  },
+  {
+    "endLine": 60,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "PlannerEvent",
+    "signature": "export interface PlannerEvent extends NormalizedEvent",
+    "startLine": 57
+  },
+  {
+    "endLine": 71,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "ExistingParcel",
+    "signature": "export interface ExistingParcel",
+    "startLine": 62
+  },
+  {
+    "endLine": 78,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "IssueType",
+    "signature": "export type IssueType = | 'INSUFFICIENT_HOLDINGS' | 'DUST_SHORTFALL' | 'INVALID_ALLOCATION' | 'MISSING_FMV' | 'MISSING_FX'",
+    "startLine": 73
+  },
+  {
+    "endLine": 86,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "PlanIssue",
+    "signature": "export interface PlanIssue",
+    "startLine": 80
+  },
+  {
+    "endLine": 107,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "PlannedParcel",
+    "signature": "export interface PlannedParcel",
+    "startLine": 88
+  },
+  {
+    "endLine": 117,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "PlannedAllocation",
+    "signature": "export interface PlannedAllocation",
+    "startLine": 109
+  },
+  {
+    "endLine": 140,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "PlannedSell",
+    "signature": "export interface PlannedSell",
+    "startLine": 119
+  },
+  {
+    "endLine": 152,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "StakingMonth",
+    "signature": "export interface StakingMonth",
+    "startLine": 142
+  },
+  {
+    "endLine": 159,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "ReconciliationRow",
+    "signature": "export interface ReconciliationRow",
+    "startLine": 154
+  },
+  {
+    "endLine": 164,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "Reconciliation",
+    "signature": "export interface Reconciliation",
+    "startLine": 161
+  },
+  {
+    "endLine": 168,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "PlanStep",
+    "signature": "export type PlanStep = |",
+    "startLine": 166
+  },
+  {
+    "endLine": 191,
+    "file": "src/lib/imports/types.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "ImportPlan",
+    "signature": "export interface ImportPlan",
+    "startLine": 170
+  },
+  {
     "endLine": 6,
     "file": "src/lib/jwt.ts",
     "jsdoc": "",
@@ -441,13 +945,13 @@
     "startLine": 5
   },
   {
-    "endLine": 272,
+    "endLine": 286,
     "file": "src/lib/pdf-report.ts",
     "jsdoc": "Renders a Capital Gains Tax summary PDF for a computed report result. Uses `pdfkit` (pure-JS, no Chromium/native deps — important on a small VPS).",
     "kind": "FunctionDeclaration",
     "name": "buildCapitalGainsPdf",
     "signature": "export function buildCapitalGainsPdf( result: CgtReportResult, user: ReportUserInfo ): Promise<Buffer>",
-    "startLine": 75
+    "startLine": 80
   },
   {
     "endLine": 4,
@@ -477,7 +981,7 @@
     "startLine": 18
   },
   {
-    "endLine": 69,
+    "endLine": 82,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
@@ -486,31 +990,40 @@
     "startLine": 8
   },
   {
-    "endLine": 98,
+    "endLine": 111,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "resolveTradingAccount",
     "signature": "export async function resolveTradingAccount( userId: string, accountName?: string, accountId?: string )",
-    "startLine": 71
+    "startLine": 84
   },
   {
-    "endLine": 104,
+    "endLine": 118,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "toDateOnly",
     "signature": "export function toDateOnly(value: Date)",
-    "startLine": 100
+    "startLine": 113
   },
   {
-    "endLine": 148,
+    "endLine": 124,
+    "file": "src/lib/position-service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "quantityTolerance",
+    "signature": "export function quantityTolerance(...quantities: number[])",
+    "startLine": 122
+  },
+  {
+    "endLine": 175,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "recomputePositionFromTransactions",
-    "signature": "export async function recomputePositionFromTransactions(positionId: string)",
-    "startLine": 106
+    "signature": "export async function recomputePositionFromTransactions( positionId: string, db: PositionDb = prisma )",
+    "startLine": 126
   },
   {
     "endLine": 23,
@@ -639,13 +1152,13 @@
     "startLine": 320
   },
   {
-    "endLine": 141,
+    "endLine": 150,
     "file": "src/lib/swagger.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "specs",
     "signature": "specs = swaggerJsdoc(options)",
-    "startLine": 141
+    "startLine": 150
   },
   {
     "endLine": 62,

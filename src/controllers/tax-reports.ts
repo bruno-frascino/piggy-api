@@ -24,6 +24,7 @@ function computeContentHash(result: CgtReportResult): string {
     .createHash('sha256')
     .update(
       JSON.stringify({
+        pdfDateFormat: 'dd/MM/yyyy',
         totalProceedsAud: result.totalProceedsAud,
         totalCostBaseAud: result.totalCostBaseAud,
         totalCapitalGainGrossAud: result.totalCapitalGainGrossAud,
@@ -91,7 +92,9 @@ function serializeReport(report: {
  *       (financial year, account selection) combination. Previous revisions are
  *       retained and stay downloadable so an already-lodged report is never
  *       overwritten. Regenerating with unchanged content returns the existing
- *       current revision instead of creating a new one.
+ *       current revision instead of creating a new one. Dates in newly generated
+ *       PDFs use dd/MM/yyyy; regenerating a report with the older date format
+ *       creates a new revision without modifying the original PDF.
  *     tags: [TaxReports]
  *     security:
  *       - bearerAuth: []

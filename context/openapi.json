@@ -722,6 +722,584 @@
         ]
       }
     },
+    "/api/exchanges": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Only crypto venues (one row per quote currency) or only equity exchanges",
+            "in": "query",
+            "name": "assetClass",
+            "schema": {
+              "enum": [
+                "crypto",
+                "equity"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "isCrypto": {
+                            "type": "boolean"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Exchanges ordered by code"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List exchanges, optionally filtered by asset class",
+        "tags": [
+          "Exchanges"
+        ]
+      }
+    },
+    "/api/exchanges/kraken/assets": {
+      "get": {
+        "description": "Uses Kraken's public pair catalogue (cached for ten minutes). Only AUD and USD quote currencies are supported. Names are provided for common coins; other coins are searchable by ticker. Results describe recorded spot markets, not regional trading eligibility. An empty result means no matching pair, not a provider failure.\n",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "maxLength": 80,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "quote",
+            "required": true,
+            "schema": {
+              "enum": [
+                "AUD",
+                "USD"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "properties": {
+                          "base": {
+                            "type": "string"
+                          },
+                          "exchangeCode": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "quote": {
+                            "enum": [
+                              "AUD",
+                              "USD"
+                            ],
+                            "type": "string"
+                          },
+                          "symbol": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "base",
+                          "name",
+                          "quote",
+                          "symbol",
+                          "exchangeCode"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Up to 30 matching Kraken markets"
+          },
+          "400": {
+            "description": "Unsupported quote currency or invalid query"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "503": {
+            "description": "Kraken market catalogue temporarily unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Search Kraken spot assets by symbol, alias or common coin name",
+        "tags": [
+          "Exchanges"
+        ]
+      }
+    },
+    "/api/imports": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batches (newest first) with event counts by status"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List the user's import batches",
+        "tags": [
+          "Imports"
+        ]
+      },
+      "post": {
+        "description": "Kraken only for now — both `trades` and `ledgers` CSVs are required. Events already uploaded (same exchange id, including pending review) are counted as duplicates and not stored again. `existingBatches` identifies the previous imports, their status, target account and matching event count so users can resume review. Nothing touches positions until the batch is committed. The target account must be an active, non-demo account owned by the user. Rate limited to 10 uploads per hour.\n",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "files": {
+                    "items": {
+                      "properties": {
+                        "content": {
+                          "description": "Raw CSV text",
+                          "type": "string"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "trades",
+                            "ledgers"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "fileName",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "source": {
+                    "enum": [
+                      "KRAKEN"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source",
+                  "accountId",
+                  "files"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "batch": {
+                          "additionalProperties": true,
+                          "nullable": true,
+                          "type": "object"
+                        },
+                        "duplicates": {
+                          "type": "integer"
+                        },
+                        "eventCounts": {
+                          "additionalProperties": {
+                            "type": "integer"
+                          },
+                          "type": "object"
+                        },
+                        "existingBatches": {
+                          "items": {
+                            "properties": {
+                              "accountId": {
+                                "type": "string"
+                              },
+                              "accountName": {
+                                "type": "string"
+                              },
+                              "eventCount": {
+                                "type": "integer"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "enum": [
+                                  "PENDING_REVIEW",
+                                  "PARTIALLY_APPLIED",
+                                  "COMMITTED",
+                                  "DISCARDED",
+                                  "FAILED"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "accountId",
+                              "accountName",
+                              "status",
+                              "eventCount"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "plan": {
+                          "additionalProperties": true,
+                          "nullable": true,
+                          "type": "object"
+                        },
+                        "warnings": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Batch created. `data.batch` is null when no new events need storing. Duplicate events may still need review and commit; they do not prove positions exist.\n"
+          },
+          "400": {
+            "description": "Validation error, missing file or unrecognised CSV format"
+          },
+          "404": {
+            "description": "Account not found"
+          },
+          "413": {
+            "description": "Upload larger than 10 MB"
+          },
+          "429": {
+            "description": "Too many uploads"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Upload exchange CSV exports and build an import plan",
+        "tags": [
+          "Imports"
+        ]
+      }
+    },
+    "/api/imports/{id}": {
+      "delete": {
+        "description": "Positions already created by the batch are kept.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batch discarded"
+          },
+          "404": {
+            "description": "Batch not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Discard a batch and its unapplied events",
+        "tags": [
+          "Imports"
+        ]
+      },
+      "get": {
+        "description": "The plan lists new positions, sells with suggested (FIFO) allocations and eligible parcels, staking months (applied, dust, deferred), unsupported events, blocking issues and the ledger reconciliation.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batch and plan"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Batch not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get a batch with its full, freshly computed plan",
+        "tags": [
+          "Imports"
+        ]
+      }
+    },
+    "/api/imports/{id}/commit": {
+      "post": {
+        "description": "Without `eventIds`, applies the whole plan and returns 409 while blocking issues remain. With `eventIds`, applies only those events and returns 409 if an earlier event of the same asset is unresolved or not included. Runs in one database transaction, in chronological order.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "eventIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created position ids and applied event count"
+          },
+          "404": {
+            "description": "Batch not found"
+          },
+          "409": {
+            "description": "Blocking issues or chronology violation (see details)"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Apply the plan — create positions and SELL transactions",
+        "tags": [
+          "Imports"
+        ]
+      }
+    },
+    "/api/imports/{id}/events/{eventId}": {
+      "patch": {
+        "description": "Skip the event, replace a sell's allocation (specific identification), override the close reason, or enter the AUD value of a staking reward. Returns the updated plan.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "allocations": {
+                    "description": "Send null to clear the override and restore the FIFO suggestion",
+                    "items": {
+                      "properties": {
+                        "positionRef": {
+                          "type": "string"
+                        },
+                        "quantity": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "positionRef",
+                        "quantity"
+                      ],
+                      "type": "object"
+                    },
+                    "nullable": true,
+                    "type": "array"
+                  },
+                  "closeReason": {
+                    "enum": [
+                      "STOP_LOSS",
+                      "TARGET",
+                      "MANUAL",
+                      "OTHER"
+                    ],
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "fmvAud": {
+                    "type": "string"
+                  },
+                  "skip": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated plan"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "404": {
+            "description": "Batch or event not found"
+          },
+          "409": {
+            "description": "Event already processed"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Save the user's resolution for one event",
+        "tags": [
+          "Imports"
+        ]
+      }
+    },
     "/api/portfolio/history": {
       "get": {
         "responses": {
@@ -910,6 +1488,7 @@
         ]
       },
       "post": {
+        "description": "Creates one acquisition parcel with one BUY. Crypto venues infer CRYPTO when assetType is omitted and require a BASE-QUOTE symbol matching the venue currency. Kraken markets are validated against the public catalogue; an unavailable catalogue returns 503. Alias XBT is stored as BTC. Quantities support up to twelve decimal places.\n",
         "requestBody": {
           "content": {
             "application/json": {
@@ -971,7 +1550,7 @@
                     "type": "string"
                   },
                   "quantity": {
-                    "minimum": 0.000001,
+                    "minimum": 1e-12,
                     "type": "number"
                   },
                   "setupType": {
@@ -1019,10 +1598,19 @@
             "description": "Position opened"
           },
           "400": {
-            "description": "Validation error or exchange not found"
+            "description": "Invalid fields or instrument identity"
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Exchange not found"
+          },
+          "409": {
+            "description": "Existing asset has an incompatible classification"
+          },
+          "503": {
+            "description": "Kraken market validation temporarily unavailable"
           }
         },
         "security": [
@@ -1173,7 +1761,7 @@
                     "type": "string"
                   },
                   "exitPrice": {
-                    "minimum": 0.0001,
+                    "minimum": 1e-12,
                     "type": "number"
                   },
                   "notes": {
@@ -1249,6 +1837,7 @@
         ]
       },
       "patch": {
+        "description": "Crypto symbols must match the venue quote currency. Changing a Kraken instrument validates its market; unchanged historical instruments remain editable.",
         "parameters": [
           {
             "in": "path",
@@ -1310,7 +1899,7 @@
                     "type": "string"
                   },
                   "quantity": {
-                    "minimum": 0.000001,
+                    "minimum": 1e-12,
                     "type": "number"
                   },
                   "setupType": {
@@ -1369,6 +1958,12 @@
           },
           "404": {
             "description": "Position not found"
+          },
+          "409": {
+            "description": "Existing asset has an incompatible classification"
+          },
+          "503": {
+            "description": "Kraken market validation temporarily unavailable"
           }
         },
         "security": [
@@ -1497,7 +2092,7 @@
                   },
                   "quantity": {
                     "description": "Omit to close the full position",
-                    "minimum": 0.000001,
+                    "minimum": 1e-12,
                     "type": "number"
                   }
                 },
@@ -2386,7 +2981,7 @@
     },
     "/api/stocks/quotes": {
       "get": {
-        "description": "Returns the current market price, day change and day change % for each\nsymbol via FMP, with Yahoo Finance as a fallback. Maximum 50 symbols\nper request.\n",
+        "description": "Returns the current market price, day change and day change % for each\nsymbol via FMP, with Yahoo Finance as a fallback. Maximum 50 symbols\nper request.\nBASE-AUD and BASE-USD crypto symbols use the crypto quote provider with\nAUD FX fallback when necessary. Crypto day changes are unavailable (null).\nUnresolved symbols are omitted; crypto quotes retain the requested currency.\n",
         "parameters": [
           {
             "description": "Comma-separated list of symbols (e.g. AAPL,BHP.AX,BTC-USD)",
@@ -2535,7 +3130,7 @@
     },
     "/api/tax-reports/generate": {
       "post": {
-        "description": "Computes a capital gains summary for the given Australian financial year across an explicit set of Trading Accounts (a \"declaration\"), renders a PDF, and stores it as a new revision for that (financial year, account selection) combination. Previous revisions are retained and stay downloadable so an already-lodged report is never overwritten. Regenerating with unchanged content returns the existing current revision instead of creating a new one.\n",
+        "description": "Computes a capital gains summary for the given Australian financial year across an explicit set of Trading Accounts (a \"declaration\"), renders a PDF, and stores it as a new revision for that (financial year, account selection) combination. Previous revisions are retained and stay downloadable so an already-lodged report is never overwritten. Regenerating with unchanged content returns the existing current revision instead of creating a new one. Dates in newly generated PDFs use dd/MM/yyyy; regenerating a report with the older date format creates a new revision without modifying the original PDF.\n",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3275,6 +3870,14 @@
     {
       "description": "Symbol search via Yahoo Finance",
       "name": "Stocks"
+    },
+    {
+      "description": "Exchange catalogue (equity exchanges and crypto venues)",
+      "name": "Exchanges"
+    },
+    {
+      "description": "Exchange CSV imports (Kraken): upload, review plan, commit",
+      "name": "Imports"
     },
     {
       "description": "Trading position lifecycle (open, update, close, delete)",

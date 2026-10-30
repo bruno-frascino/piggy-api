@@ -84,8 +84,17 @@ const CORE_EXCHANGES: SeedExchange[] = [
   },
   // ─── Crypto Exchanges ─────────────────────────────────────────────────────
   {
-    code: 'BINANCE',
-    name: 'Binance',
+    code: 'KRAKEN',
+    name: 'Kraken (AUD)',
+    currency: 'AUD',
+    countryName: 'Global',
+    countryCode: 'XX',
+    symbolSuffix: null,
+    delay: 'Real-time',
+  },
+  {
+    code: 'KRAKEN_USD',
+    name: 'Kraken (USD)',
     currency: 'USD',
     countryName: 'Global',
     countryCode: 'XX',
@@ -93,27 +102,45 @@ const CORE_EXCHANGES: SeedExchange[] = [
     delay: 'Real-time',
   },
   {
-    code: 'COINBASE',
-    name: 'Coinbase Exchange',
+    code: 'BINANCE',
+    name: 'Binance (USD)',
     currency: 'USD',
-    countryName: 'United States of America',
-    countryCode: 'US',
+    countryName: 'Global',
+    countryCode: 'XX',
     symbolSuffix: null,
     delay: 'Real-time',
   },
   {
-    code: 'KRAKEN',
-    name: 'Kraken',
+    code: 'BINANCE_AUD',
+    name: 'Binance (AUD)',
     currency: 'AUD',
-    countryName: 'United States of America',
-    countryCode: 'US',
+    countryName: 'Global',
+    countryCode: 'XX',
+    symbolSuffix: null,
+    delay: 'Real-time',
+  },
+  {
+    code: 'COINBASE',
+    name: 'Coinbase (USD)',
+    currency: 'USD',
+    countryName: 'Global',
+    countryCode: 'XX',
+    symbolSuffix: null,
+    delay: 'Real-time',
+  },
+  {
+    code: 'COINBASE_AUD',
+    name: 'Coinbase (AUD)',
+    currency: 'AUD',
+    countryName: 'Global',
+    countryCode: 'XX',
     symbolSuffix: null,
     delay: 'Real-time',
   },
 ]
 
 function normalizeCode(code: string): string {
-  return code.trim().toUpperCase().slice(0, 10)
+  return code.trim().toUpperCase().slice(0, 20)
 }
 
 async function upsertExchange(

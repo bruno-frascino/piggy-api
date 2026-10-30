@@ -15,11 +15,52 @@ import {
   findOrCreateAsset,
   resolveTradingAccount,
   recomputePositionFromTransactions,
+  quantityTolerance,
 } from '../lib/position-service.js'
+import { normalizeInstrument } from '../lib/crypto/instrument.js'
+import {
+  getKrakenMarkets,
+  KrakenMarketsUnavailable,
+} from '../lib/crypto/kraken-markets.js'
 
 const router = Router()
 router.use(authenticateToken)
 
+async function validateKrakenMarket(
+  symbol: string,
+  exchangeCode: string,
+  assetType?: string
+) {
+  const instrument = normalizeInstrument(symbol, exchangeCode, assetType)
+  if (exchangeCode === 'KRAKEN' || exchangeCode === 'KRAKEN_USD') {
+    try {
+      const markets = await getKrakenMarkets()
+      if (
+        !markets.some(
+          (m) =>
+            m.symbol === instrument.symbol && m.exchangeCode === exchangeCode
+        )
+      ) {
+        throw Object.assign(
+          new Error(
+            "This coin is not listed in Kraken's catalogue for the selected currency. Choose another coin or import historical trades."
+          ),
+          { status: 400 }
+        )
+      }
+    } catch (error) {
+      if (!(error instanceof KrakenMarketsUnavailable)) throw error
+      console.error('Kraken position validation failed:', error.message)
+      throw Object.assign(
+        new Error(
+          'Kraken market validation is temporarily unavailable. Please try again.'
+        ),
+        { status: 503 }
+      )
+    }
+  }
+  return instrument
+}
 // Mirrors the Prisma `CloseReason` enum (only lib/prisma.ts may import @prisma/client).
 const CLOSE_REASONS = ['STOP_LOSS', 'TARGET', 'MANUAL', 'OTHER']
 
@@ -150,6 +191,11 @@ router.get(
  * /api/positions:
  *   post:
  *     summary: Open a new position
+ *     description: >
+ *       Creates one acquisition parcel with one BUY. Crypto venues infer CRYPTO when
+ *       assetType is omitted and require a BASE-QUOTE symbol matching the venue currency.
+ *       Kraken markets are validated against the public catalogue; an unavailable catalogue
+ *       returns 503. Alias XBT is stored as BTC. Quantities support up to twelve decimal places.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -194,7 +240,7 @@ router.get(
  *                 type: number
  *               quantity:
  *                 type: number
- *                 minimum: 0.000001
+ *                 minimum: 0.000000000001
  *               capitalAllocated:
  *                 type: number
  *               openReason:
@@ -226,9 +272,15 @@ router.get(
  *       201:
  *         description: Position opened
  *       400:
- *         description: Validation error or exchange not found
+ *         description: Invalid fields or instrument identity
  *       401:
  *         description: Unauthorized
+ *       404:
+ *         description: Exchange not found
+ *       409:
+ *         description: Existing asset has an incompatible classification
+ *       503:
+ *         description: Kraken market validation temporarily unavailable
  */
 router.post(
   '/',
@@ -249,8 +301,8 @@ router.post(
       .isLength({ min: 1, max: 80 }),
     body('accountId').optional().isString().trim(),
     body('openDate').isISO8601().toDate(),
-    body('entryPrice').isFloat({ min: 0.0001 }).toFloat(),
-    body('quantity').isFloat({ min: 0.000001 }).toFloat(),
+    body('entryPrice').isFloat({ min: 0.000000000001 }).toFloat(),
+    body('quantity').isFloat({ min: 0.000000000001 }).toFloat(),
     body('capitalAllocated').isFloat({ min: 0 }).toFloat(),
     body('openReason').optional().isString().trim().isLength({ min: 1 }),
     body('positionType').optional().isIn(['LONG', 'SHORT']),
@@ -296,11 +348,16 @@ router.post(
       notes,
     } = req.body
 
-    const asset = await findOrCreateAsset(
+    const instrument = await validateKrakenMarket(
       symbol,
       exchangeCode,
+      assetType
+    )
+    const asset = await findOrCreateAsset(
+      instrument.symbol,
+      exchangeCode,
       assetName,
-      assetType,
+      instrument.assetType,
       industry
     )
     const account = await resolveTradingAccount(
@@ -576,7 +633,7 @@ router.get(
  *                 format: date-time
  *               exitPrice:
  *                 type: number
- *                 minimum: 0.0001
+ *                 minimum: 0.000000000001
  *               sellFees:
  *                 type: number
  *                 minimum: 0
@@ -603,7 +660,7 @@ router.patch(
     param('id').notEmpty(),
     // .toDate() is required: the client sends date-only "YYYY-MM-DD", which Prisma rejects.
     body('closeDate').optional().isISO8601().toDate(),
-    body('exitPrice').optional().isFloat({ min: 0.0001 }).toFloat(),
+    body('exitPrice').optional().isFloat({ min: 0.000000000001 }).toFloat(),
     body('sellFees').optional().isFloat({ min: 0 }).toFloat(),
     body('notes').optional().isString(),
     body('closeReason')
@@ -855,6 +912,7 @@ router.post(
  * /api/positions/{id}:
  *   patch:
  *     summary: Update metadata on an open position
+ *     description: Crypto symbols must match the venue quote currency. Changing a Kraken instrument validates its market; unchanged historical instruments remain editable.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -885,7 +943,7 @@ router.post(
  *                 type: number
  *               quantity:
  *                 type: number
- *                 minimum: 0.000001
+ *                 minimum: 0.000000000001
  *               buyFees:
  *                 type: number
  *               assetName:
@@ -936,6 +994,10 @@ router.post(
  *         description: Unauthorized
  *       404:
  *         description: Position not found
+ *       409:
+ *         description: Existing asset has an incompatible classification
+ *       503:
+ *         description: Kraken market validation temporarily unavailable
  */
 router.patch(
   '/:id',
@@ -955,8 +1017,8 @@ router.patch(
       .isLength({ min: 1, max: 80 }),
     body('accountId').optional().isString().trim(),
     body('openDate').optional().isISO8601().toDate(),
-    body('entryPrice').optional().isFloat({ min: 0.0001 }).toFloat(),
-    body('quantity').optional().isFloat({ min: 0.000001 }).toFloat(),
+    body('entryPrice').optional().isFloat({ min: 0.000000000001 }).toFloat(),
+    body('quantity').optional().isFloat({ min: 0.000000000001 }).toFloat(),
     body('buyFees').optional().isFloat({ min: 0 }).toFloat(),
     body('assetName').optional().isString().trim(),
     body('industry').optional().isString().trim(),
@@ -1132,8 +1194,22 @@ router.patch(
       const targetSymbol = resolvedSymbol ?? existing.asset.symbol
       const targetExchangeCode =
         resolvedExchangeCode ?? existing.asset.exchange.code
+      const changedInstrument =
+        targetSymbol !== existing.asset.symbol ||
+        targetExchangeCode !== existing.asset.exchange.code
+      const instrument = changedInstrument
+        ? await validateKrakenMarket(
+            targetSymbol,
+            targetExchangeCode,
+            existing.asset.assetType
+          )
+        : normalizeInstrument(
+            targetSymbol,
+            targetExchangeCode,
+            existing.asset.assetType
+          )
       const asset = await findOrCreateAsset(
-        targetSymbol,
+        instrument.symbol,
         targetExchangeCode,
         assetName ?? existing.asset.name,
         existing.asset.assetType,
@@ -1254,7 +1330,7 @@ router.patch(
  *                 type: number
  *               quantity:
  *                 type: number
- *                 minimum: 0.000001
+ *                 minimum: 0.000000000001
  *                 description: Omit to close the full position
  *               fees:
  *                 type: number
@@ -1283,8 +1359,8 @@ router.post(
   [
     param('id').isString(),
     body('closeDate').isISO8601().toDate(),
-    body('exitPrice').isFloat({ min: 0.0001 }).toFloat(),
-    body('quantity').optional().isFloat({ min: 0.000001 }).toFloat(),
+    body('exitPrice').isFloat({ min: 0.000000000001 }).toFloat(),
+    body('quantity').optional().isFloat({ min: 0.000000000001 }).toFloat(),
     body('fees').optional().isFloat({ min: 0 }).toFloat(),
     body('notes').optional().isString().trim(),
     body('closeReason')
@@ -1334,16 +1410,20 @@ router.post(
         .json({ error: 'Bad Request', message: 'No remaining units to close' })
     }
 
-    const closeQty =
+    const requestedQty =
       req.body.quantity !== undefined ? Number(req.body.quantity) : remainingQty
 
-    if (closeQty > remainingQty + 1e-9) {
+    if (
+      requestedQty >
+      remainingQty + quantityTolerance(buyQty, soldQty, requestedQty)
+    ) {
       return res.status(400).json({
         error: 'Bad Request',
         message: `Close quantity exceeds remaining units (${remainingQty})`,
       })
     }
 
+    const closeQty = Math.min(requestedQty, remainingQty)
     const totalSellValue = exitPrice * closeQty
     await prisma.transaction.create({
       data: {

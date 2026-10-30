@@ -1,5 +1,5 @@
 import { prisma } from './prisma.js'
-import type { AssetType } from '@prisma/client'
+import { normalizeInstrument } from './crypto/instrument.js'
 
 // Business-logic helpers extracted from the positions controller so they can
 // be unit-tested independently of Express/route wiring and are no longer
@@ -14,8 +14,9 @@ export async function findOrCreateAsset(
   sector?: string,
   marketCap?: number
 ) {
-  const normalizedSymbol = symbol.trim().toUpperCase()
   const normalizedExchange = exchangeCode.trim().toUpperCase()
+  const instrument = normalizeInstrument(symbol, normalizedExchange, assetType)
+  const normalizedSymbol = instrument.symbol
 
   const exchange = await prisma.exchange.findUnique({
     where: { code: normalizedExchange },
@@ -34,6 +35,18 @@ export async function findOrCreateAsset(
     },
   })
   if (existing) {
+    if (
+      existing.assetType &&
+      existing.assetType !== instrument.assetType &&
+      instrument.assetType === 'CRYPTO'
+    ) {
+      throw Object.assign(
+        new Error(
+          'This asset has an incompatible asset type. Correct the existing asset before adding crypto positions.'
+        ),
+        { status: 409 }
+      )
+    }
     const normalizedIndustry = industry?.trim() || null
     const normalizedSector = sector?.trim() || null
     const updateData: Record<string, unknown> = {}
@@ -59,7 +72,7 @@ export async function findOrCreateAsset(
     data: {
       symbol: normalizedSymbol,
       name: name?.trim() || normalizedSymbol,
-      assetType: (assetType as AssetType) || 'EQUITY',
+      assetType: instrument.assetType,
       industry: industry?.trim() || null,
       sector: sector?.trim() || null,
       marketCap: marketCap ?? null,
@@ -99,12 +112,22 @@ export async function resolveTradingAccount(
 
 export function toDateOnly(value: Date) {
   const d = new Date(value)
-  d.setHours(0, 0, 0, 0)
+  // UTC: dates are stored as midnight-UTC calendar dates regardless of server timezone.
+  d.setUTCHours(0, 0, 0, 0)
   return d
 }
 
-export async function recomputePositionFromTransactions(positionId: string) {
-  const position = await prisma.position.findUnique({
+type PositionDb = Pick<typeof prisma, 'position'>
+
+export function quantityTolerance(...quantities: number[]) {
+  return Number.EPSILON * 8 * Math.max(...quantities.map(Math.abs))
+}
+
+export async function recomputePositionFromTransactions(
+  positionId: string,
+  db: PositionDb = prisma
+) {
+  const position = await db.position.findUnique({
     where: { id: positionId },
     include: { transactions: { orderBy: { date: 'asc' } } },
   })
@@ -115,7 +138,7 @@ export async function recomputePositionFromTransactions(positionId: string) {
 
   const buyQty = buyTxs.reduce((sum, tx) => sum + Number(tx.quantity), 0)
   const sellQty = sellTxs.reduce((sum, tx) => sum + Number(tx.quantity), 0)
-  const remainingQty = Math.max(0, buyQty - sellQty)
+  const rawRemainingQty = Math.max(0, buyQty - sellQty)
   const sellValue = sellTxs.reduce((sum, tx) => sum + Number(tx.totalValue), 0)
   const sellFees = sellTxs.reduce((sum, tx) => sum + Number(tx.fees), 0)
   const buyFees = Number(position.buyFees)
@@ -129,10 +152,14 @@ export async function recomputePositionFromTransactions(positionId: string) {
 
   const hasAnySell = sellTxs.length > 0
   const latestSell = hasAnySell ? sellTxs[sellTxs.length - 1] : null
-  const isClosed = buyQty > 0 && sellQty >= buyQty - 1e-9
+  const isClosed =
+    hasAnySell &&
+    buyQty > 0 &&
+    rawRemainingQty <= quantityTolerance(buyQty, sellQty)
+  const remainingQty = isClosed ? 0 : rawRemainingQty
   const status = isClosed ? 'CLOSED' : hasAnySell ? 'PARTIAL' : 'OPEN'
 
-  return prisma.position.update({
+  return db.position.update({
     where: { id: positionId },
     data: {
       quantity: remainingQty,

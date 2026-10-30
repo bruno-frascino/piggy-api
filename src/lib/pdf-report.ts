@@ -22,6 +22,11 @@ function formatAud(n: number): string {
   })}`
 }
 
+function formatDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-')
+  return `${day}/${month}/${year}`
+}
+
 const DETAIL_COLUMNS: {
   header: string
   weight: number
@@ -34,8 +39,8 @@ const DETAIL_COLUMNS: {
     get: (l) => `${l.symbol} (${l.exchangeCode})`,
   },
   { header: 'Account', weight: 0.13, get: (l) => l.accountName },
-  { header: 'Acquired', weight: 0.11, get: (l) => l.acquireDate },
-  { header: 'Disposed', weight: 0.11, get: (l) => l.disposeDate },
+  { header: 'Acquired', weight: 0.11, get: (l) => formatDate(l.acquireDate) },
+  { header: 'Disposed', weight: 0.11, get: (l) => formatDate(l.disposeDate) },
   {
     header: 'Qty',
     weight: 0.06,
@@ -103,14 +108,23 @@ export function buildCapitalGainsPdf(
       .fontSize(11)
       .fillColor(TEXT_2)
       .text(
-        `${result.financialYearLabel} (1 Jul ${result.financialYearStartYear} – 30 Jun ${result.financialYearStartYear + 1})`
+        `${result.financialYearLabel} (01/07/${result.financialYearStartYear} – 30/06/${result.financialYearStartYear + 1})`
       )
     doc.moveDown(1.2)
 
     doc.fontSize(10).fillColor(TEXT)
     doc.text(`Prepared for: ${user.name ? `${user.name} ` : ''}(${user.email})`)
     doc.moveDown(0.4)
-    doc.text(`Generated: ${new Date().toLocaleString('en-AU')}`)
+    doc.text(
+      `Generated: ${new Date().toLocaleString('en-AU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })}`
+    )
     doc.moveDown(1.2)
 
     doc

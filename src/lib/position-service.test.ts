@@ -49,6 +49,20 @@ import {
 describe('findOrCreateAsset', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it('does not silently reclassify a shared stock asset as crypto', async () => {
+    exchangeFindUniqueMock.mockResolvedValue({ id: 'kraken', code: 'KRAKEN' })
+    assetFindUniqueMock.mockResolvedValue({
+      id: 'btc',
+      symbol: 'BTC-AUD',
+      assetType: 'EQUITY',
+    })
+    await expect(
+      findOrCreateAsset('XBT-AUD', 'KRAKEN', 'Bitcoin', 'CRYPTO')
+    ).rejects.toMatchObject({ status: 409 })
+    expect(assetUpdateMock).not.toHaveBeenCalled()
+    expect(assetCreateMock).not.toHaveBeenCalled()
+  })
+
   it('throws a 404-flagged error when the exchange does not exist', async () => {
     exchangeFindUniqueMock.mockResolvedValue(null)
 
@@ -161,13 +175,50 @@ describe('resolveTradingAccount', () => {
 describe('toDateOnly', () => {
   it('strips the time component', () => {
     const result = toDateOnly(new Date('2026-05-27T18:32:00.000Z'))
-    expect(result.getHours()).toBe(0)
-    expect(result.getMinutes()).toBe(0)
-    expect(result.getSeconds()).toBe(0)
+    expect(result.toISOString()).toBe('2026-05-27T00:00:00.000Z')
   })
 })
 
 describe('recomputePositionFromTransactions', () => {
+  it.each([
+    { sold: 0, expected: 'OPEN', remaining: 0.00000000001 },
+    { sold: 0.000000000002, expected: 'PARTIAL', remaining: 0.000000000008 },
+    { sold: 0.00000000001, expected: 'CLOSED', remaining: 0 },
+  ])(
+    'does not treat tiny remaining balances as fully sold: $expected',
+    async ({ sold, expected, remaining }) => {
+      positionFindUniqueMock.mockResolvedValue({
+        id: 'tiny',
+        entryPrice: 100000,
+        buyFees: 0,
+        transactions: [
+          {
+            type: 'BUY',
+            quantity: 0.00000000001,
+            totalValue: 0.000001,
+            fees: 0,
+            date: new Date('2026-01-01'),
+          },
+          ...(sold
+            ? [
+                {
+                  type: 'SELL',
+                  quantity: sold,
+                  totalValue: sold * 100000,
+                  fees: 0,
+                  price: 100000,
+                  date: new Date('2026-01-02'),
+                },
+              ]
+            : []),
+        ],
+      })
+      await recomputePositionFromTransactions('tiny')
+      const data = positionUpdateMock.mock.calls[0][0].data
+      expect(data.status).toBe(expected)
+      expect(data.quantity).toBeCloseTo(remaining, 15)
+    }
+  )
   beforeEach(() => vi.clearAllMocks())
 
   it('returns null when the position does not exist', async () => {
@@ -281,6 +332,6 @@ describe('recomputePositionFromTransactions', () => {
     expect(callArg.data.status).toBe('CLOSED')
     expect(callArg.data.quantity).toBe(0)
     expect(callArg.data.closeDate).toBeInstanceOf(Date)
-    expect(callArg.data.closeDate.getHours()).toBe(0)
+    expect(callArg.data.closeDate.getUTCHours()).toBe(0)
   })
 })

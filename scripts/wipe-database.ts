@@ -49,6 +49,8 @@ export async function wipeDatabase(args: string[]): Promise<void> {
         public."watchlist_items",
         public."watchlists",
         public."saved_screens",
+        public."imported_events",
+        public."import_batches",
         public."transactions",
         public."positions",
         public."portfolio_snapshots",
