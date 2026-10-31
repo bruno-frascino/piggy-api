@@ -32,6 +32,13 @@ beyond what Node 22 provides.
   sending, so the flow stays exercisable without secrets or network access.
 - Config: `RESEND_API_KEY`, `MAIL_FROM`, and `APP_URL` (the frontend origin used to build
   emailed links; falls back to `CORS_ORIGIN`, then `http://localhost:3000`).
+- Password-reset wording and HTML live in `sendPasswordResetEmail` in `src/lib/mailer.ts`.
+  The email follows the application's neutral surfaces and blue accent with inline styles,
+  presentation tables, a 560px maximum content width and a mobile layout. Dark-mode overrides
+  apply in supporting mail clients; clients that ignore them retain the readable light palette.
+  No external fonts, images or application stylesheets are required. Include a plain-text part,
+  a copyable fallback URL, the one-hour/single-use expiry and guidance for unsolicited requests.
+  Escape reset URLs in HTML attributes and text without modifying the actual plain-text link.
 
 Two hardening changes landed with it:
 

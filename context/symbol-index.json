@@ -927,13 +927,13 @@
     "startLine": 30
   },
   {
-    "endLine": 100,
+    "endLine": 179,
     "file": "src/lib/mailer.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "sendPasswordResetEmail",
     "signature": "export async function sendPasswordResetEmail( to: string, resetUrl: string ): Promise<void>",
-    "startLine": 80
+    "startLine": 97
   },
   {
     "endLine": 8,

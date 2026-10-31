@@ -89,6 +89,37 @@ describe('mailer', () => {
       expect(payload.to).toEqual(['alice@example.com'])
       expect(payload.text).toContain('https://reset.link')
       expect(payload.html).toContain('https://reset.link')
+      expect(payload.subject).toBe('Reset your Truffles password')
+      expect(payload.text).toContain(
+        'expires in 1 hour and can only be used once'
+      )
+      expect(payload.text).toContain('Your password will stay the same')
+      expect(payload.html).toContain('<html lang="en">')
+      expect(payload.html).toContain('prefers-color-scheme: dark')
+      expect(payload.html).toContain('max-width:560px')
+      expect(payload.html).toContain('background-color:#2563eb')
+      expect(payload.html).toContain('Reset password</span>')
+      expect(payload.html).toContain('copy and paste this link')
+      expect(payload.html).not.toMatch(/<script|<img|<link\b/)
+    })
+
+    it('escapes the URL in both HTML links and fallback text without changing the plain-text URL', async () => {
+      process.env.RESEND_API_KEY = 'key_123'
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(new Response(null, { status: 200 }))
+      const resetUrl =
+        'https://app.example.test/auth/reset-password?token=abc&value="<test>\''
+      await sendPasswordResetEmail('preview@example.test', resetUrl)
+      const payload: { html: string; text: string } = JSON.parse(
+        String(fetchSpy.mock.calls[0][1]?.body)
+      )
+      const escapedUrl =
+        'https://app.example.test/auth/reset-password?token=abc&amp;value=&quot;&lt;test&gt;&#39;'
+      expect(payload.html.split(`href="${escapedUrl}"`)).toHaveLength(3)
+      expect(payload.html).toContain(`>${escapedUrl}</a>`)
+      expect(payload.html).not.toContain(resetUrl)
+      expect(payload.text).toContain(resetUrl)
     })
 
     it('throws EmailDeliveryError on a non-ok response', async () => {
