@@ -11,6 +11,7 @@ const {
   aggregatePositionMock,
   upsertSnapshotMock,
   computeSnapshotValuesMock,
+  queryRawMock,
 } = vi.hoisted(() => ({
   findExchangeUniqueMock: vi.fn(),
   findSnapshotManyMock: vi.fn(),
@@ -19,6 +20,7 @@ const {
   aggregatePositionMock: vi.fn(),
   upsertSnapshotMock: vi.fn(),
   computeSnapshotValuesMock: vi.fn(),
+  queryRawMock: vi.fn(),
 }))
 
 vi.mock('../middleware/auth.js', () => ({
@@ -32,8 +34,9 @@ vi.mock('../lib/portfolio-calc.js', () => ({
   computeSnapshotValues: computeSnapshotValuesMock,
 }))
 
-vi.mock('../lib/prisma.js', () => ({
-  prisma: {
+vi.mock('../lib/prisma.js', () => {
+  const db = {
+    $queryRaw: queryRawMock,
     exchange: {
       findUnique: findExchangeUniqueMock,
     },
@@ -48,8 +51,14 @@ vi.mock('../lib/prisma.js', () => ({
       findMany: findPositionManyMock,
       aggregate: aggregatePositionMock,
     },
-  },
-}))
+  }
+  return {
+    prisma: {
+      ...db,
+      $transaction: (callback: (tx: typeof db) => unknown) => callback(db),
+    },
+  }
+})
 
 import portfolioRouter from './portfolio.js'
 
@@ -63,6 +72,7 @@ function createApp() {
 describe('portfolio controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    queryRawMock.mockResolvedValue([{ id: 'u_1', deletedAt: null }])
     computeSnapshotValuesMock.mockReturnValue({
       totalInvested: 1000,
       totalPnL: 150,

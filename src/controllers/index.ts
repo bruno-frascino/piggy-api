@@ -11,6 +11,7 @@ import screenerRoutes from './screener.js'
 import watchlistRoutes from './watchlists.js'
 import exchangeRoutes from './exchanges.js'
 import importRoutes from './imports.js'
+import openingStatementRoutes from './opening-statements.js'
 
 const router = Router()
 
@@ -20,6 +21,7 @@ router.use('/stocks', stockRoutes)
 router.use('/positions', positionRoutes)
 router.use('/portfolio', portfolioRoutes)
 router.use('/accounts', accountRoutes)
+router.use('/accounts', openingStatementRoutes)
 router.use('/tax-reports', taxReportRoutes)
 router.use('/statistics', statisticsRoutes)
 router.use('/screener', screenerRoutes)

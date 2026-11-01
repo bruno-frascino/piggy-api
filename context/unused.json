@@ -85,6 +85,29 @@
       "duplicates": [],
       "enumMembers": [],
       "exports": [],
+      "file": "src/lib/cash-revisions.ts",
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [
+        {
+          "col": 18,
+          "line": 9,
+          "name": "CashRevisionRequest",
+          "pos": 211
+        }
+      ],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "binaries": [],
+      "catalog": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [],
       "file": "src/lib/cgt-engine.ts",
       "files": [],
       "namespaceMembers": [],

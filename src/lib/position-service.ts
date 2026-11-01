@@ -84,17 +84,22 @@ export async function findOrCreateAsset(
 export async function resolveTradingAccount(
   userId: string,
   accountName?: string,
-  accountId?: string
+  accountId?: string,
+  db: Pick<typeof prisma, 'tradingAccount'> = prisma
 ) {
   if (accountId) {
-    const byId = await prisma.tradingAccount.findFirst({
+    const byId = await db.tradingAccount.findFirst({
       where: { id: accountId, userId },
     })
     if (byId) return byId
+    throw Object.assign(new Error('Trading account not found'), {
+      status: 404,
+      name: 'Not Found',
+    })
   }
 
   const normalizedName = (accountName?.trim() || 'Main').slice(0, 80)
-  return prisma.tradingAccount.upsert({
+  return db.tradingAccount.upsert({
     where: {
       userId_name: {
         userId,

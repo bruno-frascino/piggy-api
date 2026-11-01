@@ -3,6 +3,7 @@ import { body, param, query } from 'express-validator'
 import crypto from 'crypto'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
+import { lockOwnedTradingAccount } from '../lib/account-lock.js'
 import {
   asyncHandler,
   handleValidationErrors,
@@ -95,6 +96,9 @@ function serializeReport(report: {
  *       current revision instead of creating a new one. Dates in newly generated
  *       PDFs use dd/MM/yyyy; regenerating a report with the older date format
  *       creates a new revision without modifying the original PDF.
+ *       New revisions lock selected accounts in stable ID order and recheck ownership
+ *       and non-demo eligibility before storing account references. A concurrent deletion
+ *       or report revision change fails explicitly instead of orphaning a new report.
  *     tags: [TaxReports]
  *     security:
  *       - bearerAuth: []
@@ -122,6 +126,10 @@ function serializeReport(report: {
  *         description: Invalid input, no accounts selected, or a selected account is a demo account (demo accounts are never eligible for tax reports)
  *       401:
  *         description: Unauthorized
+ *       404:
+ *         description: Selected account was deleted during report preparation
+ *       409:
+ *         description: Account eligibility or current report revision changed during preparation
  */
 router.post(
   '/generate',
@@ -200,37 +208,76 @@ router.post(
 
     // Append-only: the previous revision is retained (and still downloadable)
     // so a report that was already lodged is never overwritten.
-    const report = await prisma.$transaction(async (tx) => {
-      if (current) {
-        await tx.taxReport.update({
-          where: { id: current.id },
-          data: { supersededAt: new Date() },
+    const report = await prisma.$transaction(
+      async (tx) => {
+        const selectedAccounts = [...new Set(accountIds)].sort()
+        for (const accountId of selectedAccounts)
+          await lockOwnedTradingAccount(tx, userId, accountId)
+        const accounts = await tx.tradingAccount.findMany({
+          where: { userId, id: { in: selectedAccounts }, isDemo: false },
+          select: { id: true },
         })
-      }
+        if (accounts.length !== selectedAccounts.length)
+          throw Object.assign(
+            new Error(
+              'Selected accounts changed during report generation. Review the account selection and try again.'
+            ),
+            {
+              status: 409,
+              name: 'Conflict',
+            }
+          )
+        const latest = await tx.taxReport.findFirst({
+          where: {
+            userId,
+            financialYearStartYear,
+            accountsKey: result.accountsKey,
+            supersededAt: null,
+          },
+          select: { id: true, version: true },
+        })
+        if (latest?.id !== current?.id || latest?.version !== current?.version)
+          throw Object.assign(
+            new Error(
+              'The current report changed during generation. Reload and try again.'
+            ),
+            {
+              status: 409,
+              name: 'Conflict',
+            }
+          )
+        if (current) {
+          await tx.taxReport.update({
+            where: { id: current.id },
+            data: { supersededAt: new Date() },
+          })
+        }
 
-      return tx.taxReport.create({
-        data: {
-          userId,
-          financialYearStartYear,
-          financialYearLabel: result.financialYearLabel,
-          accountIds,
-          accountsKey: result.accountsKey,
-          version: (current?.version ?? 0) + 1,
-          contentHash,
-          totalProceedsAud: result.totalProceedsAud,
-          totalCostBaseAud: result.totalCostBaseAud,
-          totalCapitalGainGrossAud: result.totalCapitalGainGrossAud,
-          totalCapitalLossAud: result.totalCapitalLossAud,
-          carriedForwardLossOpeningAud: result.carriedForwardLossOpeningAud,
-          discountAppliedAud: result.discountAppliedAud,
-          netCapitalGainAud: result.netCapitalGainAud,
-          carriedForwardLossClosingAud: result.carriedForwardLossClosingAud,
-          lineItems: lineItemsJson,
-          pdfData: pdfBytes,
-          pdfSizeBytes: pdfBuffer.byteLength,
-        },
-      })
-    })
+        return tx.taxReport.create({
+          data: {
+            userId,
+            financialYearStartYear,
+            financialYearLabel: result.financialYearLabel,
+            accountIds,
+            accountsKey: result.accountsKey,
+            version: (current?.version ?? 0) + 1,
+            contentHash,
+            totalProceedsAud: result.totalProceedsAud,
+            totalCostBaseAud: result.totalCostBaseAud,
+            totalCapitalGainGrossAud: result.totalCapitalGainGrossAud,
+            totalCapitalLossAud: result.totalCapitalLossAud,
+            carriedForwardLossOpeningAud: result.carriedForwardLossOpeningAud,
+            discountAppliedAud: result.discountAppliedAud,
+            netCapitalGainAud: result.netCapitalGainAud,
+            carriedForwardLossClosingAud: result.carriedForwardLossClosingAud,
+            lineItems: lineItemsJson,
+            pdfData: pdfBytes,
+            pdfSizeBytes: pdfBuffer.byteLength,
+          },
+        })
+      },
+      { isolationLevel: 'ReadCommitted', timeout: 15000, maxWait: 5000 }
+    )
 
     res.json({ success: true, data: serializeReport(report) })
   })

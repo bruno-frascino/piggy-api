@@ -4,39 +4,42 @@
 
 | Method | Path | Auth | Validators | Location |
 | ------ | ---- | ---- | ---------- | -------- |
-| GET | `/api/accounts` | 🔒 | query | [src/controllers/accounts.ts:28](../src/controllers/accounts.ts#L28) |
-| POST | `/api/accounts` | 🔒 | body ×2 | [src/controllers/accounts.ts:85](../src/controllers/accounts.ts#L85) |
-| DELETE | `/api/accounts/:id` | 🔒 | param | [src/controllers/accounts.ts:383](../src/controllers/accounts.ts#L383) |
-| PATCH | `/api/accounts/:id` | 🔒 | param, body | [src/controllers/accounts.ts:299](../src/controllers/accounts.ts#L299) |
-| POST | `/api/accounts/:id/close` | 🔒 | param | [src/controllers/accounts.ts:157](../src/controllers/accounts.ts#L157) |
-| POST | `/api/accounts/:id/reopen` | 🔒 | param | [src/controllers/accounts.ts:228](../src/controllers/accounts.ts#L228) |
-| POST | `/api/auth/forgot-password` | — | forgotPasswordLimiter, body | [src/controllers/auth.ts:548](../src/controllers/auth.ts#L548) |
-| POST | `/api/auth/login` | — | — | [src/controllers/auth.ts:215](../src/controllers/auth.ts#L215) |
-| POST | `/api/auth/logout` | 🔒 | — | [src/controllers/auth.ts:490](../src/controllers/auth.ts#L490) |
-| POST | `/api/auth/refresh` | — | — | [src/controllers/auth.ts:410](../src/controllers/auth.ts#L410) |
-| POST | `/api/auth/register` | — | — | [src/controllers/auth.ts:118](../src/controllers/auth.ts#L118) |
-| POST | `/api/auth/reset-password` | — | body ×2 | [src/controllers/auth.ts:635](../src/controllers/auth.ts#L635) |
-| POST | `/api/auth/restore` | — | — | [src/controllers/auth.ts:311](../src/controllers/auth.ts#L311) |
+| GET | `/api/accounts` | 🔒 | query | [src/controllers/accounts.ts:160](../src/controllers/accounts.ts#L160) |
+| POST | `/api/accounts` | 🔒 | body ×2 | [src/controllers/accounts.ts:218](../src/controllers/accounts.ts#L218) |
+| DELETE | `/api/accounts/:id` | 🔒 | param | [src/controllers/accounts.ts:434](../src/controllers/accounts.ts#L434) |
+| PATCH | `/api/accounts/:id` | 🔒 | param, body | [src/controllers/accounts.ts:375](../src/controllers/accounts.ts#L375) |
+| POST | `/api/accounts/:id/close` | 🔒 | param | [src/controllers/accounts.ts:287](../src/controllers/accounts.ts#L287) |
+| POST | `/api/accounts/:id/opening-preview` | 🔒 | param, body ×2 | [src/controllers/accounts.ts:126](../src/controllers/accounts.ts#L126) |
+| GET | `/api/accounts/:id/opening-statements` | 🔒 | param, query | [src/controllers/opening-statements.ts:157](../src/controllers/opening-statements.ts#L157) |
+| POST | `/api/accounts/:id/opening-statements` | 🔒 | param, body ×3 | [src/controllers/opening-statements.ts:95](../src/controllers/opening-statements.ts#L95) |
+| POST | `/api/accounts/:id/reopen` | 🔒 | param | [src/controllers/accounts.ts:321](../src/controllers/accounts.ts#L321) |
+| POST | `/api/auth/forgot-password` | — | forgotPasswordLimiter, body | [src/controllers/auth.ts:554](../src/controllers/auth.ts#L554) |
+| POST | `/api/auth/login` | — | — | [src/controllers/auth.ts:225](../src/controllers/auth.ts#L225) |
+| POST | `/api/auth/logout` | 🔒 | — | [src/controllers/auth.ts:494](../src/controllers/auth.ts#L494) |
+| POST | `/api/auth/refresh` | — | — | [src/controllers/auth.ts:418](../src/controllers/auth.ts#L418) |
+| POST | `/api/auth/register` | — | — | [src/controllers/auth.ts:127](../src/controllers/auth.ts#L127) |
+| POST | `/api/auth/reset-password` | — | body ×2 | [src/controllers/auth.ts:645](../src/controllers/auth.ts#L645) |
+| POST | `/api/auth/restore` | — | — | [src/controllers/auth.ts:323](../src/controllers/auth.ts#L323) |
 | GET | `/api/exchanges` | 🔒 | query | [src/controllers/exchanges.ts:146](../src/controllers/exchanges.ts#L146) |
 | GET | `/api/exchanges/kraken/assets` | 🔒 | query ×2 | [src/controllers/exchanges.ts:76](../src/controllers/exchanges.ts#L76) |
-| GET | `/api/imports` | 🔒 | query ×2 | [src/controllers/imports.ts:249](../src/controllers/imports.ts#L249) |
-| POST | `/api/imports` | 🔒 | body ×6 | [src/controllers/imports.ts:153](../src/controllers/imports.ts#L153) |
-| DELETE | `/api/imports/:id` | 🔒 | param | [src/controllers/imports.ts:517](../src/controllers/imports.ts#L517) |
-| GET | `/api/imports/:id` | 🔒 | param | [src/controllers/imports.ts:314](../src/controllers/imports.ts#L314) |
-| POST | `/api/imports/:id/commit` | 🔒 | param, body ×2 | [src/controllers/imports.ts:473](../src/controllers/imports.ts#L473) |
-| PATCH | `/api/imports/:id/events/:eventId` | 🔒 | param ×2, body ×6 | [src/controllers/imports.ts:389](../src/controllers/imports.ts#L389) |
+| GET | `/api/imports` | 🔒 | query ×2 | [src/controllers/imports.ts:253](../src/controllers/imports.ts#L253) |
+| POST | `/api/imports` | 🔒 | body ×6 | [src/controllers/imports.ts:157](../src/controllers/imports.ts#L157) |
+| DELETE | `/api/imports/:id` | 🔒 | param | [src/controllers/imports.ts:528](../src/controllers/imports.ts#L528) |
+| GET | `/api/imports/:id` | 🔒 | param | [src/controllers/imports.ts:318](../src/controllers/imports.ts#L318) |
+| POST | `/api/imports/:id/commit` | 🔒 | param, body ×2 | [src/controllers/imports.ts:484](../src/controllers/imports.ts#L484) |
+| PATCH | `/api/imports/:id/events/:eventId` | 🔒 | param ×2, body ×6 | [src/controllers/imports.ts:393](../src/controllers/imports.ts#L393) |
 | GET | `/api/portfolio/history` | 🔒 | query ×2 | [src/controllers/portfolio.ts:30](../src/controllers/portfolio.ts#L30) |
 | GET | `/api/portfolio/realized-pnl` | 🔒 | query ×2 | [src/controllers/portfolio.ts:106](../src/controllers/portfolio.ts#L106) |
-| POST | `/api/portfolio/snapshot` | 🔒 | body ×2 | [src/controllers/portfolio.ts:149](../src/controllers/portfolio.ts#L149) |
-| GET | `/api/positions` | 🔒 | query ×6 | [src/controllers/positions.ts:119](../src/controllers/positions.ts#L119) |
-| POST | `/api/positions` | 🔒 | body ×22 | [src/controllers/positions.ts:285](../src/controllers/positions.ts#L285) |
-| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1502](../src/controllers/positions.ts#L1502) |
-| PATCH | `/api/positions/:id` | 🔒 | param, body ×24 | [src/controllers/positions.ts:1002](../src/controllers/positions.ts#L1002) |
-| POST | `/api/positions/:id/check-stop-loss` | 🔒 | param, body | [src/controllers/positions.ts:854](../src/controllers/positions.ts#L854) |
-| POST | `/api/positions/:id/close` | 🔒 | param, body ×6 | [src/controllers/positions.ts:1357](../src/controllers/positions.ts#L1357) |
-| POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:752](../src/controllers/positions.ts#L752) |
-| GET | `/api/positions/close-events` | 🔒 | query ×5 | [src/controllers/positions.ts:515](../src/controllers/positions.ts#L515) |
-| PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×5 | [src/controllers/positions.ts:657](../src/controllers/positions.ts#L657) |
+| POST | `/api/portfolio/snapshot` | 🔒 | body ×2 | [src/controllers/portfolio.ts:151](../src/controllers/portfolio.ts#L151) |
+| GET | `/api/positions` | 🔒 | query ×6 | [src/controllers/positions.ts:129](../src/controllers/positions.ts#L129) |
+| POST | `/api/positions` | 🔒 | body ×22 | [src/controllers/positions.ts:299](../src/controllers/positions.ts#L299) |
+| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1386](../src/controllers/positions.ts#L1386) |
+| PATCH | `/api/positions/:id` | 🔒 | param, body ×24 | [src/controllers/positions.ts:991](../src/controllers/positions.ts#L991) |
+| POST | `/api/positions/:id/check-stop-loss` | 🔒 | param, body | [src/controllers/positions.ts:839](../src/controllers/positions.ts#L839) |
+| POST | `/api/positions/:id/close` | 🔒 | param, body ×6 | [src/controllers/positions.ts:1308](../src/controllers/positions.ts#L1308) |
+| POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:733](../src/controllers/positions.ts#L733) |
+| GET | `/api/positions/close-events` | 🔒 | query ×5 | [src/controllers/positions.ts:513](../src/controllers/positions.ts#L513) |
+| PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×5 | [src/controllers/positions.ts:660](../src/controllers/positions.ts#L660) |
 | GET | `/api/screener` | 🔒 | query ×10 | [src/controllers/screener.ts:124](../src/controllers/screener.ts#L124) |
 | GET | `/api/screener/saved-screens` | 🔒 | — | [src/controllers/screener.ts:301](../src/controllers/screener.ts#L301) |
 | POST | `/api/screener/saved-screens` | 🔒 | body ×2 | [src/controllers/screener.ts:344](../src/controllers/screener.ts#L344) |
@@ -50,15 +53,15 @@
 | GET | `/api/statistics/timeseries` | 🔒 | , query ×2 | [src/controllers/statistics.ts:298](../src/controllers/statistics.ts#L298) |
 | GET | `/api/stocks/quotes` | 🔒 | query | [src/controllers/stocks.ts:293](../src/controllers/stocks.ts#L293) |
 | GET | `/api/stocks/search` | — | — | [src/controllers/stocks.ts:163](../src/controllers/stocks.ts#L163) |
-| GET | `/api/tax-reports` | 🔒 | query | [src/controllers/tax-reports.ts:263](../src/controllers/tax-reports.ts#L263) |
-| DELETE | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:563](../src/controllers/tax-reports.ts#L563) |
-| GET | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:463](../src/controllers/tax-reports.ts#L463) |
-| GET | `/api/tax-reports/:id/download` | 🔒 | param | [src/controllers/tax-reports.ts:512](../src/controllers/tax-reports.ts#L512) |
-| POST | `/api/tax-reports/generate` | 🔒 | body ×3 | [src/controllers/tax-reports.ts:126](../src/controllers/tax-reports.ts#L126) |
-| GET | `/api/tax-reports/position-usage` | 🔒 | — | [src/controllers/tax-reports.ts:349](../src/controllers/tax-reports.ts#L349) |
-| DELETE | `/api/users/me` | 🔒 | body | [src/controllers/users.ts:237](../src/controllers/users.ts#L237) |
-| GET | `/api/users/me` | 🔒 | — | [src/controllers/users.ts:51](../src/controllers/users.ts#L51) |
-| PATCH | `/api/users/me` | 🔒 | body ×4 | [src/controllers/users.ts:128](../src/controllers/users.ts#L128) |
+| GET | `/api/tax-reports` | 🔒 | query | [src/controllers/tax-reports.ts:310](../src/controllers/tax-reports.ts#L310) |
+| DELETE | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:610](../src/controllers/tax-reports.ts#L610) |
+| GET | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:510](../src/controllers/tax-reports.ts#L510) |
+| GET | `/api/tax-reports/:id/download` | 🔒 | param | [src/controllers/tax-reports.ts:559](../src/controllers/tax-reports.ts#L559) |
+| POST | `/api/tax-reports/generate` | 🔒 | body ×3 | [src/controllers/tax-reports.ts:134](../src/controllers/tax-reports.ts#L134) |
+| GET | `/api/tax-reports/position-usage` | 🔒 | — | [src/controllers/tax-reports.ts:396](../src/controllers/tax-reports.ts#L396) |
+| DELETE | `/api/users/me` | 🔒 | body | [src/controllers/users.ts:270](../src/controllers/users.ts#L270) |
+| GET | `/api/users/me` | 🔒 | — | [src/controllers/users.ts:52](../src/controllers/users.ts#L52) |
+| PATCH | `/api/users/me` | 🔒 | body ×4 | [src/controllers/users.ts:130](../src/controllers/users.ts#L130) |
 | GET | `/api/watchlists` | 🔒 | — | [src/controllers/watchlists.ts:34](../src/controllers/watchlists.ts#L34) |
 | POST | `/api/watchlists` | 🔒 | body | [src/controllers/watchlists.ts:75](../src/controllers/watchlists.ts#L75) |
 | DELETE | `/api/watchlists/:id` | 🔒 | param | [src/controllers/watchlists.ts:212](../src/controllers/watchlists.ts#L212) |

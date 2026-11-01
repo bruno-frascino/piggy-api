@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../prisma.js'
+import { lockOwnedTradingAccount } from '../account-lock.js'
+import { savePositionHistory } from '../position-derived-values.js'
 import Decimal from './decimal.js'
 import { getHistoricalFxRateToAud } from '../fx-rates.js'
 import { getCryptoDailyCloses } from '../crypto/pricing.js'
@@ -46,6 +48,38 @@ const SOURCE_VENUE: Record<ImportSourceName, CryptoVenue> = {
   KRAKEN: 'KRAKEN',
   BINANCE: 'BINANCE',
   COINBASE: 'COINBASE',
+}
+
+type ImportDb = Pick<
+  typeof prisma,
+  'importBatch' | 'importedEvent' | 'position'
+>
+const transactionOptions = {
+  isolationLevel: 'ReadCommitted' as const,
+  timeout: 120_000,
+  maxWait: 10_000,
+}
+
+async function lockImportAccount(
+  tx: Pick<typeof prisma, '$queryRaw' | 'tradingAccount'>,
+  userId: string,
+  accountId: string
+) {
+  await lockOwnedTradingAccount(tx, userId, accountId)
+  const account = await tx.tradingAccount.findFirst({
+    where: { id: accountId, userId },
+    select: { isDemo: true, status: true },
+  })
+  if (!account)
+    throw Object.assign(new Error('Trading account not found'), {
+      status: 404,
+      name: 'Not Found',
+    })
+  if (account.isDemo || account.status !== 'ACTIVE')
+    throw new ImportError(
+      400,
+      'Imports need an active, non-demo trading account'
+    )
 }
 
 function dustThresholdAud(): string {
@@ -165,6 +199,7 @@ export async function createImportBatch(params: {
     .digest('hex')
 
   const batch = await prisma.$transaction(async (tx) => {
+    await lockImportAccount(tx, userId, accountId)
     const created = await tx.importBatch.create({
       data: {
         userId,
@@ -202,13 +237,23 @@ export async function createImportBatch(params: {
       })
     }
     if (reattach.length > 0) {
-      await tx.importedEvent.updateMany({
-        where: { id: { in: reattach }, userId },
+      const updated = await tx.importedEvent.updateMany({
+        where: {
+          id: { in: reattach },
+          userId,
+          status: 'DEFERRED',
+          batch: { accountId },
+        },
         data: { batchId: created.id, status: 'PENDING' },
       })
+      if (updated.count !== reattach.length)
+        throw new ImportError(
+          409,
+          'Deferred events changed during upload. Refresh the existing import and try again.'
+        )
     }
     return created
-  })
+  }, transactionOptions)
 
   return {
     batchId: batch.id,
@@ -218,8 +263,12 @@ export async function createImportBatch(params: {
   }
 }
 
-async function loadOwnedBatch(batchId: string, userId: string) {
-  const batch = await prisma.importBatch.findFirst({
+async function loadOwnedBatch(
+  batchId: string,
+  userId: string,
+  db: ImportDb = prisma
+) {
+  const batch = await db.importBatch.findFirst({
     where: { id: batchId, userId },
   })
   if (!batch) {
@@ -240,9 +289,10 @@ function asRecord(value: unknown): Record<string, string> {
 
 async function loadExistingParcels(
   userId: string,
-  accountId: string
+  accountId: string,
+  db: ImportDb = prisma
 ): Promise<ExistingParcel[]> {
-  const positions = await prisma.position.findMany({
+  const positions = await db.position.findMany({
     where: {
       userId,
       accountId,
@@ -250,6 +300,7 @@ async function loadExistingParcels(
       asset: { assetType: 'CRYPTO' },
     },
     include: { asset: { include: { exchange: true } } },
+    orderBy: { id: 'asc' },
   })
   return positions.map((position) => ({
     id: position.id,
@@ -312,12 +363,25 @@ async function loadFmvFallbacks(events: PlannerEvent[]) {
   return fallbacks
 }
 
-export async function planBatch(batchId: string, userId: string) {
-  const batch = await loadOwnedBatch(batchId, userId)
-  const rows = await prisma.importedEvent.findMany({
+async function loadPlanState(batchId: string, userId: string, db: ImportDb) {
+  const batch = await loadOwnedBatch(batchId, userId, db)
+  const rows = await db.importedEvent.findMany({
     where: { batchId, userId },
-    orderBy: { occurredAt: 'asc' },
+    orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
   })
+  const existingParcels = await loadExistingParcels(userId, batch.accountId, db)
+  const snapshot = createHash('sha256')
+    .update(JSON.stringify({ batch, rows, existingParcels }))
+    .digest('hex')
+  return { batch, rows, existingParcels, snapshot }
+}
+
+async function prepareBatch(batchId: string, userId: string) {
+  const { batch, rows, existingParcels, snapshot } = await loadPlanState(
+    batchId,
+    userId,
+    prisma
+  )
 
   const planEvents: PlannerEvent[] = rows
     .filter((row) => row.status === 'PENDING' || row.status === 'DEFERRED')
@@ -342,8 +406,7 @@ export async function planBatch(batchId: string, userId: string) {
       resolution: (row.resolution ?? null) as EventResolution | null,
     }))
 
-  const [existingParcels, rateToAud, fmvFallbackAud] = await Promise.all([
-    loadExistingParcels(userId, batch.accountId),
+  const [rateToAud, fmvFallbackAud] = await Promise.all([
     loadFxRates(planEvents),
     loadFmvFallbacks(planEvents),
   ])
@@ -363,7 +426,15 @@ export async function planBatch(batchId: string, userId: string) {
   const counts: Record<string, number> = {}
   for (const row of rows) counts[row.status] = (counts[row.status] ?? 0) + 1
 
-  return { batch, plan, eventCounts: counts, events: rows }
+  return { batch, plan, eventCounts: counts, events: rows, snapshot }
+}
+
+export async function planBatch(batchId: string, userId: string) {
+  const { snapshot: _snapshot, ...planned } = await prepareBatch(
+    batchId,
+    userId
+  )
+  return planned
 }
 
 export async function saveResolution(
@@ -372,41 +443,49 @@ export async function saveResolution(
   userId: string,
   resolution: EventResolution
 ) {
-  await loadOwnedBatch(batchId, userId)
-  const event = await prisma.importedEvent.findFirst({
-    where: { id: eventId, batchId, userId },
-  })
-  if (!event) {
-    const err = new Error('Import event not found') as Error & {
-      status: number
+  const initial = await loadOwnedBatch(batchId, userId)
+  await prisma.$transaction(async (tx) => {
+    await lockOwnedTradingAccount(tx, userId, initial.accountId)
+    const batch = await loadOwnedBatch(batchId, userId, tx)
+    if (batch.status === 'DISCARDED')
+      throw new ImportError(409, 'This import was discarded')
+    const event = await tx.importedEvent.findFirst({
+      where: { id: eventId, batchId, userId },
+    })
+    if (!event) {
+      const err = new Error('Import event not found') as Error & {
+        status: number
+      }
+      err.status = 404
+      throw err
     }
-    err.status = 404
-    throw err
-  }
-  if (event.status !== 'PENDING' && event.status !== 'DEFERRED') {
-    throw new ImportError(409, 'This event has already been processed')
-  }
-  if (resolution.allocations && event.kind !== 'SELL') {
-    throw new ImportError(400, 'Allocations only apply to sell events')
-  }
-  if (resolution.fmvAud !== undefined && event.kind !== 'STAKING_REWARD') {
-    throw new ImportError(400, 'fmvAud only applies to staking rewards')
-  }
+    if (event.status !== 'PENDING' && event.status !== 'DEFERRED') {
+      throw new ImportError(409, 'This event has already been processed')
+    }
+    if (resolution.allocations && event.kind !== 'SELL') {
+      throw new ImportError(400, 'Allocations only apply to sell events')
+    }
+    if (resolution.fmvAud !== undefined && event.kind !== 'STAKING_REWARD') {
+      throw new ImportError(400, 'fmvAud only applies to staking rewards')
+    }
 
-  const merged = {
-    ...((event.resolution ?? {}) as EventResolution),
-    ...resolution,
-  }
-  await prisma.importedEvent.update({
-    where: { id: eventId },
-    data: { resolution: toJson(merged) },
-  })
+    const merged = {
+      ...((event.resolution ?? {}) as EventResolution),
+      ...resolution,
+    }
+    await tx.importedEvent.update({
+      where: { id: eventId },
+      data: { resolution: toJson(merged) },
+    })
+  }, transactionOptions)
   return planBatch(batchId, userId)
 }
 
 export async function discardBatch(batchId: string, userId: string) {
-  await loadOwnedBatch(batchId, userId)
+  const initial = await loadOwnedBatch(batchId, userId)
   await prisma.$transaction(async (tx) => {
+    await lockOwnedTradingAccount(tx, userId, initial.accountId)
+    await loadOwnedBatch(batchId, userId, tx)
     await tx.importedEvent.deleteMany({
       where: { batchId, userId, status: { in: ['PENDING', 'DEFERRED'] } },
     })
@@ -414,7 +493,7 @@ export async function discardBatch(batchId: string, userId: string) {
       where: { id: batchId },
       data: { status: 'DISCARDED' },
     })
-  })
+  }, transactionOptions)
 }
 
 /** Applies a chronological prefix check so no event runs before an earlier unresolved one. */
@@ -505,7 +584,7 @@ export async function commitBatch(
   userId: string,
   eventIds?: string[]
 ) {
-  const { batch, plan } = await planBatch(batchId, userId)
+  const { batch, plan, snapshot } = await prepareBatch(batchId, userId)
   if (batch.status === 'DISCARDED') {
     throw new ImportError(409, 'This import was discarded')
   }
@@ -534,149 +613,153 @@ export async function commitBatch(
   const created: Array<{ ref: string; id: string }> = []
   const eventPositions = new Map<string, string[]>()
 
-  await prisma.$transaction(
-    async (tx) => {
-      const positionIds = new Map<string, string>()
-      const touched = new Set<string>()
+  await prisma.$transaction(async (tx) => {
+    await lockImportAccount(tx, userId, batch.accountId)
+    const current = await loadPlanState(batchId, userId, tx)
+    if (current.snapshot !== snapshot)
+      throw new ImportError(
+        409,
+        'Import events or holdings changed during preparation. Review the refreshed plan and try again.'
+      )
+    const positionIds = new Map<string, string>()
+    const touched = new Set<string>()
 
-      for (const step of steps) {
-        if (step.type === 'PARCEL') {
-          const parcel = parcelByRef.get(step.ref)
-          if (!parcel) continue
-          const totalBuyValue = new Decimal(parcel.totalBuyValue)
-          const position = await tx.position.create({
-            data: {
-              userId,
-              assetId: assetIds.get(step.ref) as string,
-              accountId: batch.accountId,
-              openDate: parcel.openDate,
-              entryPrice: parcel.entryPrice,
-              quantity: Number(parcel.quantity),
-              positionType: 'LONG',
-              totalBuyValue: totalBuyValue.toFixed(8),
-              buyFees: parcel.buyFees,
-              capitalAllocated: totalBuyValue.plus(parcel.buyFees).toFixed(8),
-              origin: parcel.origin,
-              externalRef: parcel.externalRef,
-              tags: parcel.tags,
-              notes: parcel.notes,
-              transactions: {
-                create: {
-                  type: 'BUY',
-                  date: parcel.openDate,
-                  quantity: Number(parcel.quantity),
-                  price: parcel.entryPrice,
-                  totalValue: totalBuyValue.toFixed(8),
-                  fees: parcel.buyFees,
-                  executionTime: parcel.acquiredAt,
-                  brokerRef: parcel.externalRef,
-                  orderType: parcel.orderType,
-                },
+    for (const step of steps) {
+      if (step.type === 'PARCEL') {
+        const parcel = parcelByRef.get(step.ref)
+        if (!parcel) continue
+        const totalBuyValue = new Decimal(parcel.totalBuyValue)
+        const position = await tx.position.create({
+          data: {
+            userId,
+            assetId: assetIds.get(step.ref) as string,
+            accountId: batch.accountId,
+            openDate: parcel.openDate,
+            entryPrice: parcel.entryPrice,
+            quantity: Number(parcel.quantity),
+            positionType: 'LONG',
+            totalBuyValue: totalBuyValue.toFixed(8),
+            buyFees: parcel.buyFees,
+            capitalAllocated: totalBuyValue.plus(parcel.buyFees).toFixed(8),
+            origin: parcel.origin,
+            externalRef: parcel.externalRef,
+            tags: parcel.tags,
+            notes: parcel.notes,
+            transactions: {
+              create: {
+                type: 'BUY',
+                date: parcel.openDate,
+                quantity: Number(parcel.quantity),
+                price: parcel.entryPrice,
+                totalValue: totalBuyValue.toFixed(8),
+                fees: parcel.buyFees,
+                executionTime: parcel.acquiredAt,
+                brokerRef: parcel.externalRef,
+                orderType: parcel.orderType,
               },
             },
-          })
-          positionIds.set(step.ref, position.id)
-          created.push({ ref: step.ref, id: position.id })
-          for (const id of parcel.eventIds)
-            eventPositions.set(id, [position.id])
-          continue
-        }
-
-        const sell = sellById.get(step.eventId)
-        if (!sell) continue
-        const ids: string[] = []
-        for (const allocation of sell.allocations) {
-          const positionId =
-            positionIds.get(allocation.positionRef) ?? allocation.positionRef
-          await tx.transaction.create({
-            data: {
-              positionId,
-              type: 'SELL',
-              date: sell.sellDate,
-              quantity: Number(allocation.quantity),
-              price: allocation.price,
-              totalValue: allocation.totalValue,
-              fees: allocation.fees,
-              executionTime: sell.occurredAt,
-              brokerRef: sell.externalId,
-              orderType: sell.orderType,
-              closeReason: sell.closeReason,
-              notes: allocation.notes,
-            },
-          })
-          touched.add(positionId)
-          ids.push(positionId)
-        }
-        eventPositions.set(sell.eventId, ids)
+          },
+        })
+        positionIds.set(step.ref, position.id)
+        created.push({ ref: step.ref, id: position.id })
+        for (const id of parcel.eventIds) eventPositions.set(id, [position.id])
+        continue
       }
 
-      for (const positionId of touched) {
-        await recomputePositionFromTransactions(positionId, tx)
+      const sell = sellById.get(step.eventId)
+      if (!sell) continue
+      const ids: string[] = []
+      for (const allocation of sell.allocations) {
+        const positionId =
+          positionIds.get(allocation.positionRef) ?? allocation.positionRef
+        await tx.transaction.create({
+          data: {
+            positionId,
+            type: 'SELL',
+            date: sell.sellDate,
+            quantity: Number(allocation.quantity),
+            price: allocation.price,
+            totalValue: allocation.totalValue,
+            fees: allocation.fees,
+            executionTime: sell.occurredAt,
+            brokerRef: sell.externalId,
+            orderType: sell.orderType,
+            closeReason: sell.closeReason,
+            notes: allocation.notes,
+          },
+        })
+        touched.add(positionId)
+        ids.push(positionId)
       }
+      eventPositions.set(sell.eventId, ids)
+    }
 
-      const applied = new Set<string>()
-      for (const [eventId, ids] of eventPositions) {
-        applied.add(eventId)
-        await tx.importedEvent.update({
-          where: { id: eventId },
-          data: { status: 'APPLIED', appliedPositionIds: ids },
+    for (const positionId of touched) {
+      if (!(await recomputePositionFromTransactions(positionId, tx)))
+        throw new ImportError(409, 'An allocated parcel no longer exists')
+    }
+
+    const applied = new Set<string>()
+    for (const [eventId, ids] of eventPositions) {
+      applied.add(eventId)
+      await tx.importedEvent.update({
+        where: { id: eventId },
+        data: { status: 'APPLIED', appliedPositionIds: ids },
+      })
+    }
+
+    for (const month of plan.staking) {
+      const ids = month.eventIds.filter(inScope)
+      if (ids.length === 0) continue
+      if (month.status === 'DUST') {
+        await tx.importedEvent.updateMany({
+          where: { id: { in: ids }, userId },
+          data: { status: 'SKIPPED', warning: 'DUST' },
+        })
+      } else if (month.status === 'DEFERRED') {
+        await tx.importedEvent.updateMany({
+          where: { id: { in: ids }, userId },
+          data: { status: 'DEFERRED' },
         })
       }
-
-      for (const month of plan.staking) {
-        const ids = month.eventIds.filter(inScope)
-        if (ids.length === 0) continue
-        if (month.status === 'DUST') {
-          await tx.importedEvent.updateMany({
-            where: { id: { in: ids }, userId },
-            data: { status: 'SKIPPED', warning: 'DUST' },
-          })
-        } else if (month.status === 'DEFERRED') {
-          await tx.importedEvent.updateMany({
-            where: { id: { in: ids }, userId },
-            data: { status: 'DEFERRED' },
-          })
-        }
-        if (month.status === 'APPLY') {
-          for (const id of ids) {
-            if (month.fmvByEvent[id] !== undefined) {
-              await tx.importedEvent.update({
-                where: { id },
-                data: { fmvAud: month.fmvByEvent[id] },
-              })
-            }
+      if (month.status === 'APPLY') {
+        for (const id of ids) {
+          if (month.fmvByEvent[id] !== undefined) {
+            await tx.importedEvent.update({
+              where: { id },
+              data: { fmvAud: month.fmvByEvent[id] },
+            })
           }
         }
       }
+    }
 
-      const nonApplied = [...plan.unsupported, ...plan.skipped]
-        .map((item) => item.eventId)
-        .filter(inScope)
-      if (nonApplied.length > 0) {
-        await tx.importedEvent.updateMany({
-          where: { id: { in: nonApplied }, userId },
-          data: { status: 'SKIPPED' },
-        })
-      }
+    const nonApplied = [...plan.unsupported, ...plan.skipped]
+      .map((item) => item.eventId)
+      .filter(inScope)
+    if (nonApplied.length > 0) {
+      await tx.importedEvent.updateMany({
+        where: { id: { in: nonApplied }, userId },
+        data: { status: 'SKIPPED' },
+      })
+    }
 
-      const remaining = await tx.importedEvent.count({
-        where: { batchId, userId, status: 'PENDING' },
-      })
-      const hasApplied = await tx.importedEvent.count({
-        where: { batchId, userId, status: 'APPLIED' },
-      })
-      await tx.importBatch.update({
-        where: { id: batchId },
-        data:
-          remaining === 0
-            ? { status: 'COMMITTED', committedAt: new Date() }
-            : {
-                status: hasApplied > 0 ? 'PARTIALLY_APPLIED' : batch.status,
-              },
-      })
-    },
-    { timeout: 120_000, maxWait: 10_000 }
-  )
+    const remaining = await tx.importedEvent.count({
+      where: { batchId, userId, status: 'PENDING' },
+    })
+    const hasApplied = await tx.importedEvent.count({
+      where: { batchId, userId, status: 'APPLIED' },
+    })
+    await tx.importBatch.update({
+      where: { id: batchId },
+      data:
+        remaining === 0
+          ? { status: 'COMMITTED', committedAt: new Date() }
+          : {
+              status: hasApplied > 0 ? 'PARTIALLY_APPLIED' : batch.status,
+            },
+    })
+  }, transactionOptions)
 
   void backfillHistory(created.map((c) => c.id))
 
@@ -713,14 +796,14 @@ async function backfillHistory(positionIds: string[]) {
             : undefined
         ),
       ])
-      const data: Prisma.PositionUpdateInput = {}
+      const data: Parameters<typeof savePositionHistory>[1] = {}
       if (drawdown !== null) data.maxDrawdownPercent = drawdown
       if (runUp !== null) data.maxRunUpPercent = runUp
       if (Object.keys(data).length > 0) {
-        await prisma.position.update({ where: { id }, data })
+        await savePositionHistory(position, data)
       }
-    } catch {
-      // history is best-effort and must never fail an import
+    } catch (error) {
+      console.warn('Import history calculation was not saved', error)
     }
     await sleep(300)
   }

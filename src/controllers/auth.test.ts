@@ -1,4 +1,5 @@
 import express from 'express'
+import type { Request, Response, NextFunction } from 'express'
 import request from 'supertest'
 import crypto from 'crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -23,6 +24,7 @@ const {
   verifyAccessTokenMock,
   refreshTokenExpiresAtMock,
   sendPasswordResetEmailMock,
+  queryRawMock,
 } = vi.hoisted(() => ({
   findUserUniqueMock: vi.fn(),
   createUserMock: vi.fn(),
@@ -43,13 +45,15 @@ const {
   verifyAccessTokenMock: vi.fn(),
   refreshTokenExpiresAtMock: vi.fn(),
   sendPasswordResetEmailMock: vi.fn(),
+  queryRawMock: vi.fn(),
 }))
 
 const sha256 = (value: string) =>
   crypto.createHash('sha256').update(value).digest('hex')
 
-vi.mock('../lib/prisma.js', () => ({
-  prisma: {
+vi.mock('../lib/prisma.js', () => {
+  const db = {
+    $queryRaw: queryRawMock,
     user: {
       findUnique: findUserUniqueMock,
       create: createUserMock,
@@ -67,8 +71,14 @@ vi.mock('../lib/prisma.js', () => ({
       findUnique: findPasswordResetTokenUniqueMock,
       delete: deletePasswordResetTokenMock,
     },
-  },
-}))
+  }
+  return {
+    prisma: {
+      ...db,
+      $transaction: (callback: (tx: typeof db) => unknown) => callback(db),
+    },
+  }
+})
 
 vi.mock('bcryptjs', () => ({
   default: {
@@ -97,12 +107,25 @@ function createApp() {
   const app = express()
   app.use(express.json())
   app.use('/api/auth', authRouter)
+  app.use(
+    (
+      error: Error & { status?: number },
+      _req: Request,
+      res: Response,
+      _next: NextFunction
+    ) => {
+      res
+        .status(error.status ?? 500)
+        .json({ error: error.name, message: error.message })
+    }
+  )
   return app
 }
 
 describe('auth controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    queryRawMock.mockResolvedValue([{ id: 'u_1' }])
 
     signAccessTokenMock.mockReturnValue('access-token')
     signRefreshTokenMock.mockReturnValue('refresh-token')
@@ -110,6 +133,7 @@ describe('auth controller', () => {
       userId: 'u_1',
       email: 'alice@example.com',
     })
+
     refreshTokenExpiresAtMock.mockReturnValue(new Date('2030-01-01T00:00:00Z'))
     hashMock.mockResolvedValue('hashed-password')
     compareMock.mockResolvedValue(true)
@@ -126,6 +150,25 @@ describe('auth controller', () => {
     sendPasswordResetEmailMock.mockResolvedValue(undefined)
 
     updateUserMock.mockResolvedValue(undefined)
+  })
+
+  it('rejects a login session if deletion wins after credential verification', async () => {
+    findUserUniqueMock.mockResolvedValueOnce({
+      id: 'u_1',
+      email: 'alice@example.com',
+      passwordHash: 'hashed-password',
+      deletedAt: null,
+    })
+    queryRawMock.mockResolvedValueOnce([
+      { id: 'u_1', deletedAt: new Date('2026-01-01') },
+    ])
+    const response = await request(createApp()).post('/api/auth/login').send({
+      email: 'alice@example.com',
+      password: 'password123',
+    })
+    expect(response.status).toBe(401)
+    expect(response.body.data).toBeUndefined()
+    expect(createRefreshTokenMock).not.toHaveBeenCalled()
   })
 
   it('creates a user without explicitly setting baseCurrency', async () => {
@@ -312,15 +355,20 @@ describe('auth controller', () => {
   })
 
   it('restores an account pending deletion and issues tokens', async () => {
-    findUserUniqueMock.mockResolvedValueOnce({
-      id: 'u_1',
-      email: 'alice@example.com',
-      name: 'Alice',
-      baseCurrency: 'AUD',
-      passwordHash: 'hashed-password',
-      deletedAt: new Date('2026-09-01T00:00:00Z'),
-      createdAt: new Date('2026-05-20T00:00:00Z'),
-    })
+    findUserUniqueMock
+      .mockResolvedValueOnce({
+        id: 'u_1',
+        email: 'alice@example.com',
+        name: 'Alice',
+        baseCurrency: 'AUD',
+        passwordHash: 'hashed-password',
+        deletedAt: new Date('2026-09-01T00:00:00Z'),
+        createdAt: new Date('2026-05-20T00:00:00Z'),
+      })
+      .mockResolvedValueOnce({
+        passwordHash: 'hashed-password',
+        deletedAt: new Date('2026-09-01T00:00:00Z'),
+      })
 
     const response = await request(createApp()).post('/api/auth/restore').send({
       email: 'alice@example.com',
@@ -430,8 +478,12 @@ describe('auth controller', () => {
     })
 
     expect(response.status).toBe(200)
-    expect(deleteRefreshTokenMock).toHaveBeenCalledWith({
-      where: { token: 'old-refresh' },
+    expect(deleteManyRefreshTokenMock).toHaveBeenCalledWith({
+      where: {
+        userId: 'u_1',
+        token: 'old-refresh',
+        expiresAt: { gt: expect.any(Date) },
+      },
     })
     expect(createRefreshTokenMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -553,6 +605,8 @@ describe('auth controller', () => {
   })
 
   it('reset-password updates password and revokes active tokens', async () => {
+    findUserUniqueMock.mockResolvedValueOnce({ deletedAt: null })
+    deleteManyPasswordResetTokenMock.mockResolvedValueOnce({ count: 1 })
     findPasswordResetTokenUniqueMock.mockResolvedValue({
       token: sha256('valid-token'),
       userId: 'u_1',
@@ -571,11 +625,47 @@ describe('auth controller', () => {
       where: { id: 'u_1' },
       data: { passwordHash: expect.any(String) },
     })
-    expect(deletePasswordResetTokenMock).toHaveBeenCalledWith({
-      where: { token: sha256('valid-token') },
+    expect(deleteManyPasswordResetTokenMock).toHaveBeenCalledWith({
+      where: {
+        userId: 'u_1',
+        token: sha256('valid-token'),
+        expiresAt: { gt: expect.any(Date) },
+      },
     })
     expect(deleteManyRefreshTokenMock).toHaveBeenCalledWith({
       where: { userId: 'u_1' },
     })
+  })
+
+  it('reset-password rejects a token revoked while hashing the password', async () => {
+    findPasswordResetTokenUniqueMock.mockResolvedValue({
+      userId: 'u_1',
+      token: sha256('valid-token'),
+      expiresAt: new Date(Date.now() + 3600000),
+    })
+    findUserUniqueMock.mockResolvedValueOnce({ deletedAt: null })
+    deleteManyPasswordResetTokenMock.mockResolvedValueOnce({ count: 0 })
+    const response = await request(createApp())
+      .post('/api/auth/reset-password')
+      .send({ token: 'valid-token', password: 'new-password-123' })
+    expect(response.status).toBe(400)
+    expect(updateUserMock).not.toHaveBeenCalled()
+  })
+
+  it('forgot-password preserves its generic response when deletion wins before issuance', async () => {
+    findUserUniqueMock
+      .mockResolvedValueOnce({
+        id: 'u_1',
+        email: 'alice@example.com',
+        deletedAt: null,
+      })
+      .mockResolvedValueOnce({ deletedAt: new Date() })
+    const response = await request(createApp())
+      .post('/api/auth/forgot-password')
+      .send({ email: 'alice@example.com' })
+    expect(response.status).toBe(200)
+    expect(response.body.resetToken).toBeUndefined()
+    expect(createPasswordResetTokenMock).not.toHaveBeenCalled()
+    expect(sendPasswordResetEmailMock).not.toHaveBeenCalled()
   })
 })

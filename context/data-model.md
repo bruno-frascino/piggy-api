@@ -10,6 +10,16 @@ erDiagram
     User ||--o{ RefreshToken : "user"
     User ||--o{ PasswordResetToken : "user"
     User ||--o{ TradingAccount : "user"
+    TradingAccount ||--o{ AccountOpeningStatement : "account"
+    AccountOpeningStatement ||--o{ OpeningCashBalance : "statement"
+    AccountOpeningStatement ||--o{ OpeningParcelBalance : "statement"
+    AccountOpeningStatement ||--o{ DraftCashOperation : "statement"
+    DraftCashOperation ||--o{ DraftCashPosting : "operation"
+    DraftCashOperation ||--o{ DraftCashRevision : "operation"
+    DraftCashRevision ||--o{ DraftCashRevision : "previous"
+    DraftCashRevision ||--o{ DraftCashRevision : "next"
+    DraftCashRevision ||--o{ DraftCashRevisionPosting : "revision"
+    DraftCashOperation ||--o{ DraftOperationTradeLink : "operation"
     Exchange ||--o{ Asset : "exchange"
     Asset ||--o{ PriceHistory : "asset"
     User ||--o{ Position : "user"
@@ -111,8 +121,142 @@ Constraints: `@@index([purgeAfter])`
 | positions | `Position[]` | — |
 | portfolioSnapshots | `PortfolioSnapshot[]` | — |
 | importBatches | `ImportBatch[]` | — |
+| openingStatements | `AccountOpeningStatement[]` | — |
 
 Constraints: `@@unique([userId, name])`
+
+### `AccountOpeningStatement` (table: `account_opening_statements`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| accountId | `String` | — |
+| version | `Int` | — |
+| openingDate | `DateTime` | @db.Date |
+| timezone | `String` | @default("Australia/Sydney") |
+| state | `String` | @default("DRAFT") |
+| sourceFingerprint | `String` | — |
+| inputHash | `String` | — |
+| previewSnapshot | `Json` | — |
+| createdAt | `DateTime` | @default(now()) |
+| account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
+| cashBalances | `OpeningCashBalance[]` | — |
+| parcels | `OpeningParcelBalance[]` | — |
+| cashOperations | `DraftCashOperation[]` | — |
+
+Constraints: `@@unique([accountId, version])`, `@@unique([accountId, sourceFingerprint])`
+
+### `OpeningCashBalance` (table: `opening_cash_balances`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| statementId | `String` | — |
+| currency | `String` | — |
+| amount | `Decimal` | @db.Decimal(38, 12) |
+| statement | `AccountOpeningStatement` | @relation(fields: [statementId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@unique([statementId, currency])`
+
+### `OpeningParcelBalance` (table: `opening_parcel_balances`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| statementId | `String` | — |
+| positionId | `String` | — |
+| symbol | `String` | — |
+| currency | `String` | — |
+| quantity | `Decimal` | @db.Decimal(38, 12) |
+| statement | `AccountOpeningStatement` | @relation(fields: [statementId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@unique([statementId, positionId])`
+
+### `DraftCashOperation` (table: `draft_cash_operations`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| statementId | `String` | — |
+| state | `String` | @default("DRAFT") |
+| methodology | `String` | — |
+| idempotencyKey | `String` | — |
+| payloadHash | `String` | — |
+| kind | `String` | — |
+| effectiveDate | `DateTime` | @db.Date |
+| sequence | `BigInt` | — |
+| sourceOrigin | `String` | — |
+| sourceReference | `String` | — |
+| command | `Json` | — |
+| recordedAt | `DateTime` | @default(now()) |
+| statement | `AccountOpeningStatement` | @relation(fields: [statementId], references: [id], onDelete: Cascade) |
+| postings | `DraftCashPosting[]` | — |
+| tradeLinks | `DraftOperationTradeLink[]` | — |
+| revisions | `DraftCashRevision[]` | — |
+
+Constraints: `@@unique([statementId, id])`, `@@unique([statementId, idempotencyKey])`, `@@unique([statementId, sourceOrigin, sourceReference])`, `@@unique([statementId, effectiveDate, sequence])`
+
+### `DraftCashPosting` (table: `draft_cash_postings`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| operationId | `String` | — |
+| legIndex | `Int` | — |
+| currency | `String` | — |
+| amount | `Decimal` | @db.Decimal(38, 12) |
+| role | `String` | — |
+| operation | `DraftCashOperation` | @relation(fields: [operationId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@unique([operationId, legIndex])`
+
+### `DraftCashRevision` (table: `draft_cash_revisions`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| statementId | `String` | — |
+| operationId | `String` | — |
+| revisionNumber | `Int` | — |
+| previousRevisionId | `String?` | — |
+| idempotencyKey | `String` | — |
+| payloadHash | `String` | — |
+| reason | `String` | — |
+| request | `Json` | — |
+| recordedAt | `DateTime` | @default(now()) |
+| operation | `DraftCashOperation` | @relation(fields: [statementId, operationId], references: [statementId, id], onDelete: Cascade) |
+| previous | `DraftCashRevision?` | @relation("CashRevisionChain", fields: [operationId, previousRevisionId], references: [operationId, id], onDelete: NoAction, onUpdate: NoAction) |
+| next | `DraftCashRevision[]` | @relation("CashRevisionChain") |
+| postings | `DraftCashRevisionPosting[]` | — |
+
+Constraints: `@@unique([operationId, id])`, `@@unique([operationId, revisionNumber])`, `@@unique([statementId, idempotencyKey])`
+
+### `DraftCashRevisionPosting` (table: `draft_cash_revision_postings`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| revisionId | `String` | — |
+| legIndex | `Int` | — |
+| phase | `String` | — |
+| currency | `String` | — |
+| amount | `Decimal` | @db.Decimal(38, 12) |
+| role | `String` | — |
+| revision | `DraftCashRevision` | @relation(fields: [revisionId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@unique([revisionId, legIndex])`
+
+### `DraftOperationTradeLink` (table: `draft_operation_trade_links`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| statementId | `String` | — |
+| operationId | `String` | — |
+| transactionId | `String` | — |
+| operation | `DraftCashOperation` | @relation(fields: [statementId, operationId], references: [statementId, id], onDelete: Cascade) |
+
+Constraints: `@@unique([statementId, transactionId])`
 
 ### `Asset` (table: `assets`)
 
@@ -416,3 +560,6 @@ Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, s
 - `20261014113000_add_stop_loss_hit_tracking`
 - `20261018100000_crypto_foundation`
 - `20261018120000_exchange_imports`
+- `20261031124126_opening_statement_drafts`
+- `20261031132235_draft_cash_operations`
+- `20261101082040_draft_cash_revisions`

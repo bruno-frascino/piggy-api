@@ -5,6 +5,15 @@ import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import { prisma } from '../lib/prisma.js'
 import {
+  issuePasswordReset,
+  completePasswordReset,
+} from '../lib/password-reset.js'
+import {
+  restoreDeletedUser,
+  persistUserSession,
+  rotateUserSession,
+} from '../lib/account-deletion.js'
+import {
   signAccessToken,
   signRefreshToken,
   verifyRefreshToken,
@@ -164,6 +173,7 @@ router.post(
  * /api/auth/login:
  *   post:
  *     summary: Sign in with email and password
+ *     description: Session persistence rechecks the user and verified password under a shared user lock. A deletion or password change during authentication fails instead of creating a late session.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -253,13 +263,12 @@ router.post(
     const accessToken = signAccessToken(payload)
     const refreshToken = signRefreshToken(payload)
 
-    await prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        token: refreshToken,
-        expiresAt: refreshTokenExpiresAt(),
-      },
-    })
+    await persistUserSession(
+      user.id,
+      user.passwordHash,
+      refreshToken,
+      refreshTokenExpiresAt()
+    )
 
     const {
       passwordHash: _,
@@ -281,6 +290,9 @@ router.post(
  *   post:
  *     summary: Cancel a pending account deletion and sign in
  *     description: >
+ *       Restoration rechecks the verified password and deletion revision under an exclusive
+ *       user lock, and restores the account and persists its new session in one transaction.
+ *       Concurrent restoration/deletion changes return 409; a purged user returns 401.
  *       Valid only while the account is inside its deletion grace period.
  *       Requires the account password, so a deletion cannot be undone by
  *       anyone who merely knows the email address.
@@ -340,22 +352,17 @@ router.post(
       })
     }
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { deletedAt: null, purgeAfter: null },
-    })
-
     const payload = { userId: user.id, email: user.email }
     const accessToken = signAccessToken(payload)
     const refreshToken = signRefreshToken(payload)
 
-    await prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        token: refreshToken,
-        expiresAt: refreshTokenExpiresAt(),
-      },
-    })
+    await restoreDeletedUser(
+      user.id,
+      user.passwordHash,
+      user.deletedAt,
+      refreshToken,
+      refreshTokenExpiresAt()
+    )
 
     const { passwordHash: _, deletedAt: __, ...safeUser } = user
     res.json({
@@ -371,6 +378,7 @@ router.post(
  * /api/auth/refresh:
  *   post:
  *     summary: Exchange a refresh token for a new access + refresh token pair (rotation)
+ *     description: Rechecks active user state under a shared user lock and atomically replaces an owned, unexpired token. Concurrent rotations succeed at most once; deletion cannot leave a late replacement session.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -437,20 +445,16 @@ router.post(
       })
     }
 
-    // Rotate: delete old, issue new pair
-    await prisma.refreshToken.delete({ where: { token: refreshToken } })
-
     const newPayload = { userId: payload.userId, email: payload.email }
     const newAccessToken = signAccessToken(newPayload)
     const newRefreshToken = signRefreshToken(newPayload)
 
-    await prisma.refreshToken.create({
-      data: {
-        userId: payload.userId,
-        token: newRefreshToken,
-        expiresAt: refreshTokenExpiresAt(),
-      },
-    })
+    await rotateUserSession(
+      payload.userId,
+      refreshToken,
+      newRefreshToken,
+      refreshTokenExpiresAt()
+    )
 
     res.json({
       success: true,
@@ -510,6 +514,8 @@ router.post(
  *       with 200 regardless of whether the email exists or whether delivery
  *       succeeded (prevents user enumeration). In non-production environments
  *       the `resetToken` field is also included in the response for testing.
+ *       Reset-token replacement is atomic under an exclusive user lock. Users deleted
+ *       or purged during the request receive the same generic response without a token.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -570,19 +576,19 @@ router.post(
       })
     }
 
-    // Invalidate any existing reset tokens for this user
-    await prisma.passwordResetToken.deleteMany({ where: { userId: user.id } })
-
     const rawToken = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
 
-    await prisma.passwordResetToken.create({
-      data: {
-        userId: user.id,
-        token: hashResetToken(rawToken),
-        expiresAt,
-      },
-    })
+    const issued = await issuePasswordReset(
+      user.id,
+      hashResetToken(rawToken),
+      expiresAt
+    )
+    if (!issued)
+      return res.json({
+        success: true,
+        message: 'If that email is registered you will receive a reset link.',
+      })
 
     try {
       await sendPasswordResetEmail(user.email, buildPasswordResetUrl(rawToken))
@@ -605,6 +611,10 @@ router.post(
  * /api/auth/reset-password:
  *   post:
  *     summary: Set a new password using a reset token
+ *     description: >
+ *       Rechecks active user state and consumes an owned, unexpired token under an exclusive
+ *       user lock. Password replacement and revocation of all reset/refresh tokens commit
+ *       together. Concurrent completion succeeds at most once; deleted accounts cannot reset.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -649,7 +659,7 @@ router.post(
       where: { token: tokenHash },
     })
 
-    if (!stored || stored.expiresAt < new Date()) {
+    if (!stored || stored.expiresAt <= new Date()) {
       return res.status(400).json({
         error: 'Bad Request',
         message: 'Invalid or expired reset token',
@@ -658,14 +668,7 @@ router.post(
 
     const passwordHash = await bcrypt.hash(password, 12)
 
-    await prisma.user.update({
-      where: { id: stored.userId },
-      data: { passwordHash },
-    })
-
-    // Invalidate the used token and all refresh tokens for this user
-    await prisma.passwordResetToken.delete({ where: { token: tokenHash } })
-    await prisma.refreshToken.deleteMany({ where: { userId: stored.userId } })
+    await completePasswordReset(stored.userId, tokenHash, passwordHash)
 
     res.json({ success: true, message: 'Password updated successfully' })
   })

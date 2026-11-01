@@ -2,6 +2,12 @@ import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+vi.mock('../lib/user-lock.js', () => ({ lockActiveUser: vi.fn() }))
+const derived = vi.hoisted(() => ({ history: vi.fn(), stop: vi.fn() }))
+vi.mock('../lib/position-derived-values.js', () => ({
+  savePositionHistory: derived.history,
+  savePositionStopLossHit: derived.stop,
+}))
 
 const { krakenMarkets } = vi.hoisted(() => ({ krakenMarkets: vi.fn() }))
 vi.mock('../lib/crypto/kraken-markets.js', () => ({
@@ -64,9 +70,13 @@ vi.mock('../lib/historical-drawdown.js', () => ({
   fetchHistoricalMaxRunUp: fetchHistoricalMaxRunUpMock,
   fetchHistoricalStopLossHit: fetchHistoricalStopLossHitMock,
 }))
+vi.mock('../lib/account-lock.js', () => ({
+  lockOwnedPosition: vi.fn().mockResolvedValue(undefined),
+  lockOwnedTradingAccount: vi.fn().mockResolvedValue(undefined),
+}))
 
-vi.mock('../lib/prisma.js', () => ({
-  prisma: {
+vi.mock('../lib/prisma.js', () => {
+  const db = {
     position: {
       findMany: positionFindManyMock,
       count: positionCountMock,
@@ -89,8 +99,17 @@ vi.mock('../lib/prisma.js', () => ({
       findFirst: accountFindFirstMock,
       upsert: accountUpsertMock,
     },
-  },
-}))
+  }
+  return {
+    prisma: {
+      ...db,
+      $transaction: vi.fn(
+        (callback: (transactionDb: typeof db) => Promise<unknown>) =>
+          callback(db)
+      ),
+    },
+  }
+})
 
 import positionsRouter from './positions.js'
 import { errorHandler } from '../middleware/validation.js'
@@ -107,6 +126,9 @@ function createApp() {
 describe('positions controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    derived.history.mockResolvedValue(undefined)
+    derived.stop.mockResolvedValue(undefined)
+    positionFindUniqueMock.mockImplementation(() => positionFindFirstMock())
     krakenMarkets.mockResolvedValue([
       { symbol: 'BTC-AUD', exchangeCode: 'KRAKEN' },
       { symbol: 'SHIB-AUD', exchangeCode: 'KRAKEN' },
@@ -281,10 +303,10 @@ describe('positions controller', () => {
 
       expect(response.status).toBe(201)
       await vi.waitFor(() =>
-        expect(positionUpdateMock).toHaveBeenCalledWith({
-          where: { id: 'p_1' },
-          data: { maxRunUpPercent: 15 },
-        })
+        expect(derived.history).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'p_1' }),
+          { maxRunUpPercent: 15 }
+        )
       )
     })
 
@@ -546,6 +568,27 @@ describe('positions controller', () => {
   })
 
   describe('POST /api/positions/:id/recalculate-drawdown', () => {
+    it('returns a conflict instead of publishing stale calculated history', async () => {
+      positionFindFirstMock.mockResolvedValue({
+        id: 'p_1',
+        entryPrice: 10,
+        openDate: new Date('2026-01-01'),
+        asset: { symbol: 'AAPL' },
+      })
+      derived.history.mockRejectedValueOnce(
+        Object.assign(new Error('Position changed during calculation'), {
+          status: 409,
+          name: 'Conflict',
+        })
+      )
+      const response = await request(createApp()).post(
+        '/api/positions/p_1/recalculate-drawdown'
+      )
+      expect(response.status).toBe(409)
+      expect(response.body.error).toBe('Conflict')
+      expect(response.body.success).toBeUndefined()
+    })
+
     it('returns 404 when the position does not exist', async () => {
       positionFindFirstMock.mockResolvedValue(null)
 
@@ -577,10 +620,10 @@ describe('positions controller', () => {
       expect(response.status).toBe(200)
       expect(response.body.maxDrawdownPercent).toBe(12.5)
       expect(response.body.maxRunUpPercent).toBe(15)
-      expect(positionUpdateMock).toHaveBeenCalledWith({
-        where: { id: 'p_1' },
-        data: { maxDrawdownPercent: 12.5, maxRunUpPercent: 15 },
-      })
+      expect(derived.history).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'p_1' }),
+        { maxDrawdownPercent: 12.5, maxRunUpPercent: 15 }
+      )
       expect(fetchHistoricalMaxRunUpMock).toHaveBeenCalledWith(
         'AAPL',
         10,
@@ -612,6 +655,33 @@ describe('positions controller', () => {
   })
 
   describe('POST /api/positions/:id/check-stop-loss', () => {
+    it('rejects a historical hit when the stop was edited while fetching', async () => {
+      positionFindFirstMock.mockResolvedValue({
+        id: 'p_1',
+        status: 'OPEN',
+        positionType: 'LONG',
+        stopLossPrice: 95,
+        stopLossSetAt: null,
+        stopLossHitAt: null,
+        openDate: new Date('2026-01-01'),
+        asset: { symbol: 'AAPL' },
+      })
+      fetchHistoricalStopLossHitMock.mockResolvedValueOnce(
+        new Date('2026-02-01')
+      )
+      derived.stop.mockRejectedValueOnce(
+        Object.assign(new Error('Position changed during calculation'), {
+          status: 409,
+          name: 'Conflict',
+        })
+      )
+      const response = await request(createApp()).post(
+        '/api/positions/p_1/check-stop-loss'
+      )
+      expect(response.status).toBe(409)
+      expect(response.body.success).toBeUndefined()
+    })
+
     const openLong = (overrides: Record<string, unknown> = {}) => ({
       id: 'p_1',
       status: 'OPEN',
@@ -651,10 +721,10 @@ describe('positions controller', () => {
         95,
         new Date('2026-01-01T00:00:00.000Z')
       )
-      expect(positionUpdateMock).toHaveBeenCalledWith({
-        where: { id: 'p_1' },
-        data: { stopLossHitAt: hitAt },
-      })
+      expect(derived.stop).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'p_1' }),
+        hitAt
+      )
     })
 
     it('scans from when the stop was last set when that is known', async () => {
@@ -695,7 +765,7 @@ describe('positions controller', () => {
       expect(response.status).toBe(200)
       expect(response.body.stopLossHitAt).not.toBeNull()
       expect(fetchHistoricalStopLossHitMock).not.toHaveBeenCalled()
-      expect(positionUpdateMock).toHaveBeenCalledTimes(1)
+      expect(derived.stop).toHaveBeenCalledTimes(1)
     })
 
     it('falls back to history when currentPrice is above the stop', async () => {
@@ -1236,10 +1306,10 @@ describe('positions controller', () => {
         new Date('2026-02-01T00:00:00.000Z')
       )
       await vi.waitFor(() =>
-        expect(positionUpdateMock).toHaveBeenCalledWith({
-          where: { id: 'p_1' },
-          data: { maxRunUpPercent: 15 },
-        })
+        expect(derived.history).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'p_1' }),
+          { maxRunUpPercent: 15 }
+        )
       )
     })
   })

@@ -84,19 +84,20 @@ model Exchange {
 // ─── Trading Accounts ───────────────────────────────────────────────────────
 
 model TradingAccount {
-  id         String   @id @default(cuid())
-  userId     String
-  name       String
-  status     TradingAccountStatus @default(ACTIVE)
-  isDemo     Boolean  @default(false)
-  closedAt   DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String               @id @default(cuid())
+  userId    String
+  name      String
+  status    TradingAccountStatus @default(ACTIVE)
+  isDemo    Boolean              @default(false)
+  closedAt  DateTime?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 
-  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  positions         Position[]
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  positions          Position[]
   portfolioSnapshots PortfolioSnapshot[]
-  importBatches     ImportBatch[]
+  importBatches      ImportBatch[]
+  openingStatements  AccountOpeningStatement[]
 
   @@unique([userId, name])
   @@map("trading_accounts")
@@ -105,6 +106,147 @@ model TradingAccount {
 enum TradingAccountStatus {
   ACTIVE
   CLOSED
+}
+
+model AccountOpeningStatement {
+  id                String   @id @default(cuid())
+  accountId         String
+  version           Int
+  openingDate       DateTime @db.Date
+  timezone          String   @default("Australia/Sydney")
+  state             String   @default("DRAFT")
+  sourceFingerprint String
+  inputHash         String
+  previewSnapshot   Json
+  createdAt         DateTime @default(now())
+
+  account        TradingAccount         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  cashBalances   OpeningCashBalance[]
+  parcels        OpeningParcelBalance[]
+  cashOperations DraftCashOperation[]
+
+  @@unique([accountId, version])
+  @@unique([accountId, sourceFingerprint])
+  @@map("account_opening_statements")
+}
+
+model OpeningCashBalance {
+  id          String  @id @default(cuid())
+  statementId String
+  currency    String
+  amount      Decimal @db.Decimal(38, 12)
+
+  statement AccountOpeningStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@unique([statementId, currency])
+  @@map("opening_cash_balances")
+}
+
+model OpeningParcelBalance {
+  id          String  @id @default(cuid())
+  statementId String
+  // Snapshot reference: deleting a legacy parcel must not erase draft history.
+  positionId  String
+  symbol      String
+  currency    String
+  quantity    Decimal @db.Decimal(38, 12)
+
+  statement AccountOpeningStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@unique([statementId, positionId])
+  @@map("opening_parcel_balances")
+}
+
+model DraftCashOperation {
+  id              String   @id @default(cuid())
+  statementId     String
+  state           String   @default("DRAFT")
+  methodology     String
+  idempotencyKey  String
+  payloadHash     String
+  kind            String
+  effectiveDate   DateTime @db.Date
+  sequence        BigInt
+  sourceOrigin    String
+  sourceReference String
+  command         Json
+  recordedAt      DateTime @default(now())
+
+  statement  AccountOpeningStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  postings   DraftCashPosting[]
+  tradeLinks DraftOperationTradeLink[]
+  revisions  DraftCashRevision[]
+
+  @@unique([statementId, id])
+  @@unique([statementId, idempotencyKey])
+  @@unique([statementId, sourceOrigin, sourceReference])
+  @@unique([statementId, effectiveDate, sequence])
+  @@map("draft_cash_operations")
+}
+
+model DraftCashPosting {
+  id          String  @id @default(cuid())
+  operationId String
+  legIndex    Int
+  currency    String
+  amount      Decimal @db.Decimal(38, 12)
+  role        String
+
+  operation DraftCashOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+
+  @@unique([operationId, legIndex])
+  @@map("draft_cash_postings")
+}
+
+model DraftCashRevision {
+  id                 String   @id @default(cuid())
+  statementId        String
+  operationId        String
+  revisionNumber     Int
+  previousRevisionId String?
+  idempotencyKey     String
+  payloadHash        String
+  reason             String
+  request            Json
+  recordedAt         DateTime @default(now())
+
+  operation DraftCashOperation @relation(fields: [statementId, operationId], references: [statementId, id], onDelete: Cascade)
+  previous  DraftCashRevision?  @relation("CashRevisionChain", fields: [operationId, previousRevisionId], references: [operationId, id], onDelete: NoAction, onUpdate: NoAction)
+  next      DraftCashRevision[] @relation("CashRevisionChain")
+  postings  DraftCashRevisionPosting[]
+
+  @@unique([operationId, id])
+  @@unique([operationId, revisionNumber])
+  @@unique([statementId, idempotencyKey])
+  @@map("draft_cash_revisions")
+}
+
+model DraftCashRevisionPosting {
+  id         String  @id @default(cuid())
+  revisionId String
+  legIndex   Int
+  phase      String
+  currency   String
+  amount     Decimal @db.Decimal(38, 12)
+  role       String
+
+  revision DraftCashRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@unique([revisionId, legIndex])
+  @@map("draft_cash_revision_postings")
+}
+
+model DraftOperationTradeLink {
+  id            String @id @default(cuid())
+  statementId   String
+  operationId   String
+  // Snapshot reference; legacy transaction deletion must not erase draft history.
+  transactionId String
+
+  operation DraftCashOperation @relation(fields: [statementId, operationId], references: [statementId, id], onDelete: Cascade)
+
+  @@unique([statementId, transactionId])
+  @@map("draft_operation_trade_links")
 }
 
 // ─── Assets ──────────────────────────────────────────────────────────────────

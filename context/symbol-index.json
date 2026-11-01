@@ -1,21 +1,21 @@
 [
   {
-    "endLine": 10,
+    "endLine": 18,
     "file": "src/controllers/accounts.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 10
+    "startLine": 18
   },
   {
-    "endLine": 20,
+    "endLine": 29,
     "file": "src/controllers/auth.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 20
+    "startLine": 29
   },
   {
     "endLine": 15,
@@ -36,13 +36,22 @@
     "startLine": 20
   },
   {
-    "endLine": 15,
+    "endLine": 16,
     "file": "src/controllers/index.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 15
+    "startLine": 16
+  },
+  {
+    "endLine": 13,
+    "file": "src/controllers/opening-statements.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "default",
+    "signature": "router = Router()",
+    "startLine": 13
   },
   {
     "endLine": 11,
@@ -54,13 +63,13 @@
     "startLine": 11
   },
   {
-    "endLine": 26,
+    "endLine": 36,
     "file": "src/controllers/positions.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 26
+    "startLine": 36
   },
   {
     "endLine": 17,
@@ -90,22 +99,22 @@
     "startLine": 18
   },
   {
-    "endLine": 17,
+    "endLine": 18,
     "file": "src/controllers/tax-reports.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 17
+    "startLine": 18
   },
   {
-    "endLine": 12,
+    "endLine": 13,
     "file": "src/controllers/users.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 12
+    "startLine": 13
   },
   {
     "endLine": 11,
@@ -126,31 +135,319 @@
     "startLine": 16
   },
   {
-    "endLine": 6,
+    "endLine": 7,
     "file": "src/lib/account-deletion.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "DELETION_GRACE_DAYS",
     "signature": "DELETION_GRACE_DAYS = 30",
-    "startLine": 6
+    "startLine": 7
   },
   {
-    "endLine": 12,
+    "endLine": 13,
     "file": "src/lib/account-deletion.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "purgeAfterFrom",
     "signature": "export function purgeAfterFrom(deletedAt: Date): Date",
-    "startLine": 8
+    "startLine": 9
   },
   {
-    "endLine": 29,
+    "endLine": 41,
+    "file": "src/lib/account-deletion.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "persistUserSession",
+    "signature": "export async function persistUserSession( userId: string, verifiedPasswordHash: string, token: string, expiresAt: Date )",
+    "startLine": 25
+  },
+  {
+    "endLine": 57,
+    "file": "src/lib/account-deletion.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "rotateUserSession",
+    "signature": "export async function rotateUserSession( userId: string, previousToken: string, token: string, expiresAt: Date )",
+    "startLine": 43
+  },
+  {
+    "endLine": 83,
+    "file": "src/lib/account-deletion.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "scheduleUserDeletion",
+    "signature": "export async function scheduleUserDeletion( userId: string, verifiedPasswordHash: string, deletedAt = new Date() )",
+    "startLine": 59
+  },
+  {
+    "endLine": 121,
+    "file": "src/lib/account-deletion.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "restoreDeletedUser",
+    "signature": "export async function restoreDeletedUser( userId: string, verifiedPasswordHash: string, expectedDeletedAt: Date, refreshToken: string, expiresAt: Date )",
+    "startLine": 85
+  },
+  {
+    "endLine": 145,
     "file": "src/lib/account-deletion.ts",
     "jsdoc": "Permanently removes accounts whose grace period has expired. Every user-scoped table cascades from `users`, so one delete per user suffices.",
     "kind": "FunctionDeclaration",
     "name": "purgeExpiredAccounts",
     "signature": "export async function purgeExpiredAccounts( now = new Date() ): Promise<string[]>",
+    "startLine": 125
+  },
+  {
+    "endLine": 22,
+    "file": "src/lib/account-lock.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "lockOwnedTradingAccount",
+    "signature": "export async function lockOwnedTradingAccount( db: LockDb, userId: string, accountId: string ): Promise<void>",
+    "startLine": 6
+  },
+  {
+    "endLine": 64,
+    "file": "src/lib/account-lock.ts",
+    "jsdoc": "Account first, parcel second; a concurrent account move requires a fresh request.",
+    "kind": "FunctionDeclaration",
+    "name": "lockOwnedPosition",
+    "signature": "export async function lockOwnedPosition( db: LockDb, userId: string, positionId: string, destinationAccountId?: string ): Promise<void>",
+    "startLine": 25
+  },
+  {
+    "endLine": 27,
+    "file": "src/lib/accounting-preview-service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "previewAccountOpening",
+    "signature": "export async function previewAccountOpening( userId: string, accountId: string, rawInput: unknown )",
     "startLine": 16
+  },
+  {
+    "endLine": 160,
+    "file": "src/lib/accounting-preview-service.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "readAccountOpeningPreview",
+    "signature": "export async function readAccountOpeningPreview( db: PreviewDb, userId: string, accountId: string, input: ReturnType<typeof parseOpeningPreviewInput>, now: Date )",
+    "startLine": 29
+  },
+  {
+    "endLine": 13,
+    "file": "src/lib/accounting-preview.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "OpeningPreviewInput",
+    "signature": "export interface OpeningPreviewInput",
+    "startLine": 10
+  },
+  {
+    "endLine": 22,
+    "file": "src/lib/accounting-preview.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "PreviewTransaction",
+    "signature": "export interface PreviewTransaction",
+    "startLine": 15
+  },
+  {
+    "endLine": 33,
+    "file": "src/lib/accounting-preview.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "PreviewPosition",
+    "signature": "export interface PreviewPosition",
+    "startLine": 24
+  },
+  {
+    "endLine": 68,
+    "file": "src/lib/accounting-preview.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "OpeningPreview",
+    "signature": "export interface OpeningPreview",
+    "startLine": 35
+  },
+  {
+    "endLine": 77,
+    "file": "src/lib/accounting-preview.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "sydneyCalendarDate",
+    "signature": "export function sydneyCalendarDate(date: Date): string",
+    "startLine": 70
+  },
+  {
+    "endLine": 133,
+    "file": "src/lib/accounting-preview.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "parseOpeningPreviewInput",
+    "signature": "export function parseOpeningPreviewInput( input: unknown, now = new Date() ): OpeningPreviewInput",
+    "startLine": 86
+  },
+  {
+    "endLine": 383,
+    "file": "src/lib/accounting-preview.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "buildOpeningPreview",
+    "signature": "export function buildOpeningPreview( account:",
+    "startLine": 135
+  },
+  {
+    "endLine": 4,
+    "file": "src/lib/accounting-values.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "AccountingDecimal",
+    "signature": "AccountingDecimal = Decimal.clone(",
+    "startLine": 4
+  },
+  {
+    "endLine": 10,
+    "file": "src/lib/accounting-values.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "isAccountingCurrency",
+    "signature": "export function isAccountingCurrency(value: unknown): value is string",
+    "startLine": 8
+  },
+  {
+    "endLine": 14,
+    "file": "src/lib/accounting-values.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "isAccountingAmount",
+    "signature": "export function isAccountingAmount(value: unknown): value is string",
+    "startLine": 12
+  },
+  {
+    "endLine": 23,
+    "file": "src/lib/accounting-values.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "isAccountingDate",
+    "signature": "export function isAccountingDate(value: unknown): value is string",
+    "startLine": 16
+  },
+  {
+    "endLine": 31,
+    "file": "src/lib/cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "CashCommand",
+    "signature": "export type CashCommand = CommandBase & ( |",
+    "startLine": 22
+  },
+  {
+    "endLine": 37,
+    "file": "src/lib/cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "CashLeg",
+    "signature": "export interface CashLeg",
+    "startLine": 33
+  },
+  {
+    "endLine": 44,
+    "file": "src/lib/cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "PreparedCashCommand",
+    "signature": "export interface PreparedCashCommand",
+    "startLine": 39
+  },
+  {
+    "endLine": 71,
+    "file": "src/lib/cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "CashReplay",
+    "signature": "export interface CashReplay",
+    "startLine": 46
+  },
+  {
+    "endLine": 251,
+    "file": "src/lib/cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "prepareCashCommand",
+    "signature": "export function prepareCashCommand( raw: unknown, now = new Date() ): PreparedCashCommand",
+    "startLine": 139
+  },
+  {
+    "endLine": 273,
+    "file": "src/lib/cash-ledger.ts",
+    "jsdoc": "Persistence must resolve this before replaying or writing a command a second time.",
+    "kind": "FunctionDeclaration",
+    "name": "resolveCashCommandRetry",
+    "signature": "export function resolveCashCommandRetry( prepared: PreparedCashCommand, existing:",
+    "startLine": 254
+  },
+  {
+    "endLine": 419,
+    "file": "src/lib/cash-ledger.ts",
+    "jsdoc": "Rebuild a single account; caller must supply broker-verified execution totals and ordering.",
+    "kind": "FunctionDeclaration",
+    "name": "replayCashLedger",
+    "signature": "export function replayCashLedger( accountId: string, opening: OpeningPreviewInput, rawCommands: readonly unknown[], now = new Date() ): CashReplay",
+    "startLine": 276
+  },
+  {
+    "endLine": 433,
+    "file": "src/lib/cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "requireFundedCashLedger",
+    "signature": "export function requireFundedCashLedger(replay: CashReplay): void",
+    "startLine": 421
+  },
+  {
+    "endLine": 14,
+    "file": "src/lib/cash-revisions.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "CashRevisionRequest",
+    "signature": "export interface CashRevisionRequest",
+    "startLine": 9
+  },
+  {
+    "endLine": 19,
+    "file": "src/lib/cash-revisions.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "PreparedCashRevision",
+    "signature": "export interface PreparedCashRevision",
+    "startLine": 16
+  },
+  {
+    "endLine": 96,
+    "file": "src/lib/cash-revisions.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "prepareCashRevision",
+    "signature": "export function prepareCashRevision( raw: unknown, now = new Date() ): PreparedCashRevision",
+    "startLine": 46
+  },
+  {
+    "endLine": 100,
+    "file": "src/lib/cash-revisions.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "RevisionLeg",
+    "signature": "export interface RevisionLeg extends CashLeg",
+    "startLine": 98
+  },
+  {
+    "endLine": 138,
+    "file": "src/lib/cash-revisions.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "prepareRevisionLegs",
+    "signature": "export function prepareRevisionLegs( original: CashCommand, replacement: CashCommand | null, now = new Date() ): RevisionLeg[]",
+    "startLine": 102
   },
   {
     "endLine": 32,
@@ -340,6 +637,24 @@
     "name": "sameVenueExchangeCodes",
     "signature": "export function sameVenueExchangeCodes(code: string): string[]",
     "startLine": 35
+  },
+  {
+    "endLine": 427,
+    "file": "src/lib/draft-cash-ledger.ts",
+    "jsdoc": "Internal staging only: never posts spendable cash or mutates a live trade.",
+    "kind": "FunctionDeclaration",
+    "name": "saveDraftCashOperation",
+    "signature": "export async function saveDraftCashOperation( userId: string, statementId: string, raw: unknown )",
+    "startLine": 293
+  },
+  {
+    "endLine": 555,
+    "file": "src/lib/draft-cash-ledger.ts",
+    "jsdoc": "Internal inactive capital corrections; trade corrections await atomic trade/posting integration.",
+    "kind": "FunctionDeclaration",
+    "name": "correctDraftCashOperation",
+    "signature": "export async function correctDraftCashOperation( userId: string, statementId: string, operationId: string, raw: unknown )",
+    "startLine": 430
   },
   {
     "endLine": 205,
@@ -621,67 +936,67 @@
     "startLine": 91
   },
   {
-    "endLine": 37,
+    "endLine": 39,
     "file": "src/lib/imports/service.ts",
     "jsdoc": "",
     "kind": "ClassDeclaration",
     "name": "ImportError",
     "signature": "export class ImportError extends Error",
-    "startLine": 27
+    "startLine": 29
   },
   {
-    "endLine": 43,
+    "endLine": 45,
     "file": "src/lib/imports/service.ts",
     "jsdoc": "",
     "kind": "InterfaceDeclaration",
     "name": "UploadedFile",
     "signature": "export interface UploadedFile",
-    "startLine": 39
+    "startLine": 41
   },
   {
-    "endLine": 219,
+    "endLine": 264,
     "file": "src/lib/imports/service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "createImportBatch",
     "signature": "export async function createImportBatch(params:",
-    "startLine": 85
+    "startLine": 119
   },
   {
-    "endLine": 367,
+    "endLine": 438,
     "file": "src/lib/imports/service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "planBatch",
     "signature": "export async function planBatch(batchId: string, userId: string)",
-    "startLine": 315
+    "startLine": 432
   },
   {
-    "endLine": 405,
+    "endLine": 482,
     "file": "src/lib/imports/service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "saveResolution",
     "signature": "export async function saveResolution( batchId: string, eventId: string, userId: string, resolution: EventResolution )",
-    "startLine": 369
+    "startLine": 440
   },
   {
-    "endLine": 418,
+    "endLine": 497,
     "file": "src/lib/imports/service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "discardBatch",
     "signature": "export async function discardBatch(batchId: string, userId: string)",
-    "startLine": 407
+    "startLine": 484
   },
   {
-    "endLine": 687,
+    "endLine": 770,
     "file": "src/lib/imports/service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "commitBatch",
     "signature": "export async function commitBatch( batchId: string, userId: string, eventIds?: string[] )",
-    "startLine": 503
+    "startLine": 582
   },
   {
     "endLine": 1,
@@ -936,6 +1251,42 @@
     "startLine": 97
   },
   {
+    "endLine": 213,
+    "file": "src/lib/opening-statements.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "saveOpeningStatement",
+    "signature": "export async function saveOpeningStatement( userId: string, accountId: string, raw: unknown )",
+    "startLine": 81
+  },
+  {
+    "endLine": 240,
+    "file": "src/lib/opening-statements.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "listOpeningStatements",
+    "signature": "export async function listOpeningStatements( userId: string, accountId: string, beforeVersion?: number )",
+    "startLine": 215
+  },
+  {
+    "endLine": 36,
+    "file": "src/lib/password-reset.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "issuePasswordReset",
+    "signature": "export async function issuePasswordReset( userId: string, tokenHash: string, expiresAt: Date ): Promise<boolean>",
+    "startLine": 17
+  },
+  {
+    "endLine": 58,
+    "file": "src/lib/password-reset.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "completePasswordReset",
+    "signature": "export async function completePasswordReset( userId: string, tokenHash: string, passwordHash: string ): Promise<void>",
+    "startLine": 38
+  },
+  {
     "endLine": 8,
     "file": "src/lib/pdf-report.ts",
     "jsdoc": "",
@@ -981,6 +1332,105 @@
     "startLine": 18
   },
   {
+    "endLine": 55,
+    "file": "src/lib/portfolio-snapshot.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "savePortfolioSnapshot",
+    "signature": "export async function savePortfolioSnapshot( userId: string, accountId: string, exchangeId: string )",
+    "startLine": 5
+  },
+  {
+    "endLine": 73,
+    "file": "src/lib/position-derived-values.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "savePositionHistory",
+    "signature": "export async function savePositionHistory( source: HistorySource, data: DerivedValues ): Promise<void>",
+    "startLine": 46
+  },
+  {
+    "endLine": 98,
+    "file": "src/lib/position-derived-values.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "savePositionStopLossHit",
+    "signature": "export async function savePositionStopLossHit( source: StopSource, hitAt: Date ): Promise<void>",
+    "startLine": 75
+  },
+  {
+    "endLine": 45,
+    "file": "src/lib/position-mutations.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "ClosePositionInput",
+    "signature": "export interface ClosePositionInput",
+    "startLine": 38
+  },
+  {
+    "endLine": 114,
+    "file": "src/lib/position-mutations.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "closePosition",
+    "signature": "export async function closePosition( userId: string, positionId: string, input: ClosePositionInput )",
+    "startLine": 47
+  },
+  {
+    "endLine": 122,
+    "file": "src/lib/position-mutations.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "UpdateCloseEventInput",
+    "signature": "export interface UpdateCloseEventInput",
+    "startLine": 116
+  },
+  {
+    "endLine": 179,
+    "file": "src/lib/position-mutations.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "updateCloseEvent",
+    "signature": "export async function updateCloseEvent( userId: string, transactionId: string, input: UpdateCloseEventInput )",
+    "startLine": 124
+  },
+  {
+    "endLine": 193,
+    "file": "src/lib/position-mutations.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "deletePosition",
+    "signature": "export async function deletePosition( userId: string, positionId: string ): Promise<void>",
+    "startLine": 181
+  },
+  {
+    "endLine": 230,
+    "file": "src/lib/position-mutations.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "createPosition",
+    "signature": "export async function createPosition( userId: string, account:",
+    "startLine": 197
+  },
+  {
+    "endLine": 237,
+    "file": "src/lib/position-mutations.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "UpdateAcquisitionInput",
+    "signature": "export interface UpdateAcquisitionInput",
+    "startLine": 232
+  },
+  {
+    "endLine": 342,
+    "file": "src/lib/position-mutations.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "updatePositionAcquisition",
+    "signature": "export async function updatePositionAcquisition( userId: string, positionId: string, input: UpdateAcquisitionInput, metadata: Record<string, unknown>, destinationAccountId?: string )",
+    "startLine": 239
+  },
+  {
     "endLine": 82,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
@@ -990,40 +1440,40 @@
     "startLine": 8
   },
   {
-    "endLine": 111,
+    "endLine": 116,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "resolveTradingAccount",
-    "signature": "export async function resolveTradingAccount( userId: string, accountName?: string, accountId?: string )",
+    "signature": "export async function resolveTradingAccount( userId: string, accountName?: string, accountId?: string, db: Pick<typeof prisma, 'tradingAccount'> = prisma )",
     "startLine": 84
   },
   {
-    "endLine": 118,
+    "endLine": 123,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "toDateOnly",
     "signature": "export function toDateOnly(value: Date)",
-    "startLine": 113
+    "startLine": 118
   },
   {
-    "endLine": 124,
+    "endLine": 129,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "quantityTolerance",
     "signature": "export function quantityTolerance(...quantities: number[])",
-    "startLine": 122
+    "startLine": 127
   },
   {
-    "endLine": 175,
+    "endLine": 180,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "recomputePositionFromTransactions",
     "signature": "export async function recomputePositionFromTransactions( positionId: string, db: PositionDb = prisma )",
-    "startLine": 126
+    "startLine": 131
   },
   {
     "endLine": 23,
@@ -1159,6 +1609,69 @@
     "name": "specs",
     "signature": "specs = swaggerJsdoc(options)",
     "startLine": 150
+  },
+  {
+    "endLine": 45,
+    "file": "src/lib/trading-account-mutations.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "closeTradingAccount",
+    "signature": "export async function closeTradingAccount(userId: string, id: string)",
+    "startLine": 28
+  },
+  {
+    "endLine": 56,
+    "file": "src/lib/trading-account-mutations.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "reopenTradingAccount",
+    "signature": "export async function reopenTradingAccount(userId: string, id: string)",
+    "startLine": 47
+  },
+  {
+    "endLine": 73,
+    "file": "src/lib/trading-account-mutations.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "renameTradingAccount",
+    "signature": "export async function renameTradingAccount( userId: string, id: string, name: string )",
+    "startLine": 58
+  },
+  {
+    "endLine": 108,
+    "file": "src/lib/trading-account-mutations.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "deleteTradingAccount",
+    "signature": "export async function deleteTradingAccount(userId: string, id: string)",
+    "startLine": 75
+  },
+  {
+    "endLine": 18,
+    "file": "src/lib/user-lock.ts",
+    "jsdoc": "Shared user barrier before account locks; deletion/purge takes the user row exclusively.",
+    "kind": "FunctionDeclaration",
+    "name": "lockActiveUser",
+    "signature": "export async function lockActiveUser( db: LockDb, userId: string ): Promise<void>",
+    "startLine": 6
+  },
+  {
+    "endLine": 29,
+    "file": "src/lib/user-lock.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "lockUserLifecycle",
+    "signature": "export async function lockUserLifecycle( db: LockDb, userId: string ): Promise<void>",
+    "startLine": 20
+  },
+  {
+    "endLine": 39,
+    "file": "src/lib/user-lock.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "lockExistingUserLifecycle",
+    "signature": "export async function lockExistingUserLifecycle( db: LockDb, userId: string ): Promise<boolean>",
+    "startLine": 31
   },
   {
     "endLine": 62,

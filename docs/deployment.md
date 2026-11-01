@@ -36,6 +36,12 @@ Production topology: `piggy-api` on a DigitalOcean VPS, `piggy-fe` on Vercel.
   ```
 
   The job is idempotent — running it when nothing is due is a no-op.
+  Each delete rechecks `deletedAt` and `purgeAfter` atomically, so an account restored
+  after the initial due-user scan is not erased or reported as purged.
+  Participating account/trade/import writes acquire a shared user-row barrier before
+  account locks; soft deletion/restoration and purge serialize through the user row.
+  A restore that commits before the conditional purge delete is preserved. A purge that
+  commits first makes subsequent restoration fail rather than issuing an orphan session.
 
 ## piggy-fe (Vercel)
 

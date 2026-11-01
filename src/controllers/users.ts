@@ -7,7 +7,8 @@ import {
   handleValidationErrors,
 } from '../middleware/validation.js'
 import { authenticateToken } from '../middleware/auth.js'
-import { purgeAfterFrom } from '../lib/account-deletion.js'
+import { scheduleUserDeletion } from '../lib/account-deletion.js'
+import { lockUserLifecycle } from '../lib/user-lock.js'
 
 const router = Router()
 
@@ -77,6 +78,7 @@ router.get(
  * /api/users/me:
  *   patch:
  *     summary: Update the authenticated user's profile or password
+ *     description: Rechecks active user state and any verified password under an exclusive user lock before updating. An in-flight deletion or password change requires authentication again.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -140,6 +142,7 @@ router.patch(
   asyncHandler(async (req: Request, res: Response) => {
     const { name, baseCurrency, currentPassword, newPassword } = req.body
     const updateData: Record<string, unknown> = {}
+    let verifiedPasswordHash: string | undefined
 
     if (name !== undefined) updateData.name = name
     if (baseCurrency !== undefined)
@@ -164,20 +167,47 @@ router.patch(
           message: 'Current password is incorrect',
         })
       }
+      verifiedPasswordHash = user.passwordHash
       updateData.passwordHash = await bcrypt.hash(newPassword, 12)
     }
 
-    const updated = await prisma.user.update({
-      where: { id: req.user!.userId },
-      data: updateData,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        baseCurrency: true,
-        updatedAt: true,
+    const updated = await prisma.$transaction(
+      async (db) => {
+        const userId = req.user!.userId
+        await lockUserLifecycle(db, userId)
+        const user = await db.user.findUnique({
+          where: { id: userId },
+          select: { deletedAt: true, passwordHash: true },
+        })
+        if (
+          !user ||
+          user.deletedAt ||
+          (verifiedPasswordHash !== undefined &&
+            user.passwordHash !== verifiedPasswordHash)
+        )
+          throw Object.assign(
+            new Error(
+              'Session or password changed. Please authenticate again.'
+            ),
+            {
+              status: 401,
+              name: 'Unauthorized',
+            }
+          )
+        return db.user.update({
+          where: { id: userId },
+          data: updateData,
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            baseCurrency: true,
+            updatedAt: true,
+          },
+        })
       },
-    })
+      { isolationLevel: 'ReadCommitted', timeout: 15000, maxWait: 5000 }
+    )
     res.json({ success: true, data: updated })
   })
 )
@@ -194,6 +224,9 @@ router.patch(
  *       returns 403 with `accountPendingDeletion` and the account can be restored
  *       via POST /api/auth/restore. After that a scheduled purge removes the user
  *       and all their positions, accounts, snapshots, tax reports and watchlists.
+ *       An exclusive user lock waits for participating financial writes before marking
+ *       deletion and revoking sessions together. In-flight writes waiting behind deletion
+ *       are refused even if their initial authentication check already succeeded.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -258,19 +291,10 @@ router.delete(
       })
     }
 
-    const deletedAt = new Date()
-    const purgeAfter = purgeAfterFrom(deletedAt)
-
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { id: userId },
-        data: { deletedAt, purgeAfter },
-      }),
-      // Every existing session dies with the request, so a stolen token cannot
-      // be used to undo the deletion.
-      prisma.refreshToken.deleteMany({ where: { userId } }),
-      prisma.passwordResetToken.deleteMany({ where: { userId } }),
-    ])
+    const { deletedAt, purgeAfter } = await scheduleUserDeletion(
+      userId,
+      user.passwordHash
+    )
 
     res.json({ success: true, data: { deletedAt, purgeAfter } })
   })

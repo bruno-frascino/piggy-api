@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import crypto from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+vi.mock('../lib/user-lock.js', () => ({ lockActiveUser: vi.fn() }))
 
 const {
   userFindUniqueMock,
@@ -14,6 +15,8 @@ const {
   positionFindManyMock,
   computeCapitalGainsReportMock,
   buildCapitalGainsPdfMock,
+  queryRawMock,
+  accountFindManyMock,
 } = vi.hoisted(() => ({
   userFindUniqueMock: vi.fn(),
   taxReportFindManyMock: vi.fn(),
@@ -24,6 +27,8 @@ const {
   positionFindManyMock: vi.fn(),
   computeCapitalGainsReportMock: vi.fn(),
   buildCapitalGainsPdfMock: vi.fn(),
+  queryRawMock: vi.fn(),
+  accountFindManyMock: vi.fn(),
 }))
 
 vi.mock('../middleware/auth.js', () => ({
@@ -35,6 +40,8 @@ vi.mock('../middleware/auth.js', () => ({
 
 vi.mock('../lib/prisma.js', () => {
   const prisma = {
+    $queryRaw: queryRawMock,
+    tradingAccount: { findMany: accountFindManyMock },
     user: { findUnique: userFindUniqueMock },
     taxReport: {
       findMany: taxReportFindManyMock,
@@ -64,6 +71,18 @@ function createApp() {
   const app = express()
   app.use(express.json())
   app.use('/api/tax-reports', taxReportsRouter)
+  app.use(
+    (
+      error: Error & { status?: number },
+      _req: Request,
+      res: Response,
+      _next: NextFunction
+    ) => {
+      res
+        .status(error.status ?? 500)
+        .json({ error: error.name, message: error.message })
+    }
+  )
   return app
 }
 
@@ -114,9 +133,53 @@ describe('tax-reports controller', () => {
     buildCapitalGainsPdfMock.mockResolvedValue(Buffer.from('%PDF-fake'))
     taxReportFindFirstMock.mockResolvedValue(null)
     taxReportCreateMock.mockResolvedValue(SAMPLE_REPORT_ROW)
+    queryRawMock.mockResolvedValue([{ id: 'acc1' }])
+    accountFindManyMock.mockResolvedValue([{ id: 'acc1' }])
   })
 
   describe('POST /generate', () => {
+    it('locks selected accounts in stable order before creating the report reference', async () => {
+      accountFindManyMock.mockResolvedValue([{ id: 'a1' }, { id: 'z1' }])
+      const response = await request(createApp())
+        .post('/api/tax-reports/generate')
+        .send({ financialYearStartYear: 2025, accountIds: ['z1', 'a1', 'z1'] })
+      expect(response.status).toBe(200)
+      expect(queryRawMock.mock.calls.map((args) => args.slice(1))).toEqual([
+        ['a1', 'u_1'],
+        ['z1', 'u_1'],
+      ])
+      expect(queryRawMock.mock.invocationCallOrder[1]).toBeLessThan(
+        taxReportCreateMock.mock.invocationCallOrder[0]
+      )
+    })
+    it('refuses to orphan a report if a selected account was deleted during PDF preparation', async () => {
+      queryRawMock.mockResolvedValue([])
+      const response = await request(createApp())
+        .post('/api/tax-reports/generate')
+        .send({ financialYearStartYear: 2025, accountIds: ['acc1'] })
+      expect(response.status).toBe(404)
+      expect(taxReportCreateMock).not.toHaveBeenCalled()
+    })
+    it('rejects changed account eligibility before storing a report', async () => {
+      accountFindManyMock.mockResolvedValue([])
+      const response = await request(createApp())
+        .post('/api/tax-reports/generate')
+        .send({ financialYearStartYear: 2025, accountIds: ['acc1'] })
+      expect(response.status).toBe(409)
+      expect(taxReportCreateMock).not.toHaveBeenCalled()
+    })
+    it('rejects a concurrent current-revision change instead of superseding the wrong revision', async () => {
+      taxReportFindFirstMock
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'r-new', version: 1 })
+      const response = await request(createApp())
+        .post('/api/tax-reports/generate')
+        .send({ financialYearStartYear: 2025, accountIds: ['acc1'] })
+      expect(response.status).toBe(409)
+      expect(response.body.message).toContain('current report changed')
+      expect(taxReportCreateMock).not.toHaveBeenCalled()
+      expect(taxReportUpdateMock).not.toHaveBeenCalled()
+    })
     it('generates a report and returns serialized metadata', async () => {
       const response = await request(createApp())
         .post('/api/tax-reports/generate')

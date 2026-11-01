@@ -1,14 +1,146 @@
 import { Router, Request, Response } from 'express'
 import { body, param, query } from 'express-validator'
 import { prisma } from '../lib/prisma.js'
+import { lockActiveUser } from '../lib/user-lock.js'
 import {
   asyncHandler,
   handleValidationErrors,
 } from '../middleware/validation.js'
 import { authenticateToken } from '../middleware/auth.js'
+import { previewAccountOpening } from '../lib/accounting-preview-service.js'
+import {
+  closeTradingAccount,
+  reopenTradingAccount,
+  renameTradingAccount,
+  deleteTradingAccount,
+} from '../lib/trading-account-mutations.js'
 
 const router = Router()
 router.use(authenticateToken)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/opening-preview:
+ *   post:
+ *     summary: Preview opening inventory and trade-only cash without saving financial data
+ *     description: Read-only end-of-day Australia/Sydney reconciliation. It cannot confirm or enable accounting. Missing funding is never invented. Limited to 5000 parcels, 500 import batches, 50000 transactions and 10000 relevant import events; exceeding any limit returns 422.
+ *     tags: [Accounts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [openingDate, cashBalances]
+ *             properties:
+ *               openingDate:
+ *                 type: string
+ *                 format: date
+ *                 description: Valid calendar date no later than today in Australia/Sydney.
+ *               cashBalances:
+ *                 type: array
+ *                 minItems: 1
+ *                 maxItems: 20
+ *                 items:
+ *                   type: object
+ *                   required: [currency, amount]
+ *                   properties:
+ *                     currency: { type: string, pattern: '^[A-Z]{3}$', description: Supported ISO currency; unique within request. }
+ *                     amount: { type: string, pattern: '^(?:0|[1-9]\d{0,25})(?:\.\d{1,12})?$', description: Explicit non-negative decimal balance. }
+ *     responses:
+ *       200:
+ *         description: Preview only, including blockers and incomplete-cash-history warning.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, data]
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   required: [accountId, openingDate, timezone, boundary, asOfDate, mode, sourceFingerprint, parcels, cashBalances, issues, counts]
+ *                   properties:
+ *                     accountId: { type: string }
+ *                     openingDate: { type: string, format: date }
+ *                     timezone: { type: string, enum: [Australia/Sydney] }
+ *                     boundary: { type: string, enum: [END_OF_DAY] }
+ *                     asOfDate: { type: string, format: date }
+ *                     mode: { type: string, enum: [PREVIEW_ONLY] }
+ *                     sourceFingerprint: { type: string, description: Snapshot fingerprint, not an authorisation or confirmation token. }
+ *                     parcels:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         required: [positionId, symbol, currency, openingQuantity, expectedCurrentQuantity, recordedCurrentQuantity]
+ *                         properties:
+ *                           positionId: { type: string }
+ *                           symbol: { type: string }
+ *                           currency: { type: string }
+ *                           openingQuantity: { type: string }
+ *                           expectedCurrentQuantity: { type: string }
+ *                           recordedCurrentQuantity: { type: string }
+ *                     cashBalances:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         required: [currency, openingAmount, tradeOnlyEndingAmount, minimumTradeOnlyAmount]
+ *                         properties:
+ *                           currency: { type: string }
+ *                           openingAmount: { type: string }
+ *                           tradeOnlyEndingAmount: { type: string }
+ *                           minimumTradeOnlyAmount: { type: string }
+ *                     issues:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         required: [code, severity, message, sourceId]
+ *                         properties:
+ *                           code: { type: string }
+ *                           severity: { type: string, enum: [BLOCKING, WARNING] }
+ *                           message: { type: string }
+ *                           sourceId: { type: string, nullable: true }
+ *                     counts:
+ *                       type: object
+ *                       required: [parcels, postBoundaryTrades, blockingIssues]
+ *                       properties:
+ *                         parcels: { type: integer }
+ *                         postBoundaryTrades: { type: integer }
+ *                         blockingIssues: { type: integer }
+ *       400:
+ *         description: Invalid date, currency or decimal balance.
+ *       401:
+ *         description: Authentication required.
+ *       404:
+ *         description: Account not owned by the authenticated user or not found.
+ *       422:
+ *         description: Account exceeds the interactive preview limit.
+ */
+router.post(
+  '/:id/opening-preview',
+  [
+    param('id').isString().trim().isLength({ min: 1, max: 100 }),
+    body('openingDate').isString(),
+    body('cashBalances').isArray({ min: 1, max: 20 }),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const preview = await previewAccountOpening(
+      req.user!.userId,
+      String(req.params.id),
+      req.body
+    )
+    res.set('Cache-Control', 'no-store')
+    res.json({ success: true, data: preview })
+  })
+)
 
 /**
  * @swagger
@@ -50,6 +182,7 @@ router.get(
  * /api/accounts:
  *   post:
  *     summary: Create (or return existing) trading account for an exchange
+ *     description: An existing closed account with the same name is explicitly reopened under its account lock. New account creation takes the shared user barrier and refuses users deleted during the request.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -107,25 +240,21 @@ router.post(
 
     if (existing) {
       if (existing.status === 'CLOSED') {
-        const reopened = await prisma.tradingAccount.update({
-          where: { id: existing.id },
-          data: {
-            status: 'ACTIVE',
-            closedAt: null,
-          },
-        })
+        const reopened = await reopenTradingAccount(
+          req.user!.userId,
+          existing.id
+        )
         return res.status(200).json({ success: true, data: reopened })
       }
 
       return res.status(200).json({ success: true, data: existing })
     }
 
-    const created = await prisma.tradingAccount.create({
-      data: {
-        userId: req.user!.userId,
-        name,
-        isDemo,
-      },
+    const created = await prisma.$transaction(async (db) => {
+      await lockActiveUser(db, req.user!.userId)
+      return db.tradingAccount.create({
+        data: { userId: req.user!.userId, name, isDemo },
+      })
     })
 
     res.status(201).json({ success: true, data: created })
@@ -137,6 +266,7 @@ router.post(
  * /api/accounts/{id}/close:
  *   post:
  *     summary: Close a trading account while preserving history
+ *     description: Locks the owned account and checks current open/partial parcels in the same transaction. Reopen before adding new open holdings; historical corrections that leave parcels closed remain allowed. Inactive opening drafts are preserved and never activated.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -161,45 +291,7 @@ router.post(
     const id = String(req.params.id)
     const userId = req.user!.userId
 
-    const account = await prisma.tradingAccount.findFirst({
-      where: { id, userId },
-      select: { id: true, name: true, status: true },
-    })
-
-    if (!account) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Trading account not found',
-      })
-    }
-
-    if (account.status === 'CLOSED') {
-      return res.json({ success: true, data: account })
-    }
-
-    const openPositionsCount = await prisma.position.count({
-      where: {
-        accountId: id,
-        userId,
-        status: { in: ['OPEN', 'PARTIAL'] },
-      },
-    })
-
-    if (openPositionsCount > 0) {
-      return res.status(409).json({
-        error: 'Conflict',
-        message:
-          'Account still has open positions. Close them before archiving this account.',
-      })
-    }
-
-    const closed = await prisma.tradingAccount.update({
-      where: { id },
-      data: {
-        status: 'CLOSED',
-        closedAt: new Date(),
-      },
-    })
+    const closed = await closeTradingAccount(userId, id)
 
     res.json({ success: true, data: closed })
   })
@@ -210,6 +302,7 @@ router.post(
  * /api/accounts/{id}/reopen:
  *   post:
  *     summary: Reopen a closed trading account
+ *     description: Serializes reopening with account lifecycle and participating trade/import writes.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -232,25 +325,7 @@ router.post(
     const id = String(req.params.id)
     const userId = req.user!.userId
 
-    const account = await prisma.tradingAccount.findFirst({
-      where: { id, userId },
-      select: { id: true },
-    })
-
-    if (!account) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Trading account not found',
-      })
-    }
-
-    const reopened = await prisma.tradingAccount.update({
-      where: { id },
-      data: {
-        status: 'ACTIVE',
-        closedAt: null,
-      },
-    })
+    const reopened = await reopenTradingAccount(userId, id)
 
     res.json({ success: true, data: reopened })
   })
@@ -263,6 +338,7 @@ router.post(
  *     summary: Update a trading account
  *     description: >
  *       Rename a trading account. The `isDemo` flag is immutable; sending it returns 400.
+ *       Ownership, name conflict checks and update execute under the account lock.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -315,35 +391,7 @@ router.patch(
       })
     }
 
-    const account = await prisma.tradingAccount.findFirst({
-      where: { id, userId },
-      select: { id: true, name: true },
-    })
-
-    if (!account) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Trading account not found',
-      })
-    }
-
-    // Check if the new name conflicts with another account
-    const existingWithName = await prisma.tradingAccount.findFirst({
-      where: { userId, name, id: { not: id } },
-      select: { id: true },
-    })
-
-    if (existingWithName) {
-      return res.status(409).json({
-        error: 'Conflict',
-        message: 'An account with this name already exists',
-      })
-    }
-
-    const updated = await prisma.tradingAccount.update({
-      where: { id },
-      data: { name },
-    })
+    const updated = await renameTradingAccount(userId, id, name)
 
     res.json({ success: true, data: updated })
   })
@@ -361,6 +409,9 @@ router.patch(
  *       For non-demo accounts, refuses to delete an account that still has positions, or one
  *       that is referenced by a generated tax report — close the account instead to preserve
  *       that history.
+ *       Ownership and retention checks run under the same account lock as participating
+ *       trade/import writes and new tax-report references. Deletion cascades inactive opening
+ *       drafts, draft cash operations and import batches; it does not confirm or activate accounting.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -387,70 +438,8 @@ router.delete(
     const id = String(req.params.id)
     const userId = req.user!.userId
 
-    const account = await prisma.tradingAccount.findFirst({
-      where: { id, userId },
-      select: { id: true, name: true, isDemo: true },
-    })
-
-    if (!account) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Trading account not found',
-      })
-    }
-
-    // Demo accounts are never eligible for tax reports, so nothing outside the account
-    // can reference them. Positions, transactions and snapshots cascade at the database
-    // level, which makes the whole account disposable in one statement.
-    if (account.isDemo) {
-      await prisma.tradingAccount.delete({ where: { id } })
-      return res.json({
-        success: true,
-        message: `Demo account '${account.name}' and all its data deleted`,
-      })
-    }
-
-    const positionsCount = await prisma.position.count({
-      where: { accountId: id, userId },
-    })
-
-    if (positionsCount > 0) {
-      return res.status(409).json({
-        error: 'Conflict',
-        message: `Account '${account.name}' still has ${positionsCount} position${
-          positionsCount === 1 ? '' : 's'
-        }. Delete them first, or close the account to keep its history.`,
-      })
-    }
-
-    // Generated tax reports are ATO records and must stay readable, but they only
-    // reference account ids as an opaque key (no FK), so deleting would orphan them.
-    const taxReports = await prisma.taxReport.findMany({
-      where: { userId },
-      select: { financialYearLabel: true, accountsKey: true },
-    })
-    const referencingReports = taxReports.filter((report) =>
-      report.accountsKey.split(',').includes(id)
-    )
-
-    if (referencingReports.length > 0) {
-      const years = [
-        ...new Set(
-          referencingReports.map((report) => report.financialYearLabel)
-        ),
-      ].sort()
-      return res.status(409).json({
-        error: 'Conflict',
-        message: `Account '${account.name}' is included in generated tax report${
-          years.length === 1 ? '' : 's'
-        } for ${years.join(', ')}. Delete those reports first, or close the account to keep its history.`,
-      })
-    }
-
-    // Portfolio snapshots are derived data and cascade at the database level.
-    await prisma.tradingAccount.delete({ where: { id } })
-
-    res.json({ success: true, message: `Account '${account.name}' deleted` })
+    const message = await deleteTradingAccount(userId, id)
+    res.json({ success: true, message })
   })
 )
 

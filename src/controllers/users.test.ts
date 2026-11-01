@@ -11,6 +11,7 @@ const {
   deleteManyRefreshTokenMock,
   deleteManyPasswordResetTokenMock,
   transactionMock,
+  queryRawMock,
 } = vi.hoisted(() => ({
   findUniqueMock: vi.fn(),
   updateMock: vi.fn(),
@@ -19,6 +20,7 @@ const {
   deleteManyRefreshTokenMock: vi.fn(),
   deleteManyPasswordResetTokenMock: vi.fn(),
   transactionMock: vi.fn(),
+  queryRawMock: vi.fn(),
 }))
 
 vi.mock('../middleware/auth.js', () => ({
@@ -35,17 +37,18 @@ vi.mock('bcryptjs', () => ({
   },
 }))
 
-vi.mock('../lib/prisma.js', () => ({
-  prisma: {
+vi.mock('../lib/prisma.js', () => {
+  const db = {
+    $queryRaw: queryRawMock,
     user: {
       findUnique: findUniqueMock,
       update: updateMock,
     },
     refreshToken: { deleteMany: deleteManyRefreshTokenMock },
     passwordResetToken: { deleteMany: deleteManyPasswordResetTokenMock },
-    $transaction: transactionMock,
-  },
-}))
+  }
+  return { prisma: { ...db, $transaction: transactionMock } }
+})
 
 import usersRouter from './users.js'
 
@@ -53,15 +56,40 @@ function createApp() {
   const app = express()
   app.use(express.json())
   app.use('/api/users', usersRouter)
+  app.use(
+    (
+      error: Error & { status?: number },
+      _req: Request,
+      res: Response,
+      _next: NextFunction
+    ) => {
+      res
+        .status(error.status ?? 500)
+        .json({ error: error.name, message: error.message })
+    }
+  )
   return app
 }
 
 describe('users controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    findUniqueMock.mockResolvedValue({
+      id: 'u_1',
+      passwordHash: 'old-hash',
+      deletedAt: null,
+    })
     compareMock.mockResolvedValue(true)
     hashMock.mockResolvedValue('hashed-next-password')
-    transactionMock.mockResolvedValue([])
+    queryRawMock.mockResolvedValue([{ id: 'u_1' }])
+    transactionMock.mockImplementation((callback: (db: unknown) => unknown) =>
+      callback({
+        $queryRaw: queryRawMock,
+        user: { findUnique: findUniqueMock, update: updateMock },
+        refreshToken: { deleteMany: deleteManyRefreshTokenMock },
+        passwordResetToken: { deleteMany: deleteManyPasswordResetTokenMock },
+      })
+    )
     updateMock.mockResolvedValue({
       id: 'u_1',
       email: 'alice@example.com',
@@ -69,6 +97,19 @@ describe('users controller', () => {
       baseCurrency: 'USD',
       updatedAt: new Date('2026-05-31T00:00:00Z'),
     })
+  })
+
+  it('rejects a profile write when deletion occurred after authentication', async () => {
+    findUniqueMock.mockResolvedValue({
+      id: 'u_1',
+      deletedAt: new Date('2026-01-01'),
+    })
+    const response = await request(createApp())
+      .patch('/api/users/me')
+      .send({ name: 'Late name' })
+    expect(response.status).toBe(401)
+    expect(response.body.error).toBe('Unauthorized')
+    expect(updateMock).not.toHaveBeenCalled()
   })
 
   it('returns current user profile', async () => {

@@ -6,7 +6,7 @@ import {
   handleValidationErrors,
 } from '../middleware/validation.js'
 import { authenticateToken } from '../middleware/auth.js'
-import { computeSnapshotValues } from '../lib/portfolio-calc.js'
+import { savePortfolioSnapshot } from '../lib/portfolio-snapshot.js'
 
 const router = Router()
 router.use(authenticateToken)
@@ -137,7 +137,7 @@ router.get(
  * /api/portfolio/snapshot:
  *   post:
  *     summary: Create or update today's portfolio snapshot
- *     description: Upserts a single daily snapshot row. Call this at end-of-day to record the equity curve.
+ *     description: Upserts a single daily legacy snapshot row under shared-user and owned-account locks. Rereads holdings after locking; a deleted user or account cannot receive a late snapshot. Legacy totals and daily date semantics are unchanged; inactive draft cash is excluded. Call this at end-of-day to record the equity curve.
  *     tags: [Portfolio]
  *     security:
  *       - bearerAuth: []
@@ -146,6 +146,8 @@ router.get(
  *         description: Snapshot created or updated for today
  *       401:
  *         description: Unauthorized
+ *       404:
+ *         description: Owned account or exchange not found, including an account deleted while waiting for its lock
  */ router.post(
   '/snapshot',
   [
@@ -183,63 +185,11 @@ router.get(
       })
     }
 
-    const [openPositions, closedPositions] = await Promise.all([
-      prisma.position.findMany({
-        where: {
-          userId,
-          accountId: account.id,
-          status: { in: ['OPEN', 'PARTIAL'] },
-          asset: { exchangeId: exchange.id },
-        },
-        select: { capitalAllocated: true, unrealizedPnL: true },
-      }),
-      prisma.position.findMany({
-        where: {
-          userId,
-          accountId: account.id,
-          status: 'CLOSED',
-          asset: { exchangeId: exchange.id },
-        },
-        select: { realizedPnL: true },
-      }),
-    ])
-
-    const { totalInvested, totalPnL, totalValue, totalReturnPct } =
-      computeSnapshotValues(
-        openPositions.map((p) => ({
-          capitalAllocated: Number(p.capitalAllocated),
-          unrealizedPnL:
-            p.unrealizedPnL !== null ? Number(p.unrealizedPnL) : null,
-        })),
-        closedPositions.map((p) => ({
-          realizedPnL: p.realizedPnL !== null ? Number(p.realizedPnL) : null,
-        }))
-      )
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    const snapshot = await prisma.portfolioSnapshot.upsert({
-      where: {
-        userId_accountId_exchangeId_date: {
-          userId,
-          accountId: account.id,
-          exchangeId: exchange.id,
-          date: today,
-        },
-      },
-      create: {
-        userId,
-        accountId: account.id,
-        exchangeId: exchange.id,
-        date: today,
-        totalValue,
-        totalInvested,
-        totalPnL,
-        totalReturnPct,
-      },
-      update: { totalValue, totalInvested, totalPnL, totalReturnPct },
-    })
+    const snapshot = await savePortfolioSnapshot(
+      userId,
+      account.id,
+      exchange.id
+    )
 
     res.json({ success: true, data: snapshot })
   })

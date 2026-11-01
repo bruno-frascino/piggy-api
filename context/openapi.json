@@ -21,6 +21,79 @@
         },
         "type": "object"
       },
+      "OpeningStatement": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "cashBalances": {
+            "items": {
+              "properties": {
+                "amount": {
+                  "description": "Explicit opening cash as a decimal string.",
+                  "type": "string"
+                },
+                "currency": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "currency",
+                "amount"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "openingDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "parcelCount": {
+            "type": "integer"
+          },
+          "sourceFingerprint": {
+            "type": "string"
+          },
+          "state": {
+            "description": "Inactive statement; never spendable cash or confirmed accounting.",
+            "enum": [
+              "DRAFT"
+            ],
+            "type": "string"
+          },
+          "timezone": {
+            "enum": [
+              "Australia/Sydney"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "version",
+          "openingDate",
+          "timezone",
+          "state",
+          "sourceFingerprint",
+          "createdAt",
+          "cashBalances",
+          "parcelCount"
+        ],
+        "type": "object"
+      },
       "User": {
         "properties": {
           "baseCurrency": {
@@ -95,6 +168,7 @@
         ]
       },
       "post": {
+        "description": "An existing closed account with the same name is explicitly reopened under its account lock. New account creation takes the shared user barrier and refuses users deleted during the request.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -146,7 +220,7 @@
     },
     "/api/accounts/{id}": {
       "delete": {
-        "description": "Permanently deletes a trading account owned by the authenticated user, along with its derived performance history (portfolio snapshots). Demo accounts are deleted together with everything that belongs to them (positions, transactions, snapshots). For non-demo accounts, refuses to delete an account that still has positions, or one that is referenced by a generated tax report — close the account instead to preserve that history.\n",
+        "description": "Permanently deletes a trading account owned by the authenticated user, along with its derived performance history (portfolio snapshots). Demo accounts are deleted together with everything that belongs to them (positions, transactions, snapshots). For non-demo accounts, refuses to delete an account that still has positions, or one that is referenced by a generated tax report — close the account instead to preserve that history. Ownership and retention checks run under the same account lock as participating trade/import writes and new tax-report references. Deletion cascades inactive opening drafts, draft cash operations and import batches; it does not confirm or activate accounting.\n",
         "parameters": [
           {
             "in": "path",
@@ -182,7 +256,7 @@
         ]
       },
       "patch": {
-        "description": "Rename a trading account. The `isDemo` flag is immutable; sending it returns 400.\n",
+        "description": "Rename a trading account. The `isDemo` flag is immutable; sending it returns 400. Ownership, name conflict checks and update execute under the account lock.\n",
         "parameters": [
           {
             "in": "path",
@@ -242,6 +316,7 @@
     },
     "/api/accounts/{id}/close": {
       "post": {
+        "description": "Locks the owned account and checks current open/partial parcels in the same transaction. Reopen before adding new open holdings; historical corrections that leave parcels closed remain allowed. Inactive opening drafts are preserved and never activated.",
         "parameters": [
           {
             "in": "path",
@@ -274,8 +349,480 @@
         ]
       }
     },
+    "/api/accounts/{id}/opening-preview": {
+      "post": {
+        "description": "Read-only end-of-day Australia/Sydney reconciliation. It cannot confirm or enable accounting. Missing funding is never invented. Limited to 5000 parcels, 500 import batches, 50000 transactions and 10000 relevant import events; exceeding any limit returns 422.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "cashBalances": {
+                    "items": {
+                      "properties": {
+                        "amount": {
+                          "description": "Explicit non-negative decimal balance.",
+                          "pattern": "^(?:0|[1-9]\\d{0,25})(?:\\.\\d{1,12})?$",
+                          "type": "string"
+                        },
+                        "currency": {
+                          "description": "Supported ISO currency; unique within request.",
+                          "pattern": "^[A-Z]{3}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "currency",
+                        "amount"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 20,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "openingDate": {
+                    "description": "Valid calendar date no later than today in Australia/Sydney.",
+                    "format": "date",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "openingDate",
+                  "cashBalances"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "asOfDate": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "boundary": {
+                          "enum": [
+                            "END_OF_DAY"
+                          ],
+                          "type": "string"
+                        },
+                        "cashBalances": {
+                          "items": {
+                            "properties": {
+                              "currency": {
+                                "type": "string"
+                              },
+                              "minimumTradeOnlyAmount": {
+                                "type": "string"
+                              },
+                              "openingAmount": {
+                                "type": "string"
+                              },
+                              "tradeOnlyEndingAmount": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "currency",
+                              "openingAmount",
+                              "tradeOnlyEndingAmount",
+                              "minimumTradeOnlyAmount"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "counts": {
+                          "properties": {
+                            "blockingIssues": {
+                              "type": "integer"
+                            },
+                            "parcels": {
+                              "type": "integer"
+                            },
+                            "postBoundaryTrades": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "parcels",
+                            "postBoundaryTrades",
+                            "blockingIssues"
+                          ],
+                          "type": "object"
+                        },
+                        "issues": {
+                          "items": {
+                            "properties": {
+                              "code": {
+                                "type": "string"
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "severity": {
+                                "enum": [
+                                  "BLOCKING",
+                                  "WARNING"
+                                ],
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "nullable": true,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "code",
+                              "severity",
+                              "message",
+                              "sourceId"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "PREVIEW_ONLY"
+                          ],
+                          "type": "string"
+                        },
+                        "openingDate": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "parcels": {
+                          "items": {
+                            "properties": {
+                              "currency": {
+                                "type": "string"
+                              },
+                              "expectedCurrentQuantity": {
+                                "type": "string"
+                              },
+                              "openingQuantity": {
+                                "type": "string"
+                              },
+                              "positionId": {
+                                "type": "string"
+                              },
+                              "recordedCurrentQuantity": {
+                                "type": "string"
+                              },
+                              "symbol": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "positionId",
+                              "symbol",
+                              "currency",
+                              "openingQuantity",
+                              "expectedCurrentQuantity",
+                              "recordedCurrentQuantity"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "sourceFingerprint": {
+                          "description": "Snapshot fingerprint",
+                          "not an authorisation or confirmation token.": null,
+                          "type": "string"
+                        },
+                        "timezone": {
+                          "enum": [
+                            "Australia/Sydney"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "openingDate",
+                        "timezone",
+                        "boundary",
+                        "asOfDate",
+                        "mode",
+                        "sourceFingerprint",
+                        "parcels",
+                        "cashBalances",
+                        "issues",
+                        "counts"
+                      ],
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Preview only, including blockers and incomplete-cash-history warning."
+          },
+          "400": {
+            "description": "Invalid date, currency or decimal balance."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Account not owned by the authenticated user or not found."
+          },
+          "422": {
+            "description": "Account exceeds the interactive preview limit."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Preview opening inventory and trade-only cash without saving financial data",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/opening-statements": {
+      "get": {
+        "description": "Returns up to 20 revisions with explicit cash balances and parcel counts. Saved snapshots are not current account valuations. Closed accounts retain access; drafts are removed with account/user deletion.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exclusive cursor from nextBeforeVersion.",
+            "in": "query",
+            "name": "beforeVersion",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "nextBeforeVersion": {
+                          "nullable": true,
+                          "type": "integer"
+                        },
+                        "statements": {
+                          "items": {
+                            "$ref": "#/components/schemas/OpeningStatement"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "statements",
+                        "nextBeforeVersion"
+                      ],
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Inactive statement revision page."
+          },
+          "400": {
+            "description": "Invalid account ID or cursor."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Account not found or not owned."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List inactive opening draft revisions newest first",
+        "tags": [
+          "Accounts"
+        ]
+      },
+      "post": {
+        "description": "Saves a new revision only if the fingerprint matches the current snapshot and inputs. Same fingerprint and normalized inputs returns the existing revision. Drafts may retain reconciliation blockers; saving never creates cash postings, enables accounting or modifies trades. Negative or unrepresentable opening inventory is rejected.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "cashBalances": {
+                    "items": {
+                      "properties": {
+                        "amount": {
+                          "pattern": "^(?:0|[1-9]\\d{0,25})(?:\\.\\d{1,12})?$",
+                          "type": "string"
+                        },
+                        "currency": {
+                          "description": "Supported unique ISO currency.",
+                          "pattern": "^[A-Z]{3}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "currency",
+                        "amount"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 20,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "openingDate": {
+                    "description": "End-of-day Sydney calendar date no later than today.",
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "sourceFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "openingDate",
+                  "cashBalances",
+                  "sourceFingerprint"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "created": {
+                          "type": "boolean"
+                        },
+                        "statement": {
+                          "$ref": "#/components/schemas/OpeningStatement"
+                        }
+                      },
+                      "required": [
+                        "created",
+                        "statement"
+                      ],
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "New or existing inactive draft."
+          },
+          "400": {
+            "balance or fingerprint.": null,
+            "description": "Invalid date"
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Account not found or not owned."
+          },
+          "409": {
+            "changed inputs": null,
+            "description": "Stale preview",
+            "inactive/demo account or concurrency conflict.": null
+          },
+          "422": {
+            "description": "Preview exceeds limits or opening inventory cannot be saved precisely."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Save a reviewed opening preview as an immutable inactive draft",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/accounts/{id}/reopen": {
       "post": {
+        "description": "Serializes reopening with account lifecycle and participating trade/import writes.",
         "parameters": [
           {
             "in": "path",
@@ -307,7 +854,7 @@
     },
     "/api/auth/forgot-password": {
       "post": {
-        "description": "Emails a reset link to the address if it is registered. Always responds with 200 regardless of whether the email exists or whether delivery succeeded (prevents user enumeration). In non-production environments the `resetToken` field is also included in the response for testing.\n",
+        "description": "Emails a reset link to the address if it is registered. Always responds with 200 regardless of whether the email exists or whether delivery succeeded (prevents user enumeration). In non-production environments the `resetToken` field is also included in the response for testing. Reset-token replacement is atomic under an exclusive user lock. Users deleted or purged during the request receive the same generic response without a token.\n",
         "requestBody": {
           "content": {
             "application/json": {
@@ -369,6 +916,7 @@
     },
     "/api/auth/login": {
       "post": {
+        "description": "Session persistence rechecks the user and verified password under a shared user lock. A deletion or password change during authentication fails instead of creating a late session.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -494,6 +1042,7 @@
     },
     "/api/auth/refresh": {
       "post": {
+        "description": "Rechecks active user state under a shared user lock and atomically replaces an owned, unexpired token. Concurrent rotations succeed at most once; deletion cannot leave a late replacement session.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -634,6 +1183,7 @@
     },
     "/api/auth/reset-password": {
       "post": {
+        "description": "Rechecks active user state and consumes an owned, unexpired token under an exclusive user lock. Password replacement and revocation of all reset/refresh tokens commit together. Concurrent completion succeeds at most once; deleted accounts cannot reset.\n",
         "requestBody": {
           "content": {
             "application/json": {
@@ -681,7 +1231,7 @@
     },
     "/api/auth/restore": {
       "post": {
-        "description": "Valid only while the account is inside its deletion grace period. Requires the account password, so a deletion cannot be undone by anyone who merely knows the email address.\n",
+        "description": "Restoration rechecks the verified password and deletion revision under an exclusive user lock, and restores the account and persists its new session in one transaction. Concurrent restoration/deletion changes return 409; a purged user returns 401. Valid only while the account is inside its deletion grace period. Requires the account password, so a deletion cannot be undone by anyone who merely knows the email address.\n",
         "requestBody": {
           "content": {
             "application/json": {
@@ -928,7 +1478,7 @@
         ]
       },
       "post": {
-        "description": "Kraken only for now — both `trades` and `ledgers` CSVs are required. Events already uploaded (same exchange id, including pending review) are counted as duplicates and not stored again. `existingBatches` identifies the previous imports, their status, target account and matching event count so users can resume review. Nothing touches positions until the batch is committed. The target account must be an active, non-demo account owned by the user. Rate limited to 10 uploads per hour.\n",
+        "description": "Kraken only for now — both `trades` and `ledgers` CSVs are required. Events already uploaded (same exchange id, including pending review) are counted as duplicates and not stored again. `existingBatches` identifies the previous imports, their status, target account and matching event count so users can resume review. Nothing touches positions until the batch is committed. The target account must be an active, non-demo account owned by the user. Deferred reward reattachment is account-locked and fails with 409 if the event was processed meanwhile. Rate limited to 10 uploads per hour.\n",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1071,6 +1621,9 @@
           "404": {
             "description": "Account not found"
           },
+          "409": {
+            "description": "Deferred events changed during upload; refresh the existing import"
+          },
           "413": {
             "description": "Upload larger than 10 MB"
           },
@@ -1156,7 +1709,7 @@
     },
     "/api/imports/{id}/commit": {
       "post": {
-        "description": "Without `eventIds`, applies the whole plan and returns 409 while blocking issues remain. With `eventIds`, applies only those events and returns 409 if an earlier event of the same asset is unresolved or not included. Runs in one database transaction, in chronological order.\n",
+        "description": "Without `eventIds`, applies the whole plan and returns 409 while blocking issues remain. With `eventIds`, applies only those events and returns 409 if an earlier event of the same asset is unresolved or not included. Runs in one database transaction, in chronological order. Locks the owned account, rechecks that it is active and non-demo, and verifies that events and eligible holdings still match the prepared plan before any trade writes. Concurrent changes return 409 and require reviewing a refreshed plan; the import is not silently reallocated. Parcel creation, allocated SELLs, recomputed results and event links commit or roll back together. No live cash postings or opening activation are performed.\n",
         "parameters": [
           {
             "in": "path",
@@ -1188,11 +1741,14 @@
           "200": {
             "description": "Created position ids and applied event count"
           },
+          "400": {
+            "description": "Validation error or target account is no longer active and non-demo"
+          },
           "404": {
             "description": "Batch not found"
           },
           "409": {
-            "description": "Blocking issues or chronology violation (see details)"
+            "description": "Blocking issues, chronology violation, discarded batch or concurrent event/holdings changes"
           }
         },
         "security": [
@@ -1286,7 +1842,7 @@
             "description": "Batch or event not found"
           },
           "409": {
-            "description": "Event already processed"
+            "description": "Event already processed or batch discarded while waiting for the account lock"
           }
         },
         "security": [
@@ -1386,13 +1942,16 @@
     },
     "/api/portfolio/snapshot": {
       "post": {
-        "description": "Upserts a single daily snapshot row. Call this at end-of-day to record the equity curve.",
+        "description": "Upserts a single daily legacy snapshot row under shared-user and owned-account locks. Rereads holdings after locking; a deleted user or account cannot receive a late snapshot. Legacy totals and daily date semantics are unchanged; inactive draft cash is excluded. Call this at end-of-day to record the equity curve.",
         "responses": {
           "200": {
             "description": "Snapshot created or updated for today"
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Owned account or exchange not found, including an account deleted while waiting for its lock"
           }
         },
         "security": [
@@ -1488,7 +2047,7 @@
         ]
       },
       "post": {
-        "description": "Creates one acquisition parcel with one BUY. Crypto venues infer CRYPTO when assetType is omitted and require a BASE-QUOTE symbol matching the venue currency. Kraken markets are validated against the public catalogue; an unavailable catalogue returns 503. Alias XBT is stored as BTC. Quantities support up to twelve decimal places.\n",
+        "description": "Creates one acquisition parcel with one BUY. Crypto venues infer CRYPTO when assetType is omitted and require a BASE-QUOTE symbol matching the venue currency. Kraken markets are validated against the public catalogue; an unavailable catalogue returns 503. Alias XBT is stored as BTC. Quantities support up to twelve decimal places. Account resolution and the parcel/BUY write commit together under an owned-account lock. Closed accounts require explicit reopening first. A missing explicit accountId returns 404 rather than redirecting the acquisition to another account. This does not activate or spend inactive draft cash.\n",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1604,10 +2163,10 @@
             "description": "Unauthorized"
           },
           "404": {
-            "description": "Exchange not found"
+            "description": "Exchange or explicitly selected trading account not found"
           },
           "409": {
-            "description": "Existing asset has an incompatible classification"
+            "description": "Existing asset has an incompatible classification, or trading account must be reopened before adding holdings"
           },
           "503": {
             "description": "Kraken market validation temporarily unavailable"
@@ -1730,6 +2289,7 @@
     },
     "/api/positions/close-events/{id}": {
       "patch": {
+        "description": "Updates the sale and parcel totals atomically under an owned-account and parcel lock. Does not activate or spend inactive draft cash. Concurrent parcel moves require reload.\n",
         "parameters": [
           {
             "in": "path",
@@ -1790,6 +2350,9 @@
           },
           "404": {
             "description": "Close event not found"
+          },
+          "409": {
+            "description": "Parcel or close event moved concurrently; reload and retry"
           }
         },
         "security": [
@@ -1805,6 +2368,7 @@
     },
     "/api/positions/{id}": {
       "delete": {
+        "description": "Deletes under owned-account and parcel locks. Inactive opening and cash draft snapshot references are retained; source changes prevent further draft appends.\n",
         "parameters": [
           {
             "in": "path",
@@ -1824,6 +2388,9 @@
           },
           "404": {
             "description": "Position not found"
+          },
+          "409": {
+            "description": "Position moved accounts concurrently; reload and retry"
           }
         },
         "security": [
@@ -1837,7 +2404,7 @@
         ]
       },
       "patch": {
-        "description": "Crypto symbols must match the venue quote currency. Changing a Kraken instrument validates its market; unchanged historical instruments remain editable.",
+        "description": "Crypto symbols must match the venue quote currency. Changing a Kraken instrument validates its market; unchanged historical instruments remain editable. Acquisition edits commit the BUY and recomputed parcel results together. Bought units cannot be reduced below already-sold units. Account moves lock both accounts in stable order and recheck the demo/real boundary. Inactive draft cash is not spent or activated. An edit or move that would leave open holdings in a closed account returns 409; reopen the account first. Corrections and moves of fully closed history remain allowed.\n",
         "parameters": [
           {
             "in": "path",
@@ -1960,7 +2527,7 @@
             "description": "Position not found"
           },
           "409": {
-            "description": "Existing asset has an incompatible classification"
+            "description": "Incompatible asset, concurrent account move, parcel does not have exactly one BUY, or open holdings require account reopening"
           },
           "503": {
             "description": "Kraken market validation temporarily unavailable"
@@ -1971,7 +2538,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Update metadata on an open position",
+        "summary": "Update a position's acquisition and metadata",
         "tags": [
           "Positions"
         ]
@@ -1979,7 +2546,7 @@
     },
     "/api/positions/{id}/check-stop-loss": {
       "post": {
-        "description": "For an open long position with a stop loss that is not already flagged, decides whether the stop has been reached and, if so, persists stopLossHitAt so the flag survives the price recovering. If currentPrice is supplied and at or below the stop, the stop is flagged immediately. Otherwise daily lows are scanned from the time the stop was last set (or the open date, if never changed) to today; the first day whose low reached the stop becomes stopLossHitAt (day-granular). Editing the stop loss price clears the flag. Already-flagged, closed, short, or stop-less positions are returned unchanged.\n",
+        "description": "For an open long position with a stop loss that is not already flagged, decides whether the stop has been reached and, if so, persists stopLossHitAt so the flag survives the price recovering. If currentPrice is supplied and at or below the stop, the stop is flagged immediately. Otherwise daily lows are scanned from the time the stop was last set (or the open date, if never changed) to today; the first day whose low reached the stop becomes stopLossHitAt (day-granular). Editing the stop loss price clears the flag. Already-flagged, closed, short, or stop-less positions are returned unchanged. Saving rechecks the stop and holding inputs under user/account/parcel locks; concurrent changes return 409 rather than persisting a stale hit.\n",
         "parameters": [
           {
             "in": "path",
@@ -2036,6 +2603,9 @@
           },
           "404": {
             "description": "Position not found"
+          },
+          "409": {
+            "description": "Stop or holding changed during calculation; reload and check again"
           }
         },
         "security": [
@@ -2051,6 +2621,7 @@
     },
     "/api/positions/{id}/close": {
       "post": {
+        "description": "Rechecks remaining units under owned-account and parcel locks and commits the SELL and parcel totals together. Concurrent closes cannot sell the same remaining units twice. Does not activate or spend inactive draft cash.\n",
         "parameters": [
           {
             "in": "path",
@@ -2111,13 +2682,16 @@
             "description": "Position closed (or partially closed — status becomes PARTIAL)"
           },
           "400": {
-            "description": "Position is already closed"
+            "description": "Already closed, no remaining units, or requested quantity exceeds remaining units"
           },
           "401": {
             "description": "Unauthorized"
           },
           "404": {
             "description": "Position not found"
+          },
+          "409": {
+            "description": "Position moved accounts concurrently; reload and retry"
           }
         },
         "security": [
@@ -2133,7 +2707,7 @@
     },
     "/api/positions/{id}/recalculate-drawdown": {
       "post": {
-        "description": "Fetches daily OHLC history from the position's open date to today (or to the close date for closed positions, for the run-up), finds the lowest intraday low and persists it as maxDrawdownPercent, and finds the highest intraday high and persists it as maxRunUpPercent (peak unrealized gain vs entry price). Returns the new values (or null if history is unavailable / no drawdown / no run-up).\n",
+        "description": "Fetches daily OHLC history from the position's open date to today (or to the close date for closed positions, for the run-up), finds the lowest intraday low and persists it as maxDrawdownPercent, and finds the highest intraday high and persists it as maxRunUpPercent (peak unrealized gain vs entry price). Returns the new values (or null if history is unavailable / no drawdown / no run-up). Saving takes user/account/parcel locks and rejects changed calculation inputs with 409.\n",
         "parameters": [
           {
             "in": "path",
@@ -2176,6 +2750,9 @@
           },
           "404": {
             "description": "Position not found"
+          },
+          "409": {
+            "description": "Position changed during calculation; reload and recalculate"
           }
         },
         "security": [
@@ -3130,7 +3707,7 @@
     },
     "/api/tax-reports/generate": {
       "post": {
-        "description": "Computes a capital gains summary for the given Australian financial year across an explicit set of Trading Accounts (a \"declaration\"), renders a PDF, and stores it as a new revision for that (financial year, account selection) combination. Previous revisions are retained and stay downloadable so an already-lodged report is never overwritten. Regenerating with unchanged content returns the existing current revision instead of creating a new one. Dates in newly generated PDFs use dd/MM/yyyy; regenerating a report with the older date format creates a new revision without modifying the original PDF.\n",
+        "description": "Computes a capital gains summary for the given Australian financial year across an explicit set of Trading Accounts (a \"declaration\"), renders a PDF, and stores it as a new revision for that (financial year, account selection) combination. Previous revisions are retained and stay downloadable so an already-lodged report is never overwritten. Regenerating with unchanged content returns the existing current revision instead of creating a new one. Dates in newly generated PDFs use dd/MM/yyyy; regenerating a report with the older date format creates a new revision without modifying the original PDF. New revisions lock selected accounts in stable ID order and recheck ownership and non-demo eligibility before storing account references. A concurrent deletion or report revision change fails explicitly instead of orphaning a new report.\n",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3166,6 +3743,12 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Selected account was deleted during report preparation"
+          },
+          "409": {
+            "description": "Account eligibility or current report revision changed during preparation"
           }
         },
         "security": [
@@ -3348,7 +3931,7 @@
     },
     "/api/users/me": {
       "delete": {
-        "description": "Marks the account deleted and revokes every session immediately. The data is retained until the grace period expires, during which signing in returns 403 with `accountPendingDeletion` and the account can be restored via POST /api/auth/restore. After that a scheduled purge removes the user and all their positions, accounts, snapshots, tax reports and watchlists.\n",
+        "description": "Marks the account deleted and revokes every session immediately. The data is retained until the grace period expires, during which signing in returns 403 with `accountPendingDeletion` and the account can be restored via POST /api/auth/restore. After that a scheduled purge removes the user and all their positions, accounts, snapshots, tax reports and watchlists. An exclusive user lock waits for participating financial writes before marking deletion and revoking sessions together. In-flight writes waiting behind deletion are refused even if their initial authentication check already succeeded.\n",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3469,6 +4052,7 @@
         ]
       },
       "patch": {
+        "description": "Rechecks active user state and any verified password under an exclusive user lock before updating. An in-flight deletion or password change requires authentication again.",
         "requestBody": {
           "content": {
             "application/json": {

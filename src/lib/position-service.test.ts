@@ -146,6 +146,16 @@ describe('findOrCreateAsset', () => {
 })
 
 describe('resolveTradingAccount', () => {
+  it('rejects a missing explicit account instead of silently redirecting the trade to Main', async () => {
+    accountFindFirstMock.mockResolvedValue(null)
+    await expect(
+      resolveTradingAccount('u_1', 'Main', 'deleted-account')
+    ).rejects.toMatchObject({
+      status: 404,
+      message: 'Trading account not found',
+    })
+    expect(accountUpsertMock).not.toHaveBeenCalled()
+  })
   beforeEach(() => vi.clearAllMocks())
 
   it('returns the account found by accountId', async () => {
@@ -157,7 +167,7 @@ describe('resolveTradingAccount', () => {
     expect(accountUpsertMock).not.toHaveBeenCalled()
   })
 
-  it('falls back to upsert by name (defaulting to "Main") when accountId is not found', async () => {
+  it('upserts by name (defaulting to "Main") when no accountId is supplied', async () => {
     accountFindFirstMock.mockResolvedValue(null)
     accountUpsertMock.mockResolvedValue({ id: 'acc_2', name: 'Main' })
 

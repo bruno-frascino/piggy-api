@@ -22,19 +22,30 @@ const m = vi.hoisted(() => ({
   closes: vi.fn(),
   drawdown: vi.fn(),
   runUp: vi.fn(),
+  saveHistory: vi.fn(),
+  queryRaw: vi.fn(),
+  accountFindFirst: vi.fn(),
 }))
 
 vi.mock('../prisma.js', () => {
   const tx = {
-    importBatch: { create: m.batchCreate, update: m.batchUpdate },
+    $queryRaw: m.queryRaw,
+    tradingAccount: { findFirst: m.accountFindFirst },
+    importBatch: {
+      findFirst: m.batchFindFirst,
+      create: m.batchCreate,
+      update: m.batchUpdate,
+    },
     importedEvent: {
+      findFirst: m.eventFindFirst,
+      findMany: m.eventFindMany,
       createMany: m.eventCreateMany,
       update: m.eventUpdate,
       updateMany: m.eventUpdateMany,
       deleteMany: m.eventDeleteMany,
       count: m.eventCount,
     },
-    position: { create: m.positionCreate },
+    position: { create: m.positionCreate, findMany: m.positionFindMany },
     transaction: { create: m.transactionCreate },
   }
   return {
@@ -63,6 +74,9 @@ vi.mock('../crypto/pricing.js', () => ({ getCryptoDailyCloses: m.closes }))
 vi.mock('../historical-drawdown.js', () => ({
   fetchHistoricalMaxDrawdown: m.drawdown,
   fetchHistoricalMaxRunUp: m.runUp,
+}))
+vi.mock('../position-derived-values.js', () => ({
+  savePositionHistory: m.saveHistory,
 }))
 
 import {
@@ -128,6 +142,9 @@ beforeEach(() => {
   m.positionCreate.mockResolvedValue({ id: 'pos1' })
   m.drawdown.mockResolvedValue(null)
   m.runUp.mockResolvedValue(null)
+  m.queryRaw.mockResolvedValue([{ id: 'acc1' }])
+  m.accountFindFirst.mockResolvedValue({ isDemo: false, status: 'ACTIVE' })
+  m.recompute.mockResolvedValue({ id: 'pos1' })
 })
 
 describe('createImportBatch', () => {
@@ -272,6 +289,7 @@ describe('createImportBatch', () => {
         }))
     )
     m.batchCreate.mockResolvedValue({ id: 'b9' })
+    m.eventUpdateMany.mockResolvedValue({ count: 1 })
 
     const result = await createImportBatch({ ...params, files })
 
@@ -280,9 +298,37 @@ describe('createImportBatch', () => {
     expect(result.existingBatches[0].eventCount).toBe(77)
     expect(m.eventCreateMany).not.toHaveBeenCalled()
     expect(m.eventUpdateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['old0'] }, userId: 'u1' },
+      where: {
+        id: { in: ['old0'] },
+        userId: 'u1',
+        status: 'DEFERRED',
+        batch: { accountId: 'acc1' },
+      },
       data: { batchId: 'b9', status: 'PENDING' },
     })
+  })
+
+  it('refuses to reattach rewards processed while the upload was being prepared', async () => {
+    m.eventFindMany.mockImplementation(
+      async (args: { where: { externalId: { in: string[] } } }) =>
+        args.where.externalId.in.map((externalId, i) => ({
+          id: 'old' + i,
+          externalId,
+          status: 'DEFERRED',
+          occurredAt: new Date('2026-01-15T00:00:00Z'),
+          batch: {
+            id: 'previous',
+            accountId: 'acc1',
+            status: 'COMMITTED',
+            account: { name: 'Kraken account' },
+          },
+        }))
+    )
+    m.batchCreate.mockResolvedValue({ id: 'b9' })
+    m.eventUpdateMany.mockResolvedValue({ count: 0 })
+    await expect(createImportBatch({ ...params, files })).rejects.toMatchObject(
+      { status: 409, message: /Deferred events changed/ }
+    )
   })
 
   it('accepts header-only exports (nothing to import)', async () => {
@@ -355,6 +401,96 @@ describe('commitBatch', () => {
     fee: { toFixed: () => '2' },
   })
 
+  it('locks the owned account before rereading and writing financial records', async () => {
+    m.eventFindMany.mockResolvedValue([buyRow, sellRow])
+    await commitBatch('b1', 'u1')
+    const lockOrder = m.queryRaw.mock.invocationCallOrder[0]
+    expect(lockOrder).toBeLessThan(
+      m.accountFindFirst.mock.invocationCallOrder[0]
+    )
+    expect(lockOrder).toBeLessThan(m.eventFindMany.mock.invocationCallOrder[1])
+    expect(lockOrder).toBeLessThan(
+      m.positionFindMany.mock.invocationCallOrder[1]
+    )
+    expect(m.positionFindMany.mock.invocationCallOrder[1]).toBeLessThan(
+      m.positionCreate.mock.invocationCallOrder[0]
+    )
+    expect(m.fx).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['events', 'holdings', 'batch'])(
+    'rejects changed %s after preparation without writing trades',
+    async (changed) => {
+      m.eventFindMany.mockResolvedValue([buyRow])
+      if (changed === 'events')
+        m.eventFindMany.mockResolvedValueOnce([buyRow]).mockResolvedValue([])
+      if (changed === 'batch')
+        m.batchFindFirst.mockResolvedValueOnce(batch).mockResolvedValue({
+          ...batch,
+          status: 'DISCARDED',
+        })
+      if (changed === 'holdings')
+        m.positionFindMany.mockResolvedValueOnce([]).mockResolvedValue([
+          {
+            id: 'new-position',
+            asset: {
+              symbol: 'BTC-AUD',
+              exchange: { code: 'KRAKEN', currency: 'AUD' },
+            },
+            openDate: new Date('2026-01-01'),
+            createdAt: new Date('2026-01-01'),
+            quantity: 1,
+            entryPrice: '100',
+          },
+        ])
+      await expect(commitBatch('b1', 'u1')).rejects.toMatchObject({
+        status: 409,
+        message: /changed during preparation/,
+      })
+      expect(m.positionCreate).not.toHaveBeenCalled()
+      expect(m.transactionCreate).not.toHaveBeenCalled()
+      expect(m.eventUpdate).not.toHaveBeenCalled()
+      expect(m.batchUpdate).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([
+    { isDemo: true, status: 'ACTIVE' },
+    { isDemo: false, status: 'CLOSED' },
+  ])('rechecks account eligibility under lock: %s', async (account) => {
+    m.eventFindMany.mockResolvedValue([buyRow])
+    m.accountFindFirst.mockResolvedValue(account)
+    await expect(commitBatch('b1', 'u1')).rejects.toMatchObject({ status: 400 })
+    expect(m.positionCreate).not.toHaveBeenCalled()
+  })
+
+  it('rejects a missing owned account before any trade write', async () => {
+    m.eventFindMany.mockResolvedValue([buyRow])
+    m.queryRaw
+      .mockResolvedValueOnce([{ id: 'u1', deletedAt: null }])
+      .mockResolvedValue([])
+    await expect(commitBatch('b1', 'u1')).rejects.toMatchObject({ status: 404 })
+    expect(m.positionCreate).not.toHaveBeenCalled()
+  })
+
+  it('surfaces an account disappearing after lock acquisition', async () => {
+    m.eventFindMany.mockResolvedValue([buyRow])
+    m.accountFindFirst.mockResolvedValue(null)
+    await expect(commitBatch('b1', 'u1')).rejects.toMatchObject({ status: 404 })
+    expect(m.positionCreate).not.toHaveBeenCalled()
+  })
+
+  it('fails the transaction if an allocated parcel cannot be recomputed', async () => {
+    m.eventFindMany.mockResolvedValue([buyRow, sellRow])
+    m.recompute.mockResolvedValue(null)
+    await expect(commitBatch('b1', 'u1')).rejects.toMatchObject({
+      status: 409,
+      message: /parcel no longer exists/,
+    })
+    expect(m.eventUpdate).not.toHaveBeenCalled()
+    expect(m.batchUpdate).not.toHaveBeenCalled()
+  })
+
   it('creates the parcel, the SELL transaction and marks events applied, in one transaction', async () => {
     m.eventFindMany.mockResolvedValue([buyRow, sellRow])
 
@@ -407,6 +543,37 @@ describe('commitBatch', () => {
       data: expect.objectContaining({ status: 'COMMITTED' }),
     })
     expect(result).toEqual({ createdPositionIds: ['pos1'], appliedEvents: 2 })
+  })
+
+  it('backfills imported history through the guarded writer using the fetched source', async () => {
+    m.eventFindMany.mockResolvedValue([buyRow, sellRow])
+    const position = {
+      id: 'pos1',
+      userId: 'u1',
+      accountId: 'acc1',
+      assetId: 'asset1',
+      entryPrice: 100,
+      openDate: new Date('2026-01-10'),
+      status: 'CLOSED',
+      closeDate: new Date('2026-01-20'),
+      asset: { symbol: 'BTC-AUD' },
+    }
+    m.positionFindUnique.mockResolvedValueOnce(position)
+    m.drawdown.mockResolvedValueOnce(10)
+    m.runUp.mockResolvedValueOnce(20)
+    await commitBatch('b1', 'u1')
+    await vi.waitFor(() =>
+      expect(m.saveHistory).toHaveBeenCalledWith(position, {
+        maxDrawdownPercent: 10,
+        maxRunUpPercent: 20,
+      })
+    )
+    expect(m.runUp).toHaveBeenCalledWith(
+      'BTC-AUD',
+      100,
+      position.openDate,
+      position.closeDate
+    )
   })
 
   it('refuses to commit while blocking issues remain', async () => {
@@ -518,6 +685,17 @@ describe('commitBatch', () => {
 })
 
 describe('saveResolution', () => {
+  it('rejects changes when the batch was discarded while waiting for its lock', async () => {
+    m.batchFindFirst.mockResolvedValueOnce(batch).mockResolvedValue({
+      ...batch,
+      status: 'DISCARDED',
+    })
+    await expect(
+      saveResolution('b1', 'e1', 'u1', { skip: true })
+    ).rejects.toMatchObject({ status: 409 })
+    expect(m.eventUpdate).not.toHaveBeenCalled()
+  })
+
   it('404s when the event is not in the batch', async () => {
     m.eventFindFirst.mockResolvedValue(null)
     await expect(

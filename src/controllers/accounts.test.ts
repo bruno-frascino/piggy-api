@@ -13,6 +13,7 @@ const {
   positionCountMock,
   taxReportFindManyMock,
   snapshotCountMock,
+  queryRawMock,
 } = vi.hoisted(() => ({
   findManyMock: vi.fn(),
   findUniqueMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   positionCountMock: vi.fn(),
   taxReportFindManyMock: vi.fn(),
   snapshotCountMock: vi.fn(),
+  queryRawMock: vi.fn(),
 }))
 
 vi.mock('../middleware/auth.js', () => ({
@@ -32,8 +34,9 @@ vi.mock('../middleware/auth.js', () => ({
   },
 }))
 
-vi.mock('../lib/prisma.js', () => ({
-  prisma: {
+vi.mock('../lib/prisma.js', () => {
+  const db = {
+    $queryRaw: queryRawMock,
     tradingAccount: {
       findMany: findManyMock,
       findUnique: findUniqueMock,
@@ -51,8 +54,14 @@ vi.mock('../lib/prisma.js', () => ({
     portfolioSnapshot: {
       count: snapshotCountMock,
     },
-  },
-}))
+  }
+  return {
+    prisma: {
+      ...db,
+      $transaction: (callback: (tx: typeof db) => unknown) => callback(db),
+    },
+  }
+})
 
 import accountsRouter from './accounts.js'
 
@@ -60,6 +69,18 @@ function createApp() {
   const app = express()
   app.use(express.json())
   app.use('/api/accounts', accountsRouter)
+  app.use(
+    (
+      error: Error & { status?: number },
+      _req: Request,
+      res: Response,
+      _next: NextFunction
+    ) => {
+      res
+        .status(error.status ?? 500)
+        .json({ error: error.name, message: error.message })
+    }
+  )
   return app
 }
 
@@ -69,6 +90,7 @@ describe('accounts controller', () => {
     positionCountMock.mockResolvedValue(0)
     taxReportFindManyMock.mockResolvedValue([])
     snapshotCountMock.mockResolvedValue(12)
+    queryRawMock.mockResolvedValue([{ id: 'a1' }])
   })
 
   it('lists accounts for authenticated user', async () => {
@@ -115,6 +137,7 @@ describe('accounts controller', () => {
   })
 
   it('reopens a closed account when creating with same name', async () => {
+    findFirstMock.mockResolvedValue({ id: 'a1', status: 'CLOSED' })
     findUniqueMock.mockResolvedValue({
       id: 'a1',
       userId: 'u_1',

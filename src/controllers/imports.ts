@@ -60,7 +60,9 @@ function sendImportError(res: Response, error: unknown): boolean {
  *       not stored again. `existingBatches` identifies the previous imports, their status,
  *       target account and matching event count so users can resume review. Nothing
  *       touches positions until the batch is committed. The target account must be an
- *       active, non-demo account owned by the user. Rate limited to 10 uploads per hour.
+ *       active, non-demo account owned by the user. Deferred reward reattachment is
+ *       account-locked and fails with 409 if the event was processed meanwhile.
+ *       Rate limited to 10 uploads per hour.
  *     tags: [Imports]
  *     security:
  *       - bearerAuth: []
@@ -147,6 +149,8 @@ function sendImportError(res: Response, error: unknown): boolean {
  *         description: Account not found
  *       413:
  *         description: Upload larger than 10 MB
+ *       409:
+ *         description: Deferred events changed during upload; refresh the existing import
  *       429:
  *         description: Too many uploads
  */
@@ -384,7 +388,7 @@ router.get(
  *       404:
  *         description: Batch or event not found
  *       409:
- *         description: Event already processed
+ *         description: Event already processed or batch discarded while waiting for the account lock
  */
 router.patch(
   '/:id/events/:eventId',
@@ -442,7 +446,12 @@ router.patch(
  *       Without `eventIds`, applies the whole plan and returns 409 while blocking issues
  *       remain. With `eventIds`, applies only those events and returns 409 if an earlier
  *       event of the same asset is unresolved or not included. Runs in one database
- *       transaction, in chronological order.
+ *       transaction, in chronological order. Locks the owned account, rechecks that it is
+ *       active and non-demo, and verifies that events and eligible holdings still match
+ *       the prepared plan before any trade writes. Concurrent changes return 409 and
+ *       require reviewing a refreshed plan; the import is not silently reallocated.
+ *       Parcel creation, allocated SELLs, recomputed results and event links commit
+ *       or roll back together. No live cash postings or opening activation are performed.
  *     tags: [Imports]
  *     security:
  *       - bearerAuth: []
@@ -465,10 +474,12 @@ router.patch(
  *     responses:
  *       200:
  *         description: Created position ids and applied event count
+ *       400:
+ *         description: Validation error or target account is no longer active and non-demo
  *       404:
  *         description: Batch not found
  *       409:
- *         description: Blocking issues or chronology violation (see details)
+ *         description: Blocking issues, chronology violation, discarded batch or concurrent event/holdings changes
  */
 router.post(
   '/:id/commit',

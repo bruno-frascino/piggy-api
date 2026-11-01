@@ -382,6 +382,19 @@ describe('PATCH /api/imports/:id/events/:eventId', () => {
 })
 
 describe('POST /api/imports/:id/commit', () => {
+  it('surfaces stale-plan conflicts with the standard error shape', async () => {
+    const message =
+      'Import events or holdings changed during preparation. Review the refreshed plan and try again.'
+    m.commitBatch.mockRejectedValue(new ImportError(409, message))
+    const res = await request(createApp())
+      .post('/api/imports/b1/commit')
+      .set(auth)
+      .send({})
+    expect(res.status).toBe(409)
+    expect(res.body).toEqual({ error: 'Conflict', message })
+    expect(m.commitBatch).toHaveBeenCalledTimes(1)
+  })
+
   it('commits everything by default', async () => {
     m.commitBatch.mockResolvedValue({
       createdPositionIds: ['p1'],

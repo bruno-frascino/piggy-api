@@ -1,0 +1,166 @@
+import { describe, expect, it } from 'vitest'
+import { prepareCashCommand } from './cash-ledger.js'
+import { prepareCashRevision, prepareRevisionLegs } from './cash-revisions.js'
+
+const now = new Date('2026-10-31T12:00:00Z')
+const original = prepareCashCommand(
+  {
+    accountId: 'a1',
+    kind: 'DEPOSIT',
+    idempotencyKey: 'original',
+    source: { origin: 'MANUAL', reference: 'bank-line-1' },
+    effectiveDate: '2026-10-02',
+    sequence: 1,
+    cash: { currency: 'AUD', amount: '100' },
+  },
+  now
+).command
+const replacement = {
+  ...original,
+  idempotencyKey: 'correction',
+  cash: { currency: 'AUD', amount: '60.000' },
+}
+const request = {
+  idempotencyKey: 'correction',
+  expectedRevisionId: 'op1',
+  reason: 'Correct bank statement amount',
+  replacement,
+}
+
+describe('cash revision contract', () => {
+  it('normalizes replacements and binds reason, expected revision and command to the retry hash', () => {
+    const prepared = prepareCashRevision(request, now)
+    expect(prepared.request.replacement).toMatchObject({
+      cash: { amount: '60' },
+    })
+    expect(prepared.payloadHash).toBe(
+      prepareCashRevision(
+        {
+          ...request,
+          replacement: {
+            ...replacement,
+            cash: { currency: 'AUD', amount: '60' },
+          },
+        },
+        now
+      ).payloadHash
+    )
+    expect(prepared.payloadHash).not.toBe(
+      prepareCashRevision({ ...request, reason: 'Other reason' }, now)
+        .payloadHash
+    )
+    expect(prepared.payloadHash).not.toBe(
+      prepareCashRevision({ ...request, expectedRevisionId: 'other' }, now)
+        .payloadHash
+    )
+  })
+  it('retains exact original reversal and replacement legs without netting away the audit trail', () => {
+    expect(
+      prepareRevisionLegs(
+        original,
+        prepareCashRevision(request, now).request.replacement,
+        now
+      )
+    ).toEqual([
+      {
+        phase: 'REVERSAL',
+        currency: 'AUD',
+        amount: '-100',
+        role: 'EXTERNAL_CAPITAL',
+      },
+      {
+        phase: 'REPLACEMENT',
+        currency: 'AUD',
+        amount: '60',
+        role: 'EXTERNAL_CAPITAL',
+      },
+    ])
+  })
+  it('supports reversal without replacement and exact fractional withdrawal reversals', () => {
+    expect(
+      prepareCashRevision({ ...request, replacement: null }, now).request
+        .replacement
+    ).toBeNull()
+    const withdrawal = prepareCashCommand(
+      {
+        ...original,
+        kind: 'WITHDRAWAL',
+        cash: { currency: 'AUD', amount: '0.000000000001' },
+      },
+      now
+    ).command
+    expect(prepareRevisionLegs(withdrawal, null, now)).toEqual([
+      {
+        phase: 'REVERSAL',
+        currency: 'AUD',
+        amount: '0.000000000001',
+        role: 'EXTERNAL_CAPITAL',
+      },
+    ])
+  })
+  it('reverses imported execution cash once, including foreign-currency fees across allocations', () => {
+    const sale = prepareCashCommand(
+      {
+        accountId: 'a1',
+        kind: 'SELL',
+        idempotencyKey: 'sale',
+        effectiveDate: '2026-10-02',
+        sequence: 1,
+        source: { origin: 'IMPORT', reference: 'execution' },
+        consideration: { currency: 'USD', amount: '100' },
+        fees: [{ currency: 'AUD', amount: '1' }],
+        transactionIds: ['t1', 't2'],
+      },
+      now
+    ).command
+    expect(prepareRevisionLegs(sale, null, now)).toEqual([
+      {
+        phase: 'REVERSAL',
+        currency: 'USD',
+        amount: '-100',
+        role: 'TRADE_CONSIDERATION',
+      },
+      { phase: 'REVERSAL', currency: 'AUD', amount: '1', role: 'CASH_FEE' },
+    ])
+    const next = prepareCashCommand(
+      {
+        ...sale,
+        transactionIds: ['t3'],
+        idempotencyKey: 'new',
+      },
+      now
+    ).command
+    expect(() => prepareRevisionLegs(sale, next, now)).toThrow(
+      'parcel transaction identities'
+    )
+  })
+  it.each([
+    null,
+    [],
+    {},
+    { ...request, reason: '' },
+    { ...request, reason: ' reason ' },
+    { ...request, reason: 'x'.repeat(1001) },
+    { ...request, reason: 'line\nbreak' },
+    { ...request, expectedRevisionId: 1 },
+    { ...request, idempotencyKey: 'x'.repeat(201) },
+    { ...request, extra: true },
+    { ...request, replacement: undefined },
+    {
+      ...request,
+      replacement: { ...replacement, idempotencyKey: 'different' },
+    },
+  ])('rejects invalid or unhashed fields %#', (raw) => {
+    expect(() => prepareCashRevision(raw, now)).toThrow()
+  })
+  it.each([
+    { ...replacement, accountId: 'other' },
+    { ...replacement, kind: 'WITHDRAWAL' },
+    { ...replacement, source: { origin: 'MANUAL', reference: 'different' } },
+  ])('rejects changing durable identity %#', (raw) => {
+    const next = prepareCashCommand(raw, now).command
+    expect(() => prepareRevisionLegs(original, next, now)).toThrow(
+      'retain account'
+    )
+  })
+})

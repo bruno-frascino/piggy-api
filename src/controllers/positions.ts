@@ -1,6 +1,11 @@
 import { Router, Request, Response } from 'express'
 import { body, param, query } from 'express-validator'
 import { prisma } from '../lib/prisma.js'
+import { lockActiveUser } from '../lib/user-lock.js'
+import {
+  savePositionHistory,
+  savePositionStopLossHit,
+} from '../lib/position-derived-values.js'
 import {
   asyncHandler,
   handleValidationErrors,
@@ -14,10 +19,15 @@ import {
 import {
   findOrCreateAsset,
   resolveTradingAccount,
-  recomputePositionFromTransactions,
-  quantityTolerance,
 } from '../lib/position-service.js'
 import { normalizeInstrument } from '../lib/crypto/instrument.js'
+import {
+  closePosition,
+  updateCloseEvent,
+  deletePosition,
+  createPosition,
+  updatePositionAcquisition,
+} from '../lib/position-mutations.js'
 import {
   getKrakenMarkets,
   KrakenMarketsUnavailable,
@@ -196,6 +206,10 @@ router.get(
  *       assetType is omitted and require a BASE-QUOTE symbol matching the venue currency.
  *       Kraken markets are validated against the public catalogue; an unavailable catalogue
  *       returns 503. Alias XBT is stored as BTC. Quantities support up to twelve decimal places.
+ *       Account resolution and the parcel/BUY write commit together under an owned-account lock.
+ *       Closed accounts require explicit reopening first. A missing explicit accountId
+ *       returns 404 rather than redirecting the acquisition to another account.
+ *       This does not activate or spend inactive draft cash.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -276,9 +290,9 @@ router.get(
  *       401:
  *         description: Unauthorized
  *       404:
- *         description: Exchange not found
+ *         description: Exchange or explicitly selected trading account not found
  *       409:
- *         description: Existing asset has an incompatible classification
+ *         description: Existing asset has an incompatible classification, or trading account must be reopened before adding holdings
  *       503:
  *         description: Kraken market validation temporarily unavailable
  */
@@ -360,18 +374,13 @@ router.post(
       instrument.assetType,
       industry
     )
-    const account = await resolveTradingAccount(
-      req.user!.userId,
-      accountName,
-      accountId
-    )
     const totalBuyValue = entryPrice * quantity
 
-    const position = await prisma.position.create({
-      data: {
-        userId: req.user!.userId,
+    const position = await createPosition(
+      req.user!.userId,
+      { accountName, accountId },
+      {
         assetId: asset.id,
-        accountId: account.id,
         openDate,
         entryPrice,
         quantity,
@@ -397,13 +406,8 @@ router.post(
             fees: buyFees,
           },
         },
-      },
-      include: {
-        account: true,
-        asset: { include: { exchange: true } },
-        transactions: true,
-      },
-    })
+      }
+    )
 
     res.status(201).json({ success: true, data: position })
 
@@ -412,28 +416,22 @@ router.post(
     void fetchHistoricalMaxDrawdown(asset.symbol, entryPrice, openDate)
       .then((drawdown) => {
         if (drawdown !== null) {
-          return prisma.position.update({
-            where: { id: position.id },
-            data: { maxDrawdownPercent: drawdown },
-          })
+          return savePositionHistory(position, { maxDrawdownPercent: drawdown })
         }
       })
-      .catch(() => {
-        // silent — a failed history fetch must never crash the request cycle
+      .catch((error: unknown) => {
+        console.warn('Background drawdown calculation was not saved', error)
       })
 
     // Same for the peak (max run-up): the best unrealized gain since open.
     void fetchHistoricalMaxRunUp(asset.symbol, entryPrice, openDate)
       .then((runUp) => {
         if (runUp !== null) {
-          return prisma.position.update({
-            where: { id: position.id },
-            data: { maxRunUpPercent: runUp },
-          })
+          return savePositionHistory(position, { maxRunUpPercent: runUp })
         }
       })
-      .catch(() => {
-        // silent — a failed history fetch must never crash the request cycle
+      .catch((error: unknown) => {
+        console.warn('Background run-up calculation was not saved', error)
       })
   })
 )
@@ -612,6 +610,9 @@ router.get(
  * /api/positions/close-events/{id}:
  *   patch:
  *     summary: Update a close event (SELL transaction)
+ *     description: >
+ *       Updates the sale and parcel totals atomically under an owned-account and parcel lock.
+ *       Does not activate or spend inactive draft cash. Concurrent parcel moves require reload.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -653,6 +654,8 @@ router.get(
  *         description: Unauthorized
  *       404:
  *         description: Close event not found
+ *       409:
+ *         description: Parcel or close event moved concurrently; reload and retry
  */
 router.patch(
   '/close-events/:id',
@@ -670,36 +673,11 @@ router.patch(
     handleValidationErrors,
   ],
   asyncHandler(async (req: Request, res: Response) => {
-    const event = await prisma.transaction.findFirst({
-      where: {
-        id: req.params.id,
-        type: 'SELL',
-        position: { userId: req.user!.userId },
-      },
-      select: { positionId: true, quantity: true },
-    })
-    if (!event) {
-      return res
-        .status(404)
-        .json({ error: 'Not Found', message: 'Close event not found' })
-    }
-
-    const { closeDate, exitPrice, sellFees, notes, closeReason } = req.body
-    const updated = await prisma.transaction.update({
-      where: { id: req.params.id },
-      data: {
-        ...(closeDate !== undefined && { date: closeDate }),
-        ...(exitPrice !== undefined && {
-          price: exitPrice,
-          totalValue: exitPrice * Number(event.quantity),
-        }),
-        ...(sellFees !== undefined && { fees: sellFees }),
-        ...(notes !== undefined && { notes: notes.trim() || null }),
-        ...(closeReason !== undefined && { closeReason }),
-      },
-    })
-
-    await recomputePositionFromTransactions(event.positionId)
+    const updated = await updateCloseEvent(
+      req.user!.userId,
+      req.params.id,
+      req.body
+    )
     res.json({ success: true, data: updated })
   })
 )
@@ -717,6 +695,7 @@ router.patch(
  *       and persists it as maxDrawdownPercent, and finds the highest intraday high and
  *       persists it as maxRunUpPercent (peak unrealized gain vs entry price).
  *       Returns the new values (or null if history is unavailable / no drawdown / no run-up).
+ *       Saving takes user/account/parcel locks and rejects changed calculation inputs with 409.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -748,6 +727,8 @@ router.patch(
  *         description: Position not found
  *       401:
  *         description: Unauthorized
+ *       409:
+ *         description: Position changed during calculation; reload and recalculate
  */
 router.post(
   '/:id/recalculate-drawdown',
@@ -777,9 +758,9 @@ router.post(
       ),
     ])
 
-    await prisma.position.update({
-      where: { id: position.id },
-      data: { maxDrawdownPercent: drawdown, maxRunUpPercent: runUp },
+    await savePositionHistory(position, {
+      maxDrawdownPercent: drawdown,
+      maxRunUpPercent: runUp,
     })
 
     res.json({
@@ -810,6 +791,8 @@ router.post(
  *       low reached the stop becomes stopLossHitAt (day-granular). Editing the stop loss
  *       price clears the flag. Already-flagged, closed, short, or stop-less positions are
  *       returned unchanged.
+ *       Saving rechecks the stop and holding inputs under user/account/parcel locks;
+ *       concurrent changes return 409 rather than persisting a stale hit.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -850,6 +833,8 @@ router.post(
  *         description: Unauthorized
  *       404:
  *         description: Position not found
+ *       409:
+ *         description: Stop or holding changed during calculation; reload and check again
  */
 router.post(
   '/:id/check-stop-loss',
@@ -895,10 +880,7 @@ router.post(
           )
 
     if (hitAt) {
-      await prisma.position.update({
-        where: { id: position.id },
-        data: { stopLossHitAt: hitAt },
-      })
+      await savePositionStopLossHit(position, hitAt)
     }
 
     res.json({ success: true, stopLossHitAt: hitAt })
@@ -911,8 +893,15 @@ router.post(
  * @swagger
  * /api/positions/{id}:
  *   patch:
- *     summary: Update metadata on an open position
- *     description: Crypto symbols must match the venue quote currency. Changing a Kraken instrument validates its market; unchanged historical instruments remain editable.
+ *     summary: Update a position's acquisition and metadata
+ *     description: >
+ *       Crypto symbols must match the venue quote currency. Changing a Kraken instrument
+ *       validates its market; unchanged historical instruments remain editable. Acquisition
+ *       edits commit the BUY and recomputed parcel results together. Bought units cannot be
+ *       reduced below already-sold units. Account moves lock both accounts in stable order
+ *       and recheck the demo/real boundary. Inactive draft cash is not spent or activated.
+ *       An edit or move that would leave open holdings in a closed account returns 409;
+ *       reopen the account first. Corrections and moves of fully closed history remain allowed.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -995,7 +984,7 @@ router.post(
  *       404:
  *         description: Position not found
  *       409:
- *         description: Existing asset has an incompatible classification
+ *         description: Incompatible asset, concurrent account move, parcel does not have exactly one BUY, or open holdings require account reopening
  *       503:
  *         description: Kraken market validation temporarily unavailable
  */
@@ -1219,11 +1208,15 @@ router.patch(
     }
 
     if (accountId !== undefined || accountName !== undefined) {
-      const account = await resolveTradingAccount(
-        req.user!.userId,
-        accountName,
-        accountId
-      )
+      const account = await prisma.$transaction(async (db) => {
+        await lockActiveUser(db, req.user!.userId)
+        return resolveTradingAccount(
+          req.user!.userId,
+          accountName,
+          accountId,
+          db
+        )
+      })
       // Moving a parcel across the demo/real boundary would silently add it to,
       // or remove it from, tax reports.
       if (account.isDemo !== existing.account.isDemo) {
@@ -1235,64 +1228,16 @@ router.patch(
       updates.accountId = account.id
     }
 
-    const primaryBuy = existing.transactions.find((tx) => tx.type === 'BUY')
-    const soldQuantity = existing.transactions
-      .filter((tx) => tx.type === 'SELL')
-      .reduce((sum, tx) => sum + Number(tx.quantity), 0)
-
-    // position.quantity is REMAINING units, so it must not be used to rebuild
-    // totalBuyValue — on a closed position that would zero out the cost base.
-    const resolvedBuyQuantity =
-      typeof quantity === 'number'
-        ? quantity
-        : primaryBuy
-          ? Number(primaryBuy.quantity)
-          : existing.quantity
-    const resolvedEntryPrice =
-      typeof entryPrice === 'number' ? entryPrice : Number(existing.entryPrice)
-    const resolvedBuyFees =
-      typeof buyFees === 'number' ? buyFees : Number(existing.buyFees)
-    const resolvedOpenDate = openDate ?? existing.openDate
-
-    if (
-      quantity !== undefined ||
-      entryPrice !== undefined ||
-      buyFees !== undefined ||
-      openDate !== undefined
-    ) {
-      if (primaryBuy) {
-        await prisma.transaction.update({
-          where: { id: primaryBuy.id },
-          data: {
-            ...(openDate !== undefined && { date: resolvedOpenDate }),
-            ...(quantity !== undefined && { quantity: resolvedBuyQuantity }),
-            ...(entryPrice !== undefined && { price: resolvedEntryPrice }),
-            ...(buyFees !== undefined && { fees: resolvedBuyFees }),
-            ...(quantity !== undefined ||
-            entryPrice !== undefined ||
-            buyFees !== undefined
-              ? {
-                  totalValue: resolvedEntryPrice * resolvedBuyQuantity,
-                }
-              : {}),
-          },
-        })
-      }
-
-      updates.openDate = resolvedOpenDate
-      updates.entryPrice = resolvedEntryPrice
-      updates.quantity = Math.max(0, resolvedBuyQuantity - soldQuantity)
-      updates.buyFees = resolvedBuyFees
-      updates.totalBuyValue = resolvedEntryPrice * resolvedBuyQuantity
-      updates.capitalAllocated =
-        resolvedEntryPrice * resolvedBuyQuantity + resolvedBuyFees
-    }
-
-    const updated = await prisma.position.update({
-      where: { id: req.params.id },
-      data: updates,
-      include: { asset: { include: { exchange: true } } },
-    })
+    const destinationAccountId =
+      typeof updates.accountId === 'string' ? updates.accountId : undefined
+    delete updates.accountId
+    const updated = await updatePositionAcquisition(
+      req.user!.userId,
+      req.params.id,
+      { openDate, entryPrice, quantity, buyFees },
+      updates,
+      destinationAccountId
+    )
     res.json({ success: true, data: updated })
   })
 )
@@ -1304,6 +1249,10 @@ router.patch(
  * /api/positions/{id}/close:
  *   post:
  *     summary: Close (or partially close) an open position
+ *     description: >
+ *       Rechecks remaining units under owned-account and parcel locks and commits the SELL
+ *       and parcel totals together. Concurrent closes cannot sell the same remaining units
+ *       twice. Does not activate or spend inactive draft cash.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -1348,11 +1297,13 @@ router.patch(
  *       200:
  *         description: Position closed (or partially closed — status becomes PARTIAL)
  *       400:
- *         description: Position is already closed
+ *         description: Already closed, no remaining units, or requested quantity exceeds remaining units
  *       401:
  *         description: Unauthorized
  *       404:
  *         description: Position not found
+ *       409:
+ *         description: Position moved accounts concurrently; reload and retry
  */
 router.post(
   '/:id/close',
@@ -1370,84 +1321,12 @@ router.post(
     handleValidationErrors,
   ],
   asyncHandler(async (req: Request, res: Response) => {
-    const position = await prisma.position.findFirst({
-      where: { id: req.params.id, userId: req.user!.userId },
-      include: {
-        transactions: { orderBy: { date: 'asc' } },
-      },
-    })
-    if (!position) {
-      return res
-        .status(404)
-        .json({ error: 'Not Found', message: 'Position not found' })
-    }
-    if (position.status === 'CLOSED') {
-      return res
-        .status(400)
-        .json({ error: 'Bad Request', message: 'Position is already closed' })
-    }
-
-    const {
-      closeDate,
-      exitPrice,
-      fees = 0,
-      notes,
-      closeReason = 'MANUAL',
-    } = req.body
-    const normalizedCloseNotes =
-      typeof notes === 'string' && notes.trim() ? notes.trim() : null
-    const buyQty = position.transactions
-      .filter((tx) => tx.type === 'BUY')
-      .reduce((sum, tx) => sum + Number(tx.quantity), 0)
-    const soldQty = position.transactions
-      .filter((tx) => tx.type === 'SELL')
-      .reduce((sum, tx) => sum + Number(tx.quantity), 0)
-    const remainingQty = Math.max(0, buyQty - soldQty)
-
-    if (remainingQty <= 0) {
-      return res
-        .status(400)
-        .json({ error: 'Bad Request', message: 'No remaining units to close' })
-    }
-
-    const requestedQty =
-      req.body.quantity !== undefined ? Number(req.body.quantity) : remainingQty
-
-    if (
-      requestedQty >
-      remainingQty + quantityTolerance(buyQty, soldQty, requestedQty)
-    ) {
-      return res.status(400).json({
-        error: 'Bad Request',
-        message: `Close quantity exceeds remaining units (${remainingQty})`,
-      })
-    }
-
-    const closeQty = Math.min(requestedQty, remainingQty)
-    const totalSellValue = exitPrice * closeQty
-    await prisma.transaction.create({
-      data: {
-        positionId: req.params.id,
-        type: 'SELL',
-        date: closeDate,
-        quantity: closeQty,
-        price: exitPrice,
-        totalValue: totalSellValue,
-        fees,
-        notes: normalizedCloseNotes,
-        closeReason,
-      },
-    })
-
-    await recomputePositionFromTransactions(req.params.id)
-
-    const updated = await prisma.position.findFirst({
-      where: { id: req.params.id, userId: req.user!.userId },
-      include: {
-        asset: { include: { exchange: true } },
-        transactions: { orderBy: { date: 'asc' } },
-      },
-    })
+    const updated = await closePosition(
+      req.user!.userId,
+      req.params.id,
+      req.body
+    )
+    const { closeDate } = req.body
 
     res.json({ success: true, data: updated })
 
@@ -1462,14 +1341,14 @@ router.post(
       )
         .then((runUp) => {
           if (runUp !== null) {
-            return prisma.position.update({
-              where: { id: updated.id },
-              data: { maxRunUpPercent: runUp },
-            })
+            return savePositionHistory(updated, { maxRunUpPercent: runUp })
           }
         })
-        .catch(() => {
-          // silent — a failed history fetch must never crash the request cycle
+        .catch((error: unknown) => {
+          console.warn(
+            'Background closing run-up calculation was not saved',
+            error
+          )
         })
     }
   })
@@ -1482,6 +1361,9 @@ router.post(
  * /api/positions/{id}:
  *   delete:
  *     summary: Permanently delete a position and all its transactions
+ *     description: >
+ *       Deletes under owned-account and parcel locks. Inactive opening and cash draft
+ *       snapshot references are retained; source changes prevent further draft appends.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -1498,20 +1380,14 @@ router.post(
  *         description: Unauthorized
  *       404:
  *         description: Position not found
+ *       409:
+ *         description: Position moved accounts concurrently; reload and retry
  */
 router.delete(
   '/:id',
   [param('id').isString(), handleValidationErrors],
   asyncHandler(async (req: Request, res: Response) => {
-    const position = await prisma.position.findFirst({
-      where: { id: req.params.id, userId: req.user!.userId },
-    })
-    if (!position) {
-      return res
-        .status(404)
-        .json({ error: 'Not Found', message: 'Position not found' })
-    }
-    await prisma.position.delete({ where: { id: req.params.id } })
+    await deletePosition(req.user!.userId, req.params.id)
     res.json({ success: true, message: 'Position deleted' })
   })
 )

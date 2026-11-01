@@ -14,6 +14,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./accounts.js",
           "moduleSystem": "es6",
           "resolved": "src/controllers/accounts.ts",
@@ -22,7 +39,33 @@
       ],
       "dependents": [],
       "orphan": false,
-      "source": "src/controllers/accounts.test.ts",
+      "source": "src/controllers/accounting-preview.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/controllers/accounting-preview.test.ts",
+        "src/controllers/accounts.ts",
+        "src/controllers/auth.ts",
+        "src/controllers/exchanges.ts",
+        "src/controllers/imports.ts",
+        "src/controllers/opening-statements.ts",
+        "src/controllers/portfolio.ts",
+        "src/controllers/positions.ts",
+        "src/controllers/screener.ts",
+        "src/controllers/statistics.ts",
+        "src/controllers/stocks.ts",
+        "src/controllers/tax-reports.ts",
+        "src/controllers/users.ts",
+        "src/controllers/watchlists.ts",
+        "src/controllers/opening-statements.test.ts",
+        "src/controllers/positions.test.ts",
+        "src/index.ts",
+        "src/middleware/validation.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/middleware/validation.ts",
       "valid": true
     },
     {
@@ -39,9 +82,60 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/accounting-preview-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../lib/prisma.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/trading-account-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/trading-account-mutations.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
           "valid": true
         },
         {
@@ -80,6 +174,7 @@
         }
       ],
       "dependents": [
+        "src/controllers/accounting-preview.test.ts",
         "src/controllers/accounts.test.ts",
         "src/controllers/index.ts"
       ],
@@ -88,29 +183,238 @@
       "valid": true
     },
     {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/accounts.ts",
+        "src/lib/opening-statements.ts",
+        "src/lib/cash-revisions.integration.test.ts",
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/opening-statements.integration.test.ts",
+        "src/lib/position-mutations.integration.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/accounting-preview-service.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/accounting-preview-service.ts",
+        "src/lib/opening-statements.ts",
+        "src/lib/accounting-preview.test.ts",
+        "src/lib/cash-ledger.ts",
+        "src/lib/draft-cash-ledger.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/accounting-preview.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/lib/accounting-preview.ts",
+        "src/lib/cash-ledger.ts",
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/cash-revisions.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/accounting-values.ts",
+      "valid": true
+    },
+    {
       "dependencies": [],
       "dependents": [
         "src/controllers/accounts.ts",
+        "src/lib/accounting-preview-service.ts",
+        "src/lib/trading-account-mutations.ts",
         "src/middleware/auth.ts",
         "src/controllers/auth.ts",
+        "src/lib/account-deletion.ts",
+        "src/lib/password-reset.ts",
         "src/controllers/exchanges.ts",
         "src/lib/imports/service.ts",
         "src/lib/fx-rates.ts",
+        "src/lib/position-derived-values.ts",
         "src/lib/position-service.ts",
         "src/controllers/imports.ts",
+        "src/lib/opening-statements.ts",
         "src/controllers/portfolio.ts",
+        "src/lib/portfolio-snapshot.ts",
         "src/controllers/positions.ts",
+        "src/lib/position-mutations.ts",
         "src/controllers/screener.ts",
         "src/controllers/statistics.ts",
         "src/controllers/tax-reports.ts",
         "src/lib/cgt-engine.ts",
         "src/controllers/users.ts",
-        "src/lib/account-deletion.ts",
         "src/controllers/watchlists.ts",
-        "src/index.ts"
+        "src/controllers/trading-account-lifecycle.integration.test.ts",
+        "src/index.ts",
+        "src/lib/cash-revisions.integration.test.ts",
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/imports/service.integration.test.ts",
+        "src/lib/opening-statements.integration.test.ts",
+        "src/lib/position-mutations.integration.test.ts",
+        "src/lib/user-lifecycle.integration.test.ts"
       ],
       "orphan": false,
       "source": "src/lib/prisma.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/accounts.ts",
+        "src/controllers/trading-account-lifecycle.integration.test.ts",
+        "src/lib/trading-account-mutations.test.ts",
+        "src/lib/user-lifecycle.integration.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/trading-account-mutations.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/trading-account-mutations.ts",
+        "src/lib/imports/service.ts",
+        "src/lib/position-derived-values.ts",
+        "src/lib/portfolio-snapshot.ts",
+        "src/lib/position-mutations.ts",
+        "src/controllers/tax-reports.ts",
+        "src/lib/account-lock.test.ts",
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/user-lifecycle.integration.test.ts",
+        "src/lib/user-lock.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/account-lock.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/controllers/accounts.ts",
+        "src/lib/account-lock.ts",
+        "src/lib/account-deletion.ts",
+        "src/lib/password-reset.ts",
+        "src/lib/opening-statements.ts",
+        "src/controllers/positions.ts",
+        "src/lib/position-mutations.ts",
+        "src/controllers/users.ts",
+        "src/lib/user-lifecycle.integration.test.ts",
+        "src/lib/user-lock.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/user-lock.ts",
       "valid": true
     },
     {
@@ -155,6 +459,7 @@
         "src/controllers/auth.ts",
         "src/controllers/exchanges.ts",
         "src/controllers/imports.ts",
+        "src/controllers/opening-statements.ts",
         "src/controllers/portfolio.ts",
         "src/controllers/positions.ts",
         "src/controllers/screener.ts",
@@ -181,26 +486,28 @@
       "valid": true
     },
     {
-      "dependencies": [],
-      "dependents": [
-        "src/controllers/accounts.ts",
-        "src/controllers/auth.ts",
-        "src/controllers/exchanges.ts",
-        "src/controllers/imports.ts",
-        "src/controllers/portfolio.ts",
-        "src/controllers/positions.ts",
-        "src/controllers/screener.ts",
-        "src/controllers/statistics.ts",
-        "src/controllers/stocks.ts",
-        "src/controllers/tax-reports.ts",
-        "src/controllers/users.ts",
-        "src/controllers/watchlists.ts",
-        "src/controllers/positions.test.ts",
-        "src/index.ts",
-        "src/middleware/validation.test.ts"
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounts.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/accounts.ts",
+          "valid": true
+        }
       ],
+      "dependents": [],
       "orphan": false,
-      "source": "src/middleware/validation.ts",
+      "source": "src/controllers/accounts.test.ts",
       "valid": true
     },
     {
@@ -242,6 +549,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/account-deletion.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-deletion.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../lib/jwt.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/jwt.ts",
@@ -262,6 +586,23 @@
           "module": "../lib/mailer.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/mailer.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/password-reset.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/password-reset.ts",
           "valid": true
         },
         {
@@ -325,6 +666,54 @@
       "valid": true
     },
     {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/auth.ts",
+        "src/controllers/users.ts",
+        "src/lib/account-deletion.test.ts",
+        "src/lib/user-lifecycle.integration.test.ts",
+        "src/scripts/purge-deleted-users.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/account-deletion.ts",
+      "valid": true
+    },
+    {
       "dependencies": [],
       "dependents": [
         "src/controllers/auth.ts",
@@ -332,6 +721,52 @@
       ],
       "orphan": false,
       "source": "src/lib/mailer.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/auth.ts",
+        "src/lib/password-reset.test.ts",
+        "src/lib/user-lifecycle.integration.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/password-reset.ts",
       "valid": true
     },
     {
@@ -586,6 +1021,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../account-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../crypto/pricing.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/crypto/pricing.ts",
@@ -640,6 +1092,23 @@
           "module": "../historical-drawdown.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/historical-drawdown.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../position-derived-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-derived-values.ts",
           "valid": true
         },
         {
@@ -731,6 +1200,7 @@
       "dependents": [
         "src/controllers/imports.test.ts",
         "src/controllers/imports.ts",
+        "src/lib/imports/service.integration.test.ts",
         "src/lib/imports/service.test.ts"
       ],
       "orphan": false,
@@ -905,6 +1375,53 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./account-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/imports/service.ts",
+        "src/controllers/positions.ts",
+        "src/lib/position-derived-values.test.ts",
+        "src/lib/user-lifecycle.integration.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/position-derived-values.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./crypto/instrument.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/crypto/instrument.ts",
@@ -931,8 +1448,12 @@
       "dependents": [
         "src/lib/imports/service.ts",
         "src/controllers/positions.ts",
+        "src/lib/position-mutations.ts",
         "src/controllers/watchlists.ts",
-        "src/lib/position-service.test.ts"
+        "src/lib/imports/service.integration.test.ts",
+        "src/lib/position-mutations.integration.test.ts",
+        "src/lib/position-service.test.ts",
+        "src/lib/user-lifecycle.integration.test.ts"
       ],
       "orphan": false,
       "source": "src/lib/position-service.ts",
@@ -1264,6 +1785,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./opening-statements.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/opening-statements.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./portfolio.js",
           "moduleSystem": "es6",
           "resolved": "src/controllers/portfolio.ts",
@@ -1410,9 +1948,154 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
-          "module": "../lib/portfolio-calc.js",
+          "module": "../lib/opening-statements.js",
           "moduleSystem": "es6",
-          "resolved": "src/lib/portfolio-calc.ts",
+          "resolved": "src/lib/opening-statements.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/auth.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/auth.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/index.ts",
+        "src/controllers/opening-statements.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/controllers/opening-statements.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/opening-statements.ts",
+        "src/lib/cash-revisions.integration.test.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/opening-statements.integration.test.ts",
+        "src/lib/opening-statements.test.ts",
+        "src/lib/position-mutations.integration.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/opening-statements.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/portfolio-snapshot.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/portfolio-snapshot.ts",
           "valid": true
         },
         {
@@ -1476,9 +2159,72 @@
       "valid": true
     },
     {
-      "dependencies": [],
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./portfolio-calc.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/portfolio-calc.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
       "dependents": [
         "src/controllers/portfolio.ts",
+        "src/lib/portfolio-snapshot.test.ts",
+        "src/lib/user-lifecycle.integration.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/portfolio-snapshot.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/lib/portfolio-snapshot.ts",
         "src/lib/portfolio-calc.test.ts"
       ],
       "orphan": false,
@@ -1550,6 +2296,40 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/position-derived-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-derived-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/position-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-mutations.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../lib/position-service.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/position-service.ts",
@@ -1570,6 +2350,23 @@
           "module": "../lib/prisma.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
           "valid": true
         },
         {
@@ -1613,6 +2410,89 @@
       ],
       "orphan": false,
       "source": "src/controllers/positions.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/positions.ts",
+        "src/controllers/trading-account-lifecycle.integration.test.ts",
+        "src/lib/imports/service.integration.test.ts",
+        "src/lib/position-mutations.integration.test.ts",
+        "src/lib/position-mutations.test.ts",
+        "src/lib/user-lifecycle.integration.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/position-mutations.ts",
       "valid": true
     },
     {
@@ -1876,6 +2756,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/account-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../lib/cgt-engine.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/cgt-engine.ts",
@@ -1952,7 +2849,8 @@
       ],
       "dependents": [
         "src/controllers/index.ts",
-        "src/controllers/tax-reports.test.ts"
+        "src/controllers/tax-reports.test.ts",
+        "src/controllers/trading-account-lifecycle.integration.test.ts"
       ],
       "orphan": false,
       "source": "src/controllers/tax-reports.ts",
@@ -2088,6 +2986,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../middleware/auth.js",
           "moduleSystem": "es6",
           "resolved": "src/middleware/auth.ts",
@@ -2117,35 +3032,6 @@
       ],
       "orphan": false,
       "source": "src/controllers/users.ts",
-      "valid": true
-    },
-    {
-      "dependencies": [
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./prisma.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/prisma.ts",
-          "valid": true
-        }
-      ],
-      "dependents": [
-        "src/controllers/users.ts",
-        "src/lib/account-deletion.test.ts",
-        "src/scripts/purge-deleted-users.ts"
-      ],
-      "orphan": false,
-      "source": "src/lib/account-deletion.ts",
       "valid": true
     },
     {
@@ -2232,6 +3118,48 @@
       "dependents": [],
       "orphan": true,
       "source": "src/controllers/max-drawdown.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./opening-statements.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/opening-statements.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/opening-statements.test.ts",
       "valid": true
     },
     {
@@ -2443,6 +3371,82 @@
           "couldNotResolve": false,
           "dependencyTypes": [
             "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/position-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-mutations.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/trading-account-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/trading-account-mutations.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./tax-reports.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/tax-reports.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/trading-account-lifecycle.integration.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
             "import"
           ],
           "dynamic": false,
@@ -2636,6 +3640,426 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./account-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/account-lock.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/accounting-preview.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-ledger.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/cash-ledger.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/cash-ledger.test.ts",
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/cash-revisions.ts",
+        "src/lib/cash-revisions.test.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/draft-cash-ledger.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/cash-ledger.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./opening-statements.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/opening-statements.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/cash-revisions.integration.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-revisions.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-revisions.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/cash-revisions.integration.test.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/draft-cash-ledger.test.ts",
+        "src/lib/position-mutations.integration.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/draft-cash-ledger.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-ledger.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/cash-revisions.test.ts",
+        "src/lib/draft-cash-ledger.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/cash-revisions.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-revisions.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-revisions.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/cash-revisions.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./cgt-engine.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/cgt-engine.ts",
@@ -2770,6 +4194,158 @@
       "dependents": [],
       "orphan": false,
       "source": "src/lib/crypto/venues.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./opening-statements.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/opening-statements.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/draft-cash-ledger.integration.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-revisions.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-revisions.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-cash-ledger.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/draft-cash-ledger.test.ts",
       "valid": true
     },
     {
@@ -2992,6 +4568,82 @@
           "couldNotResolve": false,
           "dependencyTypes": [
             "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../position-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-mutations.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../position-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/imports/service.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/imports/service.integration.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
             "import"
           ],
           "dynamic": false,
@@ -3091,6 +4743,115 @@
           "couldNotResolve": false,
           "dependencyTypes": [
             "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./opening-statements.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/opening-statements.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/opening-statements.integration.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./opening-statements.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/opening-statements.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/opening-statements.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./password-reset.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/password-reset.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/password-reset.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
             "import"
           ],
           "dynamic": false,
@@ -3106,6 +4867,13 @@
       "dependents": [],
       "orphan": false,
       "source": "src/lib/pdf-report.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [],
+      "orphan": true,
+      "source": "src/lib/portfolio-accounting-contract.test.ts",
       "valid": true
     },
     {
@@ -3131,6 +4899,191 @@
       "dependents": [],
       "orphan": false,
       "source": "src/lib/portfolio-calc.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./portfolio-snapshot.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/portfolio-snapshot.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/portfolio-snapshot.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-derived-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-derived-values.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/position-derived-values.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./opening-statements.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/opening-statements.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-mutations.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/position-mutations.integration.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-mutations.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/position-mutations.test.ts",
       "valid": true
     },
     {
@@ -3181,6 +5134,251 @@
       "dependents": [],
       "orphan": false,
       "source": "src/lib/statistics-engine.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./trading-account-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/trading-account-mutations.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/trading-account-mutations.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-deletion.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-deletion.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./password-reset.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/password-reset.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./portfolio-snapshot.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/portfolio-snapshot.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-derived-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-derived-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-mutations.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./trading-account-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/trading-account-mutations.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/user-lifecycle.integration.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/user-lock.test.ts",
       "valid": true
     },
     {
@@ -3350,8 +5548,8 @@
         }
       ]
     },
-    "totalCruised": 78,
-    "totalDependenciesCruised": 145,
+    "totalCruised": 115,
+    "totalDependenciesCruised": 250,
     "violations": [],
     "warn": 0
   }
