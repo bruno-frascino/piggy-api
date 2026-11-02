@@ -5,12 +5,18 @@ import {
   type CashCommand,
   type CashLeg,
 } from './cash-ledger.js'
+import {
+  prepareDraftTradeRequest,
+  prepareDraftTradeCash,
+  type DraftTradeRequest,
+} from './draft-trade-command.js'
 
 export interface CashRevisionRequest {
   idempotencyKey: string
   expectedRevisionId: string
   reason: string
   replacement: CashCommand | null
+  proposedTrade?: DraftTradeRequest | null
 }
 
 export interface PreparedCashRevision {
@@ -58,6 +64,7 @@ export function prepareCashRevision(
           'expectedRevisionId',
           'reason',
           'replacement',
+          'proposedTrade',
         ].includes(key)
     )
   )
@@ -73,6 +80,14 @@ export function prepareCashRevision(
       row.replacement === null
         ? null
         : prepareCashCommand(row.replacement, now).command,
+    ...('proposedTrade' in row
+      ? {
+          proposedTrade:
+            row.proposedTrade === null
+              ? null
+              : prepareDraftTradeRequest(row.proposedTrade, now).request,
+        }
+      : {}),
   }
   if (
     request.replacement &&
@@ -82,6 +97,27 @@ export function prepareCashRevision(
       'Replacement command must use the correction idempotency key',
       400
     )
+  if ('proposedTrade' in request) {
+    const trade = request.proposedTrade
+    const cash = request.replacement
+    if (trade === null) {
+      if (cash !== null)
+        cashRevisionConflict('Trade reversal must also reverse its cash', 400)
+    } else {
+      if (
+        !trade ||
+        !cash ||
+        (cash.kind !== 'BUY' && cash.kind !== 'SELL') ||
+        cash.transactionIds.length !== 1 ||
+        prepareDraftTradeCash(trade, cash.transactionIds[0], now)
+          .payloadHash !== prepareCashCommand(cash, now).payloadHash
+      )
+        cashRevisionConflict(
+          'Proposed trade correction must exactly match its cash replacement',
+          400
+        )
+    }
+  }
   return {
     request,
     payloadHash: createHash('sha256')
@@ -93,6 +129,44 @@ export function prepareCashRevision(
       )
       .digest('hex'),
   }
+}
+
+export function prepareDraftTradeRevision(
+  raw: unknown,
+  tradeId: string,
+  now = new Date()
+) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+    cashRevisionConflict('Trade correction must be an object', 400)
+  const row = raw as Record<string, unknown>
+  if (
+    Object.keys(row).some(
+      (key) =>
+        ![
+          'idempotencyKey',
+          'expectedRevisionId',
+          'reason',
+          'replacement',
+        ].includes(key)
+    )
+  )
+    cashRevisionConflict('Unsupported proposed trade correction fields', 400)
+  const trade =
+    row.replacement === null
+      ? null
+      : prepareDraftTradeRequest(row.replacement, now).request
+  return prepareCashRevision(
+    {
+      idempotencyKey: row.idempotencyKey,
+      expectedRevisionId: row.expectedRevisionId,
+      reason: row.reason,
+      replacement: trade
+        ? prepareDraftTradeCash(trade, tradeId, now).command
+        : null,
+      proposedTrade: trade,
+    },
+    now
+  )
 }
 
 export interface RevisionLeg extends CashLeg {

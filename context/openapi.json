@@ -820,6 +820,373 @@
         ]
       }
     },
+    "/api/accounts/{id}/opening-statements/{statementId}/cash-evidence": {
+      "post": {
+        "description": "Requires every tracked currency and a reasoned decision for each exact cash difference. Decisions record review only; they do not adjust cash or clear a variance. A later dated deposit/withdrawal must make replay match. Not external verification or accounting activation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "statementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "asOfDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "attested": {
+                    "enum": [
+                      true
+                    ],
+                    "type": "boolean"
+                  },
+                  "cashBalances": {
+                    "items": {
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "currency",
+                        "amount"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 20,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "decisions": {
+                    "items": {
+                      "properties": {
+                        "currency": {
+                          "type": "string"
+                        },
+                        "note": {
+                          "maxLength": 1000,
+                          "type": "string"
+                        },
+                        "reason": {
+                          "enum": [
+                            "UNRECORDED_OPERATION",
+                            "TIMING_DIFFERENCE",
+                            "SOURCE_CORRECTION_REQUIRED",
+                            "OTHER"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "currency",
+                        "reason",
+                        "note"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "reference": {
+                    "description": "Statement number or user-entered reference; never an uploaded document.",
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "source": {
+                    "description": "Bank/broker statement issuer.",
+                    "maxLength": 120,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "asOfDate",
+                  "source",
+                  "reference",
+                  "attested",
+                  "cashBalances",
+                  "decisions"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Immutable evidence snapshot and exact dated cash replay comparison."
+          },
+          "400": {
+            "attestation or discrepancy decisions.": null,
+            "description": "Invalid evidence"
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Account or opening statement not found."
+          },
+          "409": {
+            "description": "Idempotency conflict or stale opening source."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Record an immutable, user-attested statement cash snapshot",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/opening-statements/{statementId}/cash-evidence/preview": {
+      "post": {
+        "description": "Calculates replay and signed per-currency differences. It creates no evidence, decisions, postings or other records. Statement balances remain user-entered and attested.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "statementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "required": [
+                  "idempotencyKey",
+                  "asOfDate",
+                  "source",
+                  "reference",
+                  "attested",
+                  "cashBalances",
+                  "decisions"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Exact statement-date cash replay and variances."
+          },
+          "400": {
+            "description": "Invalid evidence or incomplete currency coverage."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Account or statement not found."
+          },
+          "422": {
+            "description": "Replay exceeds supported limits."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Preview exact statement-date cash variances without saving evidence",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/opening-statements/{statementId}/cash-operations": {
+      "post": {
+        "description": "A cash operation must describe an actual external cash movement and include an explicit effective date, stable sequence and source reference. It is not a balancing adjustment. Historical replay rejects spending before recorded funding. Draft postings never affect live cash or holdings.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "statementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "amount": {
+                    "description": "Positive exact decimal amount.",
+                    "type": "string"
+                  },
+                  "currency": {
+                    "type": "string"
+                  },
+                  "effectiveDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "DEPOSIT",
+                      "WITHDRAWAL"
+                    ],
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "sourceReference": {
+                    "description": "Bank/broker transfer reference.",
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "effectiveDate",
+                  "sequence",
+                  "kind",
+                  "currency",
+                  "amount",
+                  "sourceReference"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Dated inactive cash operation and replay."
+          },
+          "400": {
+            "description": "Invalid cash operation."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Account or opening statement not found."
+          },
+          "409": {
+            "description": "Duplicate source",
+            "order or stale account state.": null
+          },
+          "422": {
+            "description": "Insufficient dated cash or replay limit exceeded."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Stage a sourced dated deposit or withdrawal in an inactive draft",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/opening-statements/{statementId}/reconciliation": {
+      "get": {
+        "description": "Compares reviewed opening inventory, current live source records, proposed draft cash/trades, recorded cash evidence and linked execution identities. Statement balances are user-attested, not independently verified. This endpoint never activates accounting or changes financial records.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "statementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only draft reconciliation",
+            "including cash evidence/variances and effective or reversed cash-operation source references.": null
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Account or opening statement not found."
+          },
+          "409": {
+            "description": "Stored draft audit history is inconsistent."
+          },
+          "422": {
+            "description": "Reconciliation exceeds bounded processing limits."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Read-only reconciliation report for an inactive opening draft",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/accounts/{id}/reopen": {
       "post": {
         "description": "Serializes reopening with account lifecycle and participating trade/import writes.",

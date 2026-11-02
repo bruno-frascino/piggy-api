@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { prepareCashCommand } from './cash-ledger.js'
-import { prepareCashRevision, prepareRevisionLegs } from './cash-revisions.js'
+import {
+  prepareCashRevision,
+  prepareRevisionLegs,
+  prepareDraftTradeRevision,
+} from './cash-revisions.js'
 
 const now = new Date('2026-10-31T12:00:00Z')
 const original = prepareCashCommand(
@@ -28,6 +32,64 @@ const request = {
 }
 
 describe('cash revision contract', () => {
+  it('binds quantity and price independently of equal trade consideration in revision hashes', () => {
+    const trade = {
+      accountId: 'a1',
+      kind: 'BUY',
+      assetId: 'asset1',
+      currency: 'AUD',
+      effectiveDate: '2026-10-02',
+      sequence: 1,
+      quantity: '10',
+      price: '5',
+      fees: '1',
+      idempotencyKey: 'correction',
+    }
+    const envelope = {
+      idempotencyKey: 'correction',
+      expectedRevisionId: 'op1',
+      reason: 'Fix units',
+      replacement: trade,
+    }
+    const first = prepareDraftTradeRevision(envelope, 'trade1', now)
+    const second = prepareDraftTradeRevision(
+      {
+        ...envelope,
+        replacement: { ...trade, quantity: '5', price: '10' },
+      },
+      'trade1',
+      now
+    )
+    expect(first.request.replacement).toEqual(second.request.replacement)
+    expect(first.payloadHash).not.toBe(second.payloadHash)
+    expect(
+      prepareDraftTradeRevision(
+        { ...envelope, replacement: null },
+        'trade1',
+        now
+      ).request
+    ).toMatchObject({ replacement: null, proposedTrade: null })
+    expect(() =>
+      prepareDraftTradeRevision(
+        { ...envelope, unexpected: true },
+        'trade1',
+        now
+      )
+    ).toThrow()
+    expect(() => prepareDraftTradeRevision(null, 'trade1', now)).toThrow()
+    expect(() =>
+      prepareCashRevision(
+        { ...first.request, proposedTrade: { ...trade, quantity: '9' } },
+        now
+      )
+    ).toThrow('exactly match')
+    expect(() =>
+      prepareCashRevision({ ...first.request, proposedTrade: null }, now)
+    ).toThrow('also reverse')
+    expect(() =>
+      prepareCashRevision({ ...first.request, replacement: null }, now)
+    ).toThrow('exactly match')
+  })
   it('normalizes replacements and binds reason, expected revision and command to the retry hash', () => {
     const prepared = prepareCashRevision(request, now)
     expect(prepared.request.replacement).toMatchObject({

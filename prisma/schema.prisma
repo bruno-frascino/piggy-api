@@ -124,6 +124,7 @@ model AccountOpeningStatement {
   cashBalances   OpeningCashBalance[]
   parcels        OpeningParcelBalance[]
   cashOperations DraftCashOperation[]
+  cashEvidence   DraftCashEvidence[]
 
   @@unique([accountId, version])
   @@unique([accountId, sourceFingerprint])
@@ -176,12 +177,60 @@ model DraftCashOperation {
   postings   DraftCashPosting[]
   tradeLinks DraftOperationTradeLink[]
   revisions  DraftCashRevision[]
+  proposedTrade DraftManualTrade?
 
   @@unique([statementId, id])
   @@unique([statementId, idempotencyKey])
   @@unique([statementId, sourceOrigin, sourceReference])
   @@unique([statementId, effectiveDate, sequence])
   @@map("draft_cash_operations")
+}
+
+model DraftCashEvidence {
+  id             String   @id @default(cuid())
+  statementId    String
+  idempotencyKey String
+  payloadHash    String
+  asOfDate       DateTime @db.Date
+  source         String
+  reference      String
+  attested       Boolean
+  recordedAt     DateTime @default(now())
+
+  statement AccountOpeningStatement       @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  balances  DraftCashEvidenceBalance[]
+  decisions DraftCashEvidenceDecision[]
+
+  @@unique([statementId, idempotencyKey])
+  @@unique([statementId, asOfDate, idempotencyKey])
+  @@index([statementId, asOfDate, recordedAt])
+  @@map("draft_cash_evidence")
+}
+
+model DraftCashEvidenceBalance {
+  id         String  @id @default(cuid())
+  evidenceId String
+  currency   String
+  amount     Decimal @db.Decimal(38, 12)
+
+  evidence DraftCashEvidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@unique([evidenceId, currency])
+  @@map("draft_cash_evidence_balances")
+}
+
+model DraftCashEvidenceDecision {
+  id         String   @id @default(cuid())
+  evidenceId String
+  currency   String
+  reason     String
+  note       String
+  recordedAt DateTime @default(now())
+
+  evidence DraftCashEvidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@unique([evidenceId, currency])
+  @@map("draft_cash_evidence_decisions")
 }
 
 model DraftCashPosting {
@@ -234,6 +283,26 @@ model DraftCashRevisionPosting {
 
   @@unique([revisionId, legIndex])
   @@map("draft_cash_revision_postings")
+}
+
+model DraftManualTrade {
+  id          String  @id
+  operationId String  @unique
+  parcelKey   String
+  // Inactive snapshot references; proposals never edit live assets or parcels.
+  assetId     String
+  symbol      String
+  currency    String
+  quantity    Decimal @db.Decimal(38, 12)
+  price       Decimal @db.Decimal(38, 12)
+  fees        Decimal @db.Decimal(38, 12)
+  requestHash String
+  request     Json
+
+  operation DraftCashOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+
+  @@index([parcelKey])
+  @@map("draft_manual_trades")
 }
 
 model DraftOperationTradeLink {

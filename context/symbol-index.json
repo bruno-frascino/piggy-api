@@ -45,13 +45,13 @@
     "startLine": 16
   },
   {
-    "endLine": 13,
+    "endLine": 19,
     "file": "src/controllers/opening-statements.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 13
+    "startLine": 19
   },
   {
     "endLine": 11,
@@ -405,49 +405,58 @@
     "startLine": 421
   },
   {
-    "endLine": 14,
+    "endLine": 20,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "InterfaceDeclaration",
     "name": "CashRevisionRequest",
     "signature": "export interface CashRevisionRequest",
-    "startLine": 9
+    "startLine": 14
   },
   {
-    "endLine": 19,
+    "endLine": 25,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "InterfaceDeclaration",
     "name": "PreparedCashRevision",
     "signature": "export interface PreparedCashRevision",
-    "startLine": 16
+    "startLine": 22
   },
   {
-    "endLine": 96,
+    "endLine": 132,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "prepareCashRevision",
     "signature": "export function prepareCashRevision( raw: unknown, now = new Date() ): PreparedCashRevision",
-    "startLine": 46
+    "startLine": 52
   },
   {
-    "endLine": 100,
+    "endLine": 170,
+    "file": "src/lib/cash-revisions.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "prepareDraftTradeRevision",
+    "signature": "export function prepareDraftTradeRevision( raw: unknown, tradeId: string, now = new Date() )",
+    "startLine": 134
+  },
+  {
+    "endLine": 174,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "InterfaceDeclaration",
     "name": "RevisionLeg",
     "signature": "export interface RevisionLeg extends CashLeg",
-    "startLine": 98
+    "startLine": 172
   },
   {
-    "endLine": 138,
+    "endLine": 212,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "prepareRevisionLegs",
     "signature": "export function prepareRevisionLegs( original: CashCommand, replacement: CashCommand | null, now = new Date() ): RevisionLeg[]",
-    "startLine": 102
+    "startLine": 176
   },
   {
     "endLine": 32,
@@ -639,22 +648,193 @@
     "startLine": 35
   },
   {
-    "endLine": 427,
+    "endLine": 17,
+    "file": "src/lib/draft-cash-evidence.ts",
+    "jsdoc": "",
+    "kind": "VariableDeclaration",
+    "name": "cashEvidenceReasons",
+    "signature": "cashEvidenceReasons = [ 'UNRECORDED_OPERATION', 'TIMING_DIFFERENCE', 'SOURCE_CORRECTION_REQUIRED', 'OTHER', ] as const",
+    "startLine": 12
+  },
+  {
+    "endLine": 19,
+    "file": "src/lib/draft-cash-evidence.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "DraftCashEvidenceReason",
+    "signature": "export type DraftCashEvidenceReason = (typeof cashEvidenceReasons)[number]",
+    "startLine": 19
+  },
+  {
+    "endLine": 33,
+    "file": "src/lib/draft-cash-evidence.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "DraftCashEvidenceRequest",
+    "signature": "export interface DraftCashEvidenceRequest",
+    "startLine": 21
+  },
+  {
+    "endLine": 73,
+    "file": "src/lib/draft-cash-evidence.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "prepareDraftCashFlow",
+    "signature": "export function prepareDraftCashFlow( raw: unknown, accountId: string, now = new Date() )",
+    "startLine": 35
+  },
+  {
+    "endLine": 218,
+    "file": "src/lib/draft-cash-evidence.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "prepareDraftCashEvidence",
+    "signature": "export function prepareDraftCashEvidence( raw: unknown, openingDate: string, now = new Date() )",
+    "startLine": 99
+  },
+  {
+    "endLine": 275,
+    "file": "src/lib/draft-cash-evidence.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "compareDraftCashEvidence",
+    "signature": "export function compareDraftCashEvidence( request: DraftCashEvidenceRequest, replay: CashReplay, requireDecisions = true )",
+    "startLine": 220
+  },
+  {
+    "endLine": 637,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "Internal staging only: never posts spendable cash or mutates a live trade.",
     "kind": "FunctionDeclaration",
     "name": "saveDraftCashOperation",
     "signature": "export async function saveDraftCashOperation( userId: string, statementId: string, raw: unknown )",
-    "startLine": 293
+    "startLine": 488
   },
   {
-    "endLine": 555,
+    "endLine": 971,
     "file": "src/lib/draft-cash-ledger.ts",
-    "jsdoc": "Internal inactive capital corrections; trade corrections await atomic trade/posting integration.",
+    "jsdoc": "Read-only reconciliation; a funded draft is not a confirmed live ledger.",
+    "kind": "FunctionDeclaration",
+    "name": "reconcileDraftOpening",
+    "signature": "export async function reconcileDraftOpening( userId: string, statementId: string, accountId?: string )",
+    "startLine": 640
+  },
+  {
+    "endLine": 1085,
+    "file": "src/lib/draft-cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "recordDraftCashEvidence",
+    "signature": "export async function recordDraftCashEvidence( userId: string, statementId: string, raw: unknown, accountId?: string )",
+    "startLine": 973
+  },
+  {
+    "endLine": 1137,
+    "file": "src/lib/draft-cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "previewDraftCashEvidence",
+    "signature": "export async function previewDraftCashEvidence( userId: string, statementId: string, raw: unknown, accountId?: string )",
+    "startLine": 1087
+  },
+  {
+    "endLine": 1147,
+    "file": "src/lib/draft-cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "saveDraftReconciliationCashOperation",
+    "signature": "export async function saveDraftReconciliationCashOperation( userId: string, statementId: string, raw: unknown, accountId: string )",
+    "startLine": 1139
+  },
+  {
+    "endLine": 1364,
+    "file": "src/lib/draft-cash-ledger.ts",
+    "jsdoc": "Isolated proposed parcels only; never creates or edits a live Position/Transaction.",
+    "kind": "FunctionDeclaration",
+    "name": "saveDraftManualTrade",
+    "signature": "export async function saveDraftManualTrade( userId: string, statementId: string, raw: unknown )",
+    "startLine": 1150
+  },
+  {
+    "endLine": 1379,
+    "file": "src/lib/draft-cash-ledger.ts",
+    "jsdoc": "Cash-only corrections cannot independently change an isolated trade.",
     "kind": "FunctionDeclaration",
     "name": "correctDraftCashOperation",
     "signature": "export async function correctDraftCashOperation( userId: string, statementId: string, operationId: string, raw: unknown )",
-    "startLine": 430
+    "startLine": 1367
+  },
+  {
+    "endLine": 1388,
+    "file": "src/lib/draft-cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "correctDraftManualTrade",
+    "signature": "export async function correctDraftManualTrade( userId: string, statementId: string, operationId: string, raw: unknown )",
+    "startLine": 1381
+  },
+  {
+    "endLine": 14,
+    "file": "src/lib/draft-trade-command.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "DraftTradeRequest",
+    "signature": "export type DraftTradeRequest =",
+    "startLine": 5
+  },
+  {
+    "endLine": 103,
+    "file": "src/lib/draft-trade-command.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "prepareDraftTradeRequest",
+    "signature": "export function prepareDraftTradeRequest(raw: unknown, now = new Date())",
+    "startLine": 51
+  },
+  {
+    "endLine": 129,
+    "file": "src/lib/draft-trade-command.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "prepareDraftTradeCash",
+    "signature": "export function prepareDraftTradeCash( request: DraftTradeRequest, tradeId: string, now = new Date() ): PreparedCashCommand",
+    "startLine": 105
+  },
+  {
+    "endLine": 135,
+    "file": "src/lib/draft-trade-command.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "ProposedParcelTrade",
+    "signature": "export interface ProposedParcelTrade",
+    "startLine": 131
+  },
+  {
+    "endLine": 143,
+    "file": "src/lib/draft-trade-command.ts",
+    "jsdoc": "",
+    "kind": "InterfaceDeclaration",
+    "name": "DraftOpeningParcel",
+    "signature": "export interface DraftOpeningParcel",
+    "startLine": 137
+  },
+  {
+    "endLine": 166,
+    "file": "src/lib/draft-trade-command.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "requireSameDraftTradeIdentity",
+    "signature": "export function requireSameDraftTradeIdentity( original: DraftTradeRequest, next: DraftTradeRequest )",
+    "startLine": 145
+  },
+  {
+    "endLine": 234,
+    "file": "src/lib/draft-trade-command.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "replayDraftTradeParcels",
+    "signature": "export function replayDraftTradeParcels( trades: readonly ProposedParcelTrade[], openingParcels: readonly DraftOpeningParcel[] = [] )",
+    "startLine": 168
   },
   {
     "endLine": 205,

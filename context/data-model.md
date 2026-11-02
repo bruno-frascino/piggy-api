@@ -14,11 +14,15 @@ erDiagram
     AccountOpeningStatement ||--o{ OpeningCashBalance : "statement"
     AccountOpeningStatement ||--o{ OpeningParcelBalance : "statement"
     AccountOpeningStatement ||--o{ DraftCashOperation : "statement"
+    AccountOpeningStatement ||--o{ DraftCashEvidence : "statement"
+    DraftCashEvidence ||--o{ DraftCashEvidenceBalance : "evidence"
+    DraftCashEvidence ||--o{ DraftCashEvidenceDecision : "evidence"
     DraftCashOperation ||--o{ DraftCashPosting : "operation"
     DraftCashOperation ||--o{ DraftCashRevision : "operation"
     DraftCashRevision ||--o{ DraftCashRevision : "previous"
     DraftCashRevision ||--o{ DraftCashRevision : "next"
     DraftCashRevision ||--o{ DraftCashRevisionPosting : "revision"
+    DraftCashOperation ||--o{ DraftManualTrade : "operation"
     DraftCashOperation ||--o{ DraftOperationTradeLink : "operation"
     Exchange ||--o{ Asset : "exchange"
     Asset ||--o{ PriceHistory : "asset"
@@ -143,6 +147,7 @@ Constraints: `@@unique([userId, name])`
 | cashBalances | `OpeningCashBalance[]` | — |
 | parcels | `OpeningParcelBalance[]` | — |
 | cashOperations | `DraftCashOperation[]` | — |
+| cashEvidence | `DraftCashEvidence[]` | — |
 
 Constraints: `@@unique([accountId, version])`, `@@unique([accountId, sourceFingerprint])`
 
@@ -193,8 +198,54 @@ Constraints: `@@unique([statementId, positionId])`
 | postings | `DraftCashPosting[]` | — |
 | tradeLinks | `DraftOperationTradeLink[]` | — |
 | revisions | `DraftCashRevision[]` | — |
+| proposedTrade | `DraftManualTrade?` | — |
 
 Constraints: `@@unique([statementId, id])`, `@@unique([statementId, idempotencyKey])`, `@@unique([statementId, sourceOrigin, sourceReference])`, `@@unique([statementId, effectiveDate, sequence])`
+
+### `DraftCashEvidence` (table: `draft_cash_evidence`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| statementId | `String` | — |
+| idempotencyKey | `String` | — |
+| payloadHash | `String` | — |
+| asOfDate | `DateTime` | @db.Date |
+| source | `String` | — |
+| reference | `String` | — |
+| attested | `Boolean` | — |
+| recordedAt | `DateTime` | @default(now()) |
+| statement | `AccountOpeningStatement` | @relation(fields: [statementId], references: [id], onDelete: Cascade) |
+| balances | `DraftCashEvidenceBalance[]` | — |
+| decisions | `DraftCashEvidenceDecision[]` | — |
+
+Constraints: `@@unique([statementId, idempotencyKey])`, `@@unique([statementId, asOfDate, idempotencyKey])`, `@@index([statementId, asOfDate, recordedAt])`
+
+### `DraftCashEvidenceBalance` (table: `draft_cash_evidence_balances`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| evidenceId | `String` | — |
+| currency | `String` | — |
+| amount | `Decimal` | @db.Decimal(38, 12) |
+| evidence | `DraftCashEvidence` | @relation(fields: [evidenceId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@unique([evidenceId, currency])`
+
+### `DraftCashEvidenceDecision` (table: `draft_cash_evidence_decisions`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| evidenceId | `String` | — |
+| currency | `String` | — |
+| reason | `String` | — |
+| note | `String` | — |
+| recordedAt | `DateTime` | @default(now()) |
+| evidence | `DraftCashEvidence` | @relation(fields: [evidenceId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@unique([evidenceId, currency])`
 
 ### `DraftCashPosting` (table: `draft_cash_postings`)
 
@@ -245,6 +296,25 @@ Constraints: `@@unique([operationId, id])`, `@@unique([operationId, revisionNumb
 | revision | `DraftCashRevision` | @relation(fields: [revisionId], references: [id], onDelete: Cascade) |
 
 Constraints: `@@unique([revisionId, legIndex])`
+
+### `DraftManualTrade` (table: `draft_manual_trades`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id |
+| operationId | `String` | @unique |
+| parcelKey | `String` | — |
+| assetId | `String` | — |
+| symbol | `String` | — |
+| currency | `String` | — |
+| quantity | `Decimal` | @db.Decimal(38, 12) |
+| price | `Decimal` | @db.Decimal(38, 12) |
+| fees | `Decimal` | @db.Decimal(38, 12) |
+| requestHash | `String` | — |
+| request | `Json` | — |
+| operation | `DraftCashOperation` | @relation(fields: [operationId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@index([parcelKey])`
 
 ### `DraftOperationTradeLink` (table: `draft_operation_trade_links`)
 
@@ -563,3 +633,5 @@ Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, s
 - `20261031124126_opening_statement_drafts`
 - `20261031132235_draft_cash_operations`
 - `20261101082040_draft_cash_revisions`
+- `20261101085022_draft_manual_trades`
+- `20261101201744_draft_cash_statement_evidence`

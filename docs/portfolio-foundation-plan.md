@@ -2,8 +2,13 @@
 
 Status: increment 1 specification delivered; increment 2 has opening previews, persistent
 inactive drafts, the cash-command/replay core, locked draft operation/posting persistence
-and immutable inactive capital corrections.
-Live cash posting, opening confirmation and activation are not implemented.
+and immutable inactive capital corrections. It now also has proposed manual BUY/SELL trades,
+opening-parcel sales, read-only reconciliation, user-attested statement cash evidence,
+exact variance review, and separately dated manual deposit/withdrawal staging.
+An isolated proposed BUY/SELL workflow and its corrections now atomically store draft
+parcels and cash; they do not change real holdings.
+Statement evidence and cash operations remain inactive; live cash posting, opening confirmation
+and activation are not implemented.
 Date: 31 October 2026.
 Scope: piggy-api and sibling piggy-fe.
 
@@ -382,16 +387,99 @@ The existing draft identities are extended, not duplicated into an independently
 trade ledger. These records remain inactive and opening-revision-scoped; live identity
 selection/cutover still needs implementation.
 
-The pure reversal/replacement contract also handles trade cash and fees, but persisted trade
-corrections explicitly remain disabled until source trades and postings can change atomically.
+The pure reversal/replacement contract also handles trade cash and fees, but corrections to
+real trades remain disabled until source trades and postings can change atomically.
 There is no correction/deposit UI or endpoint in this slice. Replacement cannot rebind the
 account, source, operation kind or transaction allocations.
 
-Next connect atomic manual trade/posting corrections and integrate verified
-execution-currency import adapters. Extend the preview with actual funding
-records and duplicate reconciliation before shipping persisted confirmation and atomic
-cash-backed manual/imported trade workflows. Do not enable confirmed accounts until every
-financial edit/delete/import path maintains the ledger and concurrency tests pass.
+The isolated trade slice now atomically records a proposed BUY, its cash legs and a durable
+draft execution ID. Each new proposed BUY creates a separate parcel. Partial/full proposed
+SELLs select that parcel explicitly; dated decimal inventory replay refuses earlier sales,
+overselling and currency mismatches. Dated cash replay includes fees and external funding,
+so simultaneous buys cannot overspend, simultaneous sells cannot reuse units, and capital
+corrections cannot remove money already consumed by a proposal. Identical retries reuse the
+same trade/parcel IDs; changed request content conflicts. Failures roll back the proposed
+trade, cash operation, links and posting children together.
+
+These are intentionally isolated proposals, not a second live trade ledger. Existing
+`Position`/`Transaction`, opening revisions, current portfolio views and tax reports stay
+untouched. Proposed sales can now select new draft BUY parcels or confirmed opening parcels.
+Draft execution IDs in
+cash links are snapshot references, not live transaction IDs. Ownership/source rechecks,
+active-real-account requirements, precision/replay limits and user/account locks remain in force.
+Original date/sequence slots remain reserved even after reversal/correction; new operations
+cannot reuse them. The proposed-trade writer is internal only, with no HTTP/UI or activation.
+
+Proposed-trade corrections now append a combined immutable trade/cash revision and exact
+reversal/replacement cash legs. Their retry hashes include quantity and price independently,
+even when a different quantity/price pair has the same consideration. Corrections/reversals
+rebuild both the dated parcel graph and cash timeline before committing: a BUY cannot be reduced
+below disposed units or reversed while active sells remain, and SELL proceeds cannot be removed
+if later spending depends on them. Reversing a SELL restores its units; an unused BUY can then
+be reversed. Reversals remain terminal; original identities and audit rows are retained.
+Replacement cannot change the account, asset, selected parcel, operation kind or currency.
+Earlier revisions and original requests can be retried without duplicate effects and return
+current draft projections. Standalone cash corrections cannot mutate a proposed trade.
+The implementation reuses the existing revision JSON and postings; no additional migration
+or live holding changes are required. This remains an internal inactive workflow with no UI.
+
+Opening-parcel proposals seed exact units directly from the immutable reviewed balance;
+they never synthesize an acquisition or repost boundary cash. Keys are `opening:<opening-row-id>`,
+not live position IDs, so a different statement/revision cannot silently reuse them.
+The seed includes zero-unit parcels (which cannot be sold) and keeps each parcel separate.
+It is the boundary quantity, not today's live remaining quantity: existing post-boundary trades
+are not automatically added to an isolated scenario. Only explicit staged proposals affect it.
+New opening sales verify the owned long source parcel and unchanged preview fingerprint;
+stored rows must match the reviewed JSON and newly verified source inventory. Retries use
+stored identities and projections, even after source changes; new writes then require a fresh
+opening revision. Opening parcel projections expose their `positionId`/symbol and a null
+`assetId`, since the old opening schema did not snapshot asset IDs. Each new SELL independently
+records its verified asset identity without requiring live lookups for historical retries.
+
+The same atomic correction/reversal path now handles opening sales, including exact unit
+restoration, downstream purchase/withdrawal funding checks and competing allocations.
+Recorded live-trade cash cannot coexist with opening-sale proposals in one draft, preventing
+double-counting a legacy disposal; this guard retains reserved original identities after reversal.
+Fixture tests preserve existing live BUY/SELL rows and opening balances through proposals,
+corrections, rollback and concurrent unit allocation. No schema or HTTP/UI changes are required.
+
+An internal read-only `reconcileDraftOpening` report now brings the existing checks together
+under the owned account/user barrier. It validates draft audit history, replays effective
+cash without requiring a positive funding result, and compares opening units with fresh live
+boundary/current units. `openingDifference` compares saved versus freshly reconstructed
+boundary units; `scenarioDifference` compares proposed versus expected live remaining units.
+Neither difference silently adjusts holdings. New draft parcels are listed separately, and
+missing/new live references are explicit nulls rather than invented zero balances.
+
+The report distinguishes changed source data from the passing of time by rechecking the
+saved observation date. It includes current preview blocking issues and lists observed
+post-boundary transactions as `LINKED`, `UNLINKED` or `REVERSED`. Linkage is identity coverage,
+not verification of the current execution's economic contents; source changes still require
+review. Missing or re-dated linked executions are retained as excluded-source review items.
+Active opening-sale proposals on a live parcel are identified as potential overlaps with
+recorded post-boundary transactions, never automatically equated with or allocated to them.
+Reports reject oversized reads or more than 100000 overlap references instead of returning
+partial reconciliation.
+
+Cash evidence is a strict, user-attested statement snapshot with date, currency balances,
+source and reference. Preview compares every tracked currency against exact dated replay
+without writes. Persisted evidence and per-currency reason/note decisions are immutable;
+decisions describe a reviewed variance but never adjust cash or clear it. Reconciliation
+recalculates each snapshot against currently effective dated operations and retains the
+original attestation and decision history.
+
+The review UI exposes cash funding gaps, source drift, parcel differences, trade linkage,
+possible overlaps and statement-date variances. It permits only separately dated, explicitly
+sourced manual deposits/withdrawals through the locked inactive writer; exact replay and
+funding checks still apply. This is not a balancing-adjustment control and does not change
+live cash or holdings. Cash remains `UNVERIFIED`, and the report always returns
+`accountingActive: false` and `activationReady: false`, even when replay exactly matches
+user-attested evidence.
+
+Next integrate verified execution-currency import adapters and duplicate reconciliation,
+then address atomic live trade/posting corrections and the remaining supported financial
+paths. Do not enable confirmed accounts until every financial edit/delete/import path
+maintains the ledger and concurrency tests pass.
 
 ## Existing implementation references
 

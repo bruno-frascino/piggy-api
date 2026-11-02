@@ -221,10 +221,11 @@
       ],
       "dependents": [
         "src/controllers/accounts.ts",
+        "src/lib/draft-cash-ledger.ts",
         "src/lib/opening-statements.ts",
         "src/lib/cash-revisions.integration.test.ts",
-        "src/lib/draft-cash-ledger.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/draft-manual-trades.integration.test.ts",
         "src/lib/opening-statements.integration.test.ts",
         "src/lib/position-mutations.integration.test.ts"
       ],
@@ -254,10 +255,11 @@
       ],
       "dependents": [
         "src/lib/accounting-preview-service.ts",
-        "src/lib/opening-statements.ts",
-        "src/lib/accounting-preview.test.ts",
+        "src/lib/draft-cash-ledger.ts",
         "src/lib/cash-ledger.ts",
-        "src/lib/draft-cash-ledger.ts"
+        "src/lib/draft-cash-evidence.ts",
+        "src/lib/opening-statements.ts",
+        "src/lib/accounting-preview.test.ts"
       ],
       "orphan": false,
       "source": "src/lib/accounting-preview.ts",
@@ -267,9 +269,11 @@
       "dependencies": [],
       "dependents": [
         "src/lib/accounting-preview.ts",
-        "src/lib/cash-ledger.ts",
         "src/lib/draft-cash-ledger.ts",
-        "src/lib/cash-revisions.ts"
+        "src/lib/cash-ledger.ts",
+        "src/lib/cash-revisions.ts",
+        "src/lib/draft-trade-command.ts",
+        "src/lib/draft-cash-evidence.ts"
       ],
       "orphan": false,
       "source": "src/lib/accounting-values.ts",
@@ -291,6 +295,7 @@
         "src/lib/position-derived-values.ts",
         "src/lib/position-service.ts",
         "src/controllers/imports.ts",
+        "src/lib/draft-cash-ledger.ts",
         "src/lib/opening-statements.ts",
         "src/controllers/portfolio.ts",
         "src/lib/portfolio-snapshot.ts",
@@ -305,8 +310,8 @@
         "src/controllers/trading-account-lifecycle.integration.test.ts",
         "src/index.ts",
         "src/lib/cash-revisions.integration.test.ts",
-        "src/lib/draft-cash-ledger.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/draft-manual-trades.integration.test.ts",
         "src/lib/imports/service.integration.test.ts",
         "src/lib/opening-statements.integration.test.ts",
         "src/lib/position-mutations.integration.test.ts",
@@ -387,11 +392,11 @@
         "src/lib/trading-account-mutations.ts",
         "src/lib/imports/service.ts",
         "src/lib/position-derived-values.ts",
+        "src/lib/draft-cash-ledger.ts",
         "src/lib/portfolio-snapshot.ts",
         "src/lib/position-mutations.ts",
         "src/controllers/tax-reports.ts",
         "src/lib/account-lock.test.ts",
-        "src/lib/draft-cash-ledger.ts",
         "src/lib/user-lifecycle.integration.test.ts",
         "src/lib/user-lock.test.ts"
       ],
@@ -1948,6 +1953,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/draft-cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../lib/opening-statements.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/opening-statements.ts",
@@ -1994,6 +2016,399 @@
       ],
       "orphan": false,
       "source": "src/controllers/opening-statements.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-revisions.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-revisions.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-cash-evidence.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-cash-evidence.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-trade-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-trade-command.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/opening-statements.ts",
+        "src/lib/cash-revisions.integration.test.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/draft-cash-ledger.test.ts",
+        "src/lib/draft-manual-trades.integration.test.ts",
+        "src/lib/position-mutations.integration.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/draft-cash-ledger.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/cash-revisions.ts",
+        "src/lib/draft-trade-command.ts",
+        "src/lib/draft-cash-evidence.ts",
+        "src/lib/cash-ledger.test.ts",
+        "src/lib/cash-revisions.test.ts",
+        "src/lib/draft-cash-evidence.test.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/draft-cash-ledger.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/cash-ledger.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-trade-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-trade-command.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/cash-revisions.test.ts",
+        "src/lib/draft-cash-ledger.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/cash-revisions.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-ledger.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/cash-revisions.ts",
+        "src/lib/draft-cash-ledger.test.ts",
+        "src/lib/draft-trade-command.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/draft-trade-command.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-ledger.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/draft-cash-evidence.test.ts",
+        "src/lib/draft-cash-ledger.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/draft-cash-evidence.ts",
       "valid": true
     },
     {
@@ -2071,6 +2486,7 @@
         "src/controllers/opening-statements.ts",
         "src/lib/cash-revisions.integration.test.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/draft-manual-trades.integration.test.ts",
         "src/lib/opening-statements.integration.test.ts",
         "src/lib/opening-statements.test.ts",
         "src/lib/position-mutations.integration.test.ts"
@@ -3709,55 +4125,6 @@
           "couldNotResolve": false,
           "dependencyTypes": [
             "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./accounting-preview.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/accounting-preview.ts",
-          "valid": true
-        },
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./accounting-values.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/accounting-values.ts",
-          "valid": true
-        }
-      ],
-      "dependents": [
-        "src/lib/cash-ledger.test.ts",
-        "src/lib/draft-cash-ledger.ts",
-        "src/lib/cash-revisions.ts",
-        "src/lib/cash-revisions.test.ts",
-        "src/lib/draft-cash-ledger.integration.test.ts",
-        "src/lib/draft-cash-ledger.test.ts"
-      ],
-      "orphan": false,
-      "source": "src/lib/cash-ledger.ts",
-      "valid": true
-    },
-    {
-      "dependencies": [
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
             "dynamic-import"
           ],
           "dynamic": true,
@@ -3824,184 +4191,6 @@
       "dependents": [],
       "orphan": false,
       "source": "src/lib/cash-revisions.integration.test.ts",
-      "valid": true
-    },
-    {
-      "dependencies": [
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./account-lock.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/account-lock.ts",
-          "valid": true
-        },
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./accounting-preview-service.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/accounting-preview-service.ts",
-          "valid": true
-        },
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./accounting-preview.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/accounting-preview.ts",
-          "valid": true
-        },
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./accounting-values.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/accounting-values.ts",
-          "valid": true
-        },
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./cash-ledger.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/cash-ledger.ts",
-          "valid": true
-        },
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./cash-revisions.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/cash-revisions.ts",
-          "valid": true
-        },
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./prisma.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/prisma.ts",
-          "valid": true
-        }
-      ],
-      "dependents": [
-        "src/lib/cash-revisions.integration.test.ts",
-        "src/lib/draft-cash-ledger.integration.test.ts",
-        "src/lib/draft-cash-ledger.test.ts",
-        "src/lib/position-mutations.integration.test.ts"
-      ],
-      "orphan": false,
-      "source": "src/lib/draft-cash-ledger.ts",
-      "valid": true
-    },
-    {
-      "dependencies": [
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./accounting-values.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/accounting-values.ts",
-          "valid": true
-        },
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./cash-ledger.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/cash-ledger.ts",
-          "valid": true
-        }
-      ],
-      "dependents": [
-        "src/lib/draft-cash-ledger.ts",
-        "src/lib/cash-revisions.test.ts",
-        "src/lib/draft-cash-ledger.test.ts"
-      ],
-      "orphan": false,
-      "source": "src/lib/cash-revisions.ts",
       "valid": true
     },
     {
@@ -4204,6 +4393,48 @@
           "couldNotResolve": false,
           "dependencyTypes": [
             "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-cash-evidence.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-cash-evidence.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/draft-cash-evidence.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
             "dynamic-import"
           ],
           "dynamic": true,
@@ -4337,15 +4568,150 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./draft-cash-evidence.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-cash-evidence.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./draft-cash-ledger.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/draft-cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-trade-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-trade-command.ts",
           "valid": true
         }
       ],
       "dependents": [],
       "orphan": false,
       "source": "src/lib/draft-cash-ledger.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./opening-statements.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/opening-statements.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/draft-manual-trades.integration.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-trade-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-trade-command.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/draft-trade-command.test.ts",
       "valid": true
     },
     {
@@ -5548,8 +5914,8 @@
         }
       ]
     },
-    "totalCruised": 115,
-    "totalDependenciesCruised": 250,
+    "totalCruised": 120,
+    "totalDependenciesCruised": 268,
     "violations": [],
     "warn": 0
   }
