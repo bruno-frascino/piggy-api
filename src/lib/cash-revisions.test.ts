@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { prepareCashCommand } from './cash-ledger.js'
 import {
+  prepareCapitalCashRevision,
+  prepareImportedCashRevision,
   prepareCashRevision,
   prepareRevisionLegs,
   prepareDraftTradeRevision,
@@ -32,6 +34,123 @@ const request = {
 }
 
 describe('cash revision contract', () => {
+  it('only resequences imported execution cash, retaining all persisted financial and source fields', () => {
+    const execution = prepareCashCommand(
+      {
+        accountId: 'a1',
+        kind: 'BUY',
+        idempotencyKey: 'import-event:e1',
+        source: { origin: 'IMPORT', reference: 'KRAKEN:order:1' },
+        effectiveDate: '2026-10-02',
+        sequence: 1,
+        consideration: { currency: 'AUD', amount: '60.12345678' },
+        fees: [{ currency: 'USD', amount: '1' }],
+        transactionIds: ['t1'],
+      },
+      now
+    ).command
+    const input = {
+      idempotencyKey: 'fix-sequence',
+      expectedRevisionId: 'op1',
+      reason: 'Broker order confirmed',
+      sequence: 3,
+    }
+    const prepared = prepareImportedCashRevision(input, execution, now)
+    expect(prepared.request.replacement).toEqual({
+      ...execution,
+      sequence: 3,
+      idempotencyKey: input.idempotencyKey,
+    })
+    expect(
+      prepareImportedCashRevision({ ...input, sequence: 4 }, execution, now)
+        .payloadHash
+    ).not.toBe(prepared.payloadHash)
+    for (const invalid of [
+      null,
+      [],
+      { ...input, sequence: 0 },
+      { ...input, sequence: Number.MAX_SAFE_INTEGER + 1 },
+      { ...input, reason: ' ' },
+      { ...input, replacement: null },
+      { ...input, amount: '20' },
+      { ...input, effectiveDate: '2026-10-03' },
+      { ...input, transactionIds: ['other'] },
+    ])
+      expect(() =>
+        prepareImportedCashRevision(invalid, execution, now)
+      ).toThrow()
+    expect(() => prepareImportedCashRevision(input, original, now)).toThrow(
+      'Only imported'
+    )
+    expect(() =>
+      prepareImportedCashRevision(
+        input,
+        { ...execution, source: { origin: 'MANUAL', reference: 'manual' } },
+        now
+      )
+    ).toThrow('Only imported')
+  })
+  it('derives capital identity and currency from the stored operation, never from correction input', () => {
+    const raw = {
+      idempotencyKey: 'correction',
+      expectedRevisionId: 'op1',
+      reason: 'Correct bank amount',
+      replacement: {
+        effectiveDate: '2026-10-03',
+        sequence: 2,
+        amount: '60.000',
+      },
+    }
+    expect(
+      prepareCapitalCashRevision(raw, original, now).request.replacement
+    ).toEqual({
+      ...original,
+      idempotencyKey: 'correction',
+      effectiveDate: '2026-10-03',
+      sequence: 2,
+      cash: { currency: 'AUD', amount: '60' },
+    })
+    expect(
+      prepareCapitalCashRevision({ ...raw, replacement: null }, original, now)
+        .request.replacement
+    ).toBeNull()
+    for (const invalid of [
+      null,
+      { ...raw, source: { origin: 'IMPORT', reference: 'other' } },
+      { ...raw, replacement: undefined },
+      { ...raw, replacement: [] },
+      { ...raw, replacement: { ...raw.replacement, currency: 'USD' } },
+      { ...raw, replacement: { ...raw.replacement, amount: '-1' } },
+      { ...raw, replacement: { ...raw.replacement, sequence: 0 } },
+      { ...raw, reason: ' ' },
+    ]) {
+      expect(() => prepareCapitalCashRevision(invalid, original, now)).toThrow()
+    }
+    expect(() =>
+      prepareCapitalCashRevision(
+        raw,
+        { ...original, source: { origin: 'IMPORT', reference: 'event' } },
+        now
+      )
+    ).toThrow('Only manual')
+    const trade = prepareCashCommand(
+      {
+        accountId: 'a1',
+        kind: 'BUY',
+        idempotencyKey: 'trade',
+        source: { origin: 'MANUAL', reference: 'trade' },
+        effectiveDate: '2026-10-02',
+        sequence: 1,
+        consideration: { currency: 'AUD', amount: '10' },
+        fees: [],
+        transactionIds: ['t1'],
+      },
+      now
+    ).command
+    expect(() => prepareCapitalCashRevision(raw, trade, now)).toThrow(
+      'Only manual'
+    )
+  })
   it('binds quantity and price independently of equal trade consideration in revision hashes', () => {
     const trade = {
       accountId: 'a1',

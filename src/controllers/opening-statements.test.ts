@@ -3,15 +3,29 @@ import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { save, list, reconcile, evidence, evidencePreview, operation } =
-  vi.hoisted(() => ({
-    save: vi.fn(),
-    list: vi.fn(),
-    reconcile: vi.fn(),
-    evidence: vi.fn(),
-    evidencePreview: vi.fn(),
-    operation: vi.fn(),
-  }))
+const {
+  save,
+  list,
+  reconcile,
+  evidence,
+  evidencePreview,
+  operation,
+  importedOperation,
+  correction,
+  importedCorrection,
+  manualExecution,
+} = vi.hoisted(() => ({
+  save: vi.fn(),
+  list: vi.fn(),
+  reconcile: vi.fn(),
+  evidence: vi.fn(),
+  evidencePreview: vi.fn(),
+  operation: vi.fn(),
+  importedOperation: vi.fn(),
+  correction: vi.fn(),
+  importedCorrection: vi.fn(),
+  manualExecution: vi.fn(),
+}))
 vi.mock('../lib/opening-statements.js', () => ({
   saveOpeningStatement: save,
   listOpeningStatements: list,
@@ -21,6 +35,10 @@ vi.mock('../lib/draft-cash-ledger.js', () => ({
   recordDraftCashEvidence: evidence,
   previewDraftCashEvidence: evidencePreview,
   saveDraftReconciliationCashOperation: operation,
+  saveDraftImportedExecutionCash: importedOperation,
+  correctDraftReconciliationCashOperation: correction,
+  correctDraftImportedExecutionCash: importedCorrection,
+  saveDraftManualExecutionCash: manualExecution,
 }))
 vi.mock('../middleware/auth.js', () => ({
   authenticateToken: (req: Request, res: Response, next: NextFunction) => {
@@ -58,8 +76,178 @@ beforeEach(() => {
   evidence.mockResolvedValue({ created: true })
   evidencePreview.mockResolvedValue({ comparison: { matchesReplay: false } })
   operation.mockResolvedValue({ created: true })
+  importedOperation.mockResolvedValue({ created: true })
+  importedCorrection.mockResolvedValue({ created: true, revisionId: 'rev1' })
+  correction.mockResolvedValue({
+    operationId: 'op1',
+    revisionId: 'rev1',
+    state: 'DRAFT',
+    created: true,
+  })
 })
 describe('opening statement endpoints', () => {
+  it('stages manual transaction cash from its owned identity and sequence only', async () => {
+    manualExecution.mockResolvedValue({ state: 'DRAFT', created: true })
+    const response = await request(app())
+      .post(
+        '/api/accounts/a1/opening-statements/s1/transactions/t1/cash-operation'
+      )
+      .set('Authorization', '******')
+      .send({ sequence: 3 })
+    expect(response.status).toBe(200)
+    expect(response.headers['cache-control']).toBe('no-store')
+    expect(manualExecution).toHaveBeenCalledWith('u1', 'a1', 's1', 't1', 3)
+  })
+  it('authenticates manual execution staging and rejects caller-supplied financial fields', async () => {
+    const path =
+      '/api/accounts/a1/opening-statements/s1/transactions/t1/cash-operation'
+    expect((await request(app()).post(path).send({ sequence: 1 })).status).toBe(
+      401
+    )
+    for (const input of [
+      { sequence: 0 },
+      {},
+      { sequence: 1, amount: '1' },
+      { sequence: 1, currency: 'USD' },
+    ]) {
+      expect(
+        (
+          await request(app())
+            .post(path)
+            .set('Authorization', '******')
+            .send(input)
+        ).status
+      ).toBe(400)
+    }
+    expect(manualExecution).not.toHaveBeenCalled()
+  })
+  it('corrects imported sequence using only the scoped identity and audit fields', async () => {
+    const input = {
+      idempotencyKey: 'fix',
+      expectedRevisionId: 'op1',
+      reason: 'Broker sequence',
+      sequence: 3,
+    }
+    const response = await request(app())
+      .post(
+        '/api/accounts/a1/opening-statements/s1/imported-cash-operations/op1/corrections'
+      )
+      .set('Authorization', '******')
+      .send(input)
+    expect(response.status).toBe(200)
+    expect(response.headers['cache-control']).toBe('no-store')
+    expect(importedCorrection).toHaveBeenCalledWith(
+      'u1',
+      'a1',
+      's1',
+      'op1',
+      input
+    )
+  })
+  it('requires authentication and rejects financial overrides or reversal on imported corrections', async () => {
+    const path =
+      '/api/accounts/a1/opening-statements/s1/imported-cash-operations/op1/corrections'
+    const input = {
+      idempotencyKey: 'fix',
+      expectedRevisionId: 'op1',
+      reason: 'Broker sequence',
+      sequence: 3,
+    }
+    expect((await request(app()).post(path).send(input)).status).toBe(401)
+    for (const invalid of [
+      {},
+      { ...input, sequence: 0 },
+      { ...input, amount: '1' },
+      { ...input, replacement: null },
+      { ...input, effectiveDate: '2026-10-03' },
+    ])
+      expect(
+        (
+          await request(app())
+            .post(path)
+            .set('Authorization', '******')
+            .send(invalid)
+        ).status
+      ).toBe(400)
+    expect(importedCorrection).not.toHaveBeenCalled()
+  })
+  it('corrects and reverses owned draft capital operations with no-store responses', async () => {
+    for (const replacement of [
+      { effectiveDate: '2026-10-04', sequence: 2, amount: '75' },
+      null,
+    ]) {
+      const input = {
+        idempotencyKey: 'correction-1',
+        expectedRevisionId: 'op1',
+        reason: 'Correct bank entry',
+        replacement,
+      }
+      const response = await request(app())
+        .post(
+          '/api/accounts/a1/opening-statements/s1/cash-operations/op1/corrections'
+        )
+        .set('Authorization', '******')
+        .send(input)
+      expect(response.status).toBe(200)
+      expect(response.headers['cache-control']).toBe('no-store')
+      expect(correction).toHaveBeenLastCalledWith(
+        'u1',
+        'a1',
+        's1',
+        'op1',
+        input
+      )
+    }
+  })
+  it('requires authentication and a correction envelope before calling the writer', async () => {
+    const path =
+      '/api/accounts/a1/opening-statements/s1/cash-operations/op1/corrections'
+    expect((await request(app()).post(path).send({})).status).toBe(401)
+    for (const input of [
+      {},
+      {
+        idempotencyKey: 'k',
+        expectedRevisionId: 'op1',
+        reason: '',
+        replacement: null,
+      },
+      { idempotencyKey: 'k', expectedRevisionId: 'op1', reason: 'Fix' },
+    ]) {
+      expect(
+        (
+          await request(app())
+            .post(path)
+            .set('Authorization', '******')
+            .send(input)
+        ).status
+      ).toBe(400)
+    }
+    expect(correction).not.toHaveBeenCalled()
+  })
+  it('surfaces correction conflicts using the standard error shape', async () => {
+    correction.mockRejectedValue(
+      Object.assign(new Error('Revision changed'), {
+        status: 409,
+        name: 'Accounting Conflict',
+      })
+    )
+    const response = await request(app())
+      .post(
+        '/api/accounts/a1/opening-statements/s1/cash-operations/op1/corrections'
+      )
+      .set('Authorization', '******')
+      .send({
+        idempotencyKey: 'k',
+        expectedRevisionId: 'op1',
+        reason: 'Fix',
+        replacement: null,
+      })
+    expect(response.status).toBe(409)
+    expect(response.body).toMatchObject({
+      error: 'Accounting Conflict',
+      message: 'Revision changed',
+    })
+  })
   it('saves a reviewed draft for the authenticated account and disables caching', async () => {
     const response = await request(app())
       .post('/api/accounts/a1/opening-statements')
@@ -119,6 +307,44 @@ describe('opening statement endpoints', () => {
     ).toBe(401)
     expect(save).not.toHaveBeenCalled()
     expect(list).not.toHaveBeenCalled()
+  })
+  it('stages an imported execution using only its owned event and explicit sequence', async () => {
+    const response = await request(app())
+      .post(
+        '/api/accounts/a1/opening-statements/s1/import-events/event-1/cash-operation'
+      )
+      .set('Authorization', '******')
+      .send({ sequence: 3 })
+    expect(response.status).toBe(200)
+    expect(response.headers['cache-control']).toBe('no-store')
+    expect(importedOperation).toHaveBeenCalledWith(
+      'u1',
+      'a1',
+      's1',
+      'event-1',
+      3
+    )
+  })
+
+  it('validates imported execution sequence before invoking the writer', async () => {
+    const response = await request(app())
+      .post(
+        '/api/accounts/a1/opening-statements/s1/import-events/event-1/cash-operation'
+      )
+      .set('Authorization', '******')
+      .send({ sequence: 0 })
+    expect(response.status).toBe(400)
+    expect(importedOperation).not.toHaveBeenCalled()
+  })
+  it('rejects caller-supplied execution amounts on imported staging', async () => {
+    const response = await request(app())
+      .post(
+        '/api/accounts/a1/opening-statements/s1/import-events/event-1/cash-operation'
+      )
+      .set('Authorization', '******')
+      .send({ sequence: 3, amount: '100' })
+    expect(response.status).toBe(400)
+    expect(importedOperation).not.toHaveBeenCalled()
   })
   it('surfaces stale snapshots and non-owned account errors', async () => {
     save.mockRejectedValue(

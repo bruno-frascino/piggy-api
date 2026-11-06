@@ -1455,6 +1455,7 @@
         "src/controllers/positions.ts",
         "src/lib/position-mutations.ts",
         "src/controllers/watchlists.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/imports/service.integration.test.ts",
         "src/lib/position-mutations.integration.test.ts",
         "src/lib/position-service.test.ts",
@@ -4509,6 +4510,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./position-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./prisma.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
@@ -5915,7 +5933,7 @@
       ]
     },
     "totalCruised": 120,
-    "totalDependenciesCruised": 268,
+    "totalDependenciesCruised": 269,
     "violations": [],
     "warn": 0
   }

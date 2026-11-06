@@ -10,9 +10,13 @@ import {
   saveOpeningStatement,
 } from '../lib/opening-statements.js'
 import {
+  correctDraftReconciliationCashOperation,
+  correctDraftImportedExecutionCash,
   reconcileDraftOpening,
   recordDraftCashEvidence,
   saveDraftReconciliationCashOperation,
+  saveDraftImportedExecutionCash,
+  saveDraftManualExecutionCash,
   previewDraftCashEvidence,
 } from '../lib/draft-cash-ledger.js'
 
@@ -188,7 +192,7 @@ router.get(
  * /api/accounts/{id}/opening-statements/{statementId}/reconciliation:
  *   get:
  *     summary: Read-only reconciliation report for an inactive opening draft
- *     description: Compares reviewed opening inventory, current live source records, proposed draft cash/trades, recorded cash evidence and linked execution identities. Statement balances are user-attested, not independently verified. This endpoint never activates accounting or changes financial records.
+ *     description: Compares reviewed opening inventory, current live source records, proposed draft cash/trades, recorded cash evidence, linked execution identities and manual/Kraken cash-staging candidates. Statement balances are user-attested, not independently verified. This endpoint never activates accounting or changes financial records. Reconciliation is bounded to 10000 imported executions and 50000 transactions.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -202,11 +206,11 @@ router.get(
  *         required: true
  *         schema: { type: string }
  *     responses:
- *       200: { description: Read-only draft reconciliation, including cash evidence/variances and effective or reversed cash-operation source references. }
+ *       200: { description: 'Read-only draft reconciliation including cash evidence/variances, cash-operation currentRevisionId/capital cash/revisions (revisionId, reason, replacement boolean), effective or reversed sources, imported execution eligibility with duplicate transaction-link detection and cashManualExecutions (transactionId, positionId, kind, effectiveDate, currency, grossValue, fee, stageable, reason, operationId). Manual eligibility excludes broker-linked allocations, imported/short parcels, unsupported money, boundary/future dates, stale snapshots, unavailable accounts and incompatible opening-sale proposals.' }
  *       401: { description: Authentication required. }
  *       404: { description: Account or opening statement not found. }
  *       409: { description: Stored draft audit history is inconsistent. }
- *       422: { description: Reconciliation exceeds bounded processing limits. }
+ *       422: { description: Reconciliation exceeds bounded processing limits, including 10000 imported executions. }
  */
 router.get(
   '/:id/opening-statements/:statementId/reconciliation',
@@ -414,6 +418,306 @@ router.post(
       String(req.params.statementId),
       req.body,
       String(req.params.id)
+    )
+    res.set('Cache-Control', 'no-store')
+    res.json({ success: true, data: result })
+  })
+)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/opening-statements/{statementId}/import-events/{eventId}/cash-operation:
+ *   post:
+ *     summary: Stage cash from an applied Kraken execution in an inactive draft
+ *     description: Uses execution amounts and transaction links from the persisted applied import event; callers can supply only its stable sequence for the execution date. The event must belong to this account and match its recorded transaction links. Draft postings never affect live cash or holdings.
+ *     tags: [Accounts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: statementId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [sequence]
+ *             properties:
+ *               sequence: { type: integer, minimum: 1, description: Explicit stable order among operations on the same date; no ordering is inferred. }
+ *     responses:
+ *       200: { description: Imported execution cash staged in the inactive draft with replay. }
+ *       400: { description: Invalid sequence or unsupported execution currency. }
+ *       401: { description: Authentication required. }
+ *       404: { description: Account, statement or applied execution not found. }
+ *       409: { description: Duplicate source, inconsistent transaction link, or stale account state. }
+ *       422: { description: Insufficient dated cash or replay limit exceeded. }
+ */
+router.post(
+  '/:id/opening-statements/:statementId/import-events/:eventId/cash-operation',
+  [
+    param('id').isString().trim().isLength({ min: 1, max: 100 }),
+    param('statementId').isString().trim().isLength({ min: 1, max: 100 }),
+    param('eventId').isString().trim().isLength({ min: 1, max: 100 }),
+    body().isObject(),
+    body().custom((value: unknown) => {
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        Array.isArray(value) ||
+        Object.keys(value).some((key) => key !== 'sequence')
+      )
+        throw new Error('Only sequence is accepted for imported cash staging')
+      return true
+    }),
+    body('sequence').isInt({ min: 1, max: Number.MAX_SAFE_INTEGER }).toInt(),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await saveDraftImportedExecutionCash(
+      req.user!.userId,
+      String(req.params.id),
+      String(req.params.statementId),
+      String(req.params.eventId),
+      req.body.sequence
+    )
+    res.set('Cache-Control', 'no-store')
+    res.json({ success: true, data: result })
+  })
+)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/opening-statements/{statementId}/cash-operations/{operationId}/corrections:
+ *   post:
+ *     summary: Correct or reverse an inactive manual deposit or withdrawal
+ *     description: Appends immutable reversal/replacement history with a required audit reason. Currency, kind and source identity are retained from the original entry. Supply replacement null for a terminal reversal. The expected revision prevents lost updates; identical retries return the saved correction. Dated replay rejects downstream funding gaps. No live balances or holdings change.
+ *     tags: [Accounts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: statementId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: operationId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: false
+ *             required: [idempotencyKey, expectedRevisionId, reason, replacement]
+ *             properties:
+ *               idempotencyKey: { type: string, minLength: 1, maxLength: 200 }
+ *               expectedRevisionId: { type: string, minLength: 1, maxLength: 200, description: Current revision ID from reconciliation, or original operation ID if never corrected. }
+ *               reason: { type: string, minLength: 1, maxLength: 1000 }
+ *               replacement:
+ *                 type: object
+ *                 nullable: true
+ *                 additionalProperties: false
+ *                 required: [effectiveDate, sequence, amount]
+ *                 properties:
+ *                   effectiveDate: { type: string, format: date }
+ *                   sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+ *                   amount: { type: string, description: Positive exact decimal amount in the original currency. }
+ *     responses:
+ *       200: { description: Inactive correction with operationId, revisionId, state DRAFT, created, replay and proposed parcels. }
+ *       400: { description: Invalid correction fields. }
+ *       401: { description: Authentication required. }
+ *       404: { description: Account, opening statement or operation not found. }
+ *       409: { description: Stale revision/source, incompatible operation, or duplicate retry content. }
+ *       422: { description: Historical funding deficit or replay limit exceeded. }
+ */
+router.post(
+  '/:id/opening-statements/:statementId/cash-operations/:operationId/corrections',
+  [
+    param('id').isString().trim().isLength({ min: 1, max: 100 }),
+    param('statementId').isString().trim().isLength({ min: 1, max: 100 }),
+    param('operationId').isString().trim().isLength({ min: 1, max: 100 }),
+    body().isObject(),
+    body('idempotencyKey').isString().isLength({ min: 1, max: 200 }),
+    body('expectedRevisionId').isString().isLength({ min: 1, max: 200 }),
+    body('reason').isString().isLength({ min: 1, max: 1000 }),
+    body('replacement').custom((value: unknown) => {
+      if (
+        value !== null &&
+        (!value || typeof value !== 'object' || Array.isArray(value))
+      )
+        throw new Error('Supply replacement fields or null for reversal')
+      return true
+    }),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await correctDraftReconciliationCashOperation(
+      req.user!.userId,
+      String(req.params.id),
+      String(req.params.statementId),
+      String(req.params.operationId),
+      req.body
+    )
+    res.set('Cache-Control', 'no-store')
+    res.json({ success: true, data: result })
+  })
+)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/opening-statements/{statementId}/imported-cash-operations/{operationId}/corrections:
+ *   post:
+ *     summary: Correct the stable intraday sequence of staged Kraken execution cash
+ *     description: Appends an audited sequence-only revision after revalidating the persisted applied execution and all transaction links under the account lock. Date, amounts, fees, source and transaction identities cannot change. Cash-only reversals are not supported. Expected revision and idempotency protect concurrent edits and retries. Full dated replay must remain funded. No live holdings or balances change.
+ *     tags: [Accounts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *       - { in: path, name: statementId, required: true, schema: { type: string } }
+ *       - { in: path, name: operationId, required: true, schema: { type: string } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: false
+ *             required: [idempotencyKey, expectedRevisionId, reason, sequence]
+ *             properties:
+ *               idempotencyKey: { type: string, minLength: 1, maxLength: 200 }
+ *               expectedRevisionId: { type: string, minLength: 1, maxLength: 200 }
+ *               reason: { type: string, minLength: 1, maxLength: 1000 }
+ *               sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+ *     responses:
+ *       200: { description: Inactive correction with operationId, revisionId, state DRAFT, created, replay and proposed parcels. }
+ *       400: { description: Invalid sequence or unsupported correction fields. }
+ *       401: { description: Authentication required. }
+ *       404: { description: Owned account, statement or operation not found. }
+ *       409: { description: Changed execution/source/revision, occupied sequence, incompatible operation or retry content. }
+ *       422: { description: Dated funding deficit or replay limit exceeded. }
+ */
+router.post(
+  '/:id/opening-statements/:statementId/imported-cash-operations/:operationId/corrections',
+  [
+    param('id').isString().trim().isLength({ min: 1, max: 100 }),
+    param('statementId').isString().trim().isLength({ min: 1, max: 100 }),
+    param('operationId').isString().trim().isLength({ min: 1, max: 100 }),
+    body().isObject(),
+    body().custom((value: unknown) => {
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        Array.isArray(value) ||
+        Object.keys(value).some(
+          (key) =>
+            ![
+              'idempotencyKey',
+              'expectedRevisionId',
+              'reason',
+              'sequence',
+            ].includes(key)
+        )
+      )
+        throw new Error('Only sequence and audit fields are accepted')
+      return true
+    }),
+    body('idempotencyKey').isString().isLength({ min: 1, max: 200 }),
+    body('expectedRevisionId').isString().isLength({ min: 1, max: 200 }),
+    body('reason').isString().isLength({ min: 1, max: 1000 }),
+    body('sequence').isInt({ min: 1, max: Number.MAX_SAFE_INTEGER }).toInt(),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await correctDraftImportedExecutionCash(
+      req.user!.userId,
+      String(req.params.id),
+      String(req.params.statementId),
+      String(req.params.operationId),
+      req.body
+    )
+    res.set('Cache-Control', 'no-store')
+    res.json({ success: true, data: result })
+  })
+)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/opening-statements/{statementId}/transactions/{transactionId}/cash-operation:
+ *   post:
+ *     summary: Stage cash from a recorded manual BUY or SELL in an inactive draft
+ *     description: Accepts only an explicit intraday sequence. Date, currency, gross amount and fees come from the owned manual long parcel transaction and are revalidated under the account lock. Broker-linked allocations and imported parcels require their source-aware workflow. No live trades, balances or tax records change.
+ *     tags: [Accounts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *       - { in: path, name: statementId, required: true, schema: { type: string } }
+ *       - { in: path, name: transactionId, required: true, schema: { type: string } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: false
+ *             required: [sequence]
+ *             properties:
+ *               sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+ *     responses:
+ *       200: { description: Draft operationId, state DRAFT, created flag and dated cash replay. Identical retries reuse the stored identity. }
+ *       400: { description: Invalid sequence or unsupported execution values. }
+ *       401: { description: Authentication required. }
+ *       404: { description: Owned manual transaction or opening statement not found. }
+ *       409: { description: Changed source, duplicate transaction/source, occupied order or incompatible scenario. }
+ *       422: { description: Dated funding deficit, boundary violation or replay limit exceeded. }
+ */
+router.post(
+  '/:id/opening-statements/:statementId/transactions/:transactionId/cash-operation',
+  [
+    param('id').isString().trim().isLength({ min: 1, max: 100 }),
+    param('statementId').isString().trim().isLength({ min: 1, max: 100 }),
+    param('transactionId').isString().trim().isLength({ min: 1, max: 100 }),
+    body().isObject(),
+    body().custom((value: unknown) => {
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        Array.isArray(value) ||
+        Object.keys(value).some((key) => key !== 'sequence')
+      )
+        throw new Error(
+          'Only sequence is accepted for manual execution cash staging'
+        )
+      return true
+    }),
+    body('sequence').isInt({ min: 1, max: Number.MAX_SAFE_INTEGER }).toInt(),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await saveDraftManualExecutionCash(
+      req.user!.userId,
+      String(req.params.id),
+      String(req.params.statementId),
+      String(req.params.transactionId),
+      req.body.sequence
     )
     res.set('Cache-Control', 'no-store')
     res.json({ success: true, data: result })

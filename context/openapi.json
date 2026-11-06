@@ -1137,9 +1137,326 @@
         ]
       }
     },
+    "/api/accounts/{id}/opening-statements/{statementId}/cash-operations/{operationId}/corrections": {
+      "post": {
+        "description": "Appends immutable reversal/replacement history with a required audit reason. Currency, kind and source identity are retained from the original entry. Supply replacement null for a terminal reversal. The expected revision prevents lost updates; identical retries return the saved correction. Dated replay rejects downstream funding gaps. No live balances or holdings change.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "statementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedRevisionId": {
+                    "description": "Current revision ID from reconciliation",
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "or original operation ID if never corrected.": null,
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "replacement": {
+                    "additionalProperties": false,
+                    "nullable": true,
+                    "properties": {
+                      "amount": {
+                        "description": "Positive exact decimal amount in the original currency.",
+                        "type": "string"
+                      },
+                      "effectiveDate": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "sequence": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "effectiveDate",
+                      "sequence",
+                      "amount"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "expectedRevisionId",
+                  "reason",
+                  "replacement"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "created": null,
+            "description": "Inactive correction with operationId",
+            "replay and proposed parcels.": null,
+            "revisionId": null,
+            "state DRAFT": null
+          },
+          "400": {
+            "description": "Invalid correction fields."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Account",
+            "opening statement or operation not found.": null
+          },
+          "409": {
+            "description": "Stale revision/source",
+            "incompatible operation": null,
+            "or duplicate retry content.": null
+          },
+          "422": {
+            "description": "Historical funding deficit or replay limit exceeded."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Correct or reverse an inactive manual deposit or withdrawal",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/opening-statements/{statementId}/import-events/{eventId}/cash-operation": {
+      "post": {
+        "description": "Uses execution amounts and transaction links from the persisted applied import event; callers can supply only its stable sequence for the execution date. The event must belong to this account and match its recorded transaction links. Draft postings never affect live cash or holdings.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "statementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "sequence": {
+                    "description": "Explicit stable order among operations on the same date; no ordering is inferred.",
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "sequence"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Imported execution cash staged in the inactive draft with replay."
+          },
+          "400": {
+            "description": "Invalid sequence or unsupported execution currency."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Account",
+            "statement or applied execution not found.": null
+          },
+          "409": {
+            "description": "Duplicate source",
+            "inconsistent transaction link": null,
+            "or stale account state.": null
+          },
+          "422": {
+            "description": "Insufficient dated cash or replay limit exceeded."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Stage cash from an applied Kraken execution in an inactive draft",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/opening-statements/{statementId}/imported-cash-operations/{operationId}/corrections": {
+      "post": {
+        "description": "Appends an audited sequence-only revision after revalidating the persisted applied execution and all transaction links under the account lock. Date, amounts, fees, source and transaction identities cannot change. Cash-only reversals are not supported. Expected revision and idempotency protect concurrent edits and retries. Full dated replay must remain funded. No live holdings or balances change.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "statementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedRevisionId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "expectedRevisionId",
+                  "reason",
+                  "sequence"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "created": null,
+            "description": "Inactive correction with operationId",
+            "replay and proposed parcels.": null,
+            "revisionId": null,
+            "state DRAFT": null
+          },
+          "400": {
+            "description": "Invalid sequence or unsupported correction fields."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Owned account",
+            "statement or operation not found.": null
+          },
+          "409": {
+            "description": "Changed execution/source/revision",
+            "incompatible operation or retry content.": null,
+            "occupied sequence": null
+          },
+          "422": {
+            "description": "Dated funding deficit or replay limit exceeded."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Correct the stable intraday sequence of staged Kraken execution cash",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/accounts/{id}/opening-statements/{statementId}/reconciliation": {
       "get": {
-        "description": "Compares reviewed opening inventory, current live source records, proposed draft cash/trades, recorded cash evidence and linked execution identities. Statement balances are user-attested, not independently verified. This endpoint never activates accounting or changes financial records.",
+        "description": "Compares reviewed opening inventory, current live source records, proposed draft cash/trades, recorded cash evidence, linked execution identities and manual/Kraken cash-staging candidates. Statement balances are user-attested, not independently verified. This endpoint never activates accounting or changes financial records. Reconciliation is bounded to 10000 imported executions and 50000 transactions.",
         "parameters": [
           {
             "in": "path",
@@ -1160,8 +1477,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Read-only draft reconciliation",
-            "including cash evidence/variances and effective or reversed cash-operation source references.": null
+            "description": "Read-only draft reconciliation including cash evidence/variances, cash-operation currentRevisionId/capital cash/revisions (revisionId, reason, replacement boolean), effective or reversed sources, imported execution eligibility with duplicate transaction-link detection and cashManualExecutions (transactionId, positionId, kind, effectiveDate, currency, grossValue, fee, stageable, reason, operationId). Manual eligibility excludes broker-linked allocations, imported/short parcels, unsupported money, boundary/future dates, stale snapshots, unavailable accounts and incompatible opening-sale proposals."
           },
           "401": {
             "description": "Authentication required."
@@ -1173,7 +1489,8 @@
             "description": "Stored draft audit history is inconsistent."
           },
           "422": {
-            "description": "Reconciliation exceeds bounded processing limits."
+            "description": "Reconciliation exceeds bounded processing limits",
+            "including 10000 imported executions.": null
           }
         },
         "security": [
@@ -1182,6 +1499,92 @@
           }
         ],
         "summary": "Read-only reconciliation report for an inactive opening draft",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/opening-statements/{statementId}/transactions/{transactionId}/cash-operation": {
+      "post": {
+        "description": "Accepts only an explicit intraday sequence. Date, currency, gross amount and fees come from the owned manual long parcel transaction and are revalidated under the account lock. Broker-linked allocations and imported parcels require their source-aware workflow. No live trades, balances or tax records change.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "statementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "transactionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "sequence": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "sequence"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "created flag and dated cash replay. Identical retries reuse the stored identity.": null,
+            "description": "Draft operationId",
+            "state DRAFT": null
+          },
+          "400": {
+            "description": "Invalid sequence or unsupported execution values."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Owned manual transaction or opening statement not found."
+          },
+          "409": {
+            "description": "Changed source",
+            "duplicate transaction/source": null,
+            "occupied order or incompatible scenario.": null
+          },
+          "422": {
+            "boundary violation or replay limit exceeded.": null,
+            "description": "Dated funding deficit"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Stage cash from a recorded manual BUY or SELL in an inactive draft",
         "tags": [
           "Accounts"
         ]

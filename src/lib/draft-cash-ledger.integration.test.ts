@@ -7,12 +7,17 @@ let prisma: typeof import('./prisma.js').prisma
 let userId: string | undefined
 let exchangeId: string | undefined
 
-async function fixture(amount = '100', withTrade = false) {
+async function fixture(
+  amount = '100',
+  withTrade = false,
+  withImportedTrade = false
+) {
   if (!userId) throw new Error('Missing isolated cash fixture')
   const account = await prisma.tradingAccount.create({
     data: { userId, name: `Cash fixture ${randomUUID()}` },
   })
   let transactionId: string | undefined
+  let eventId: string | undefined
   if (withTrade) {
     if (!exchangeId) throw new Error('Missing fixture exchange')
     const asset = await prisma.asset.create({
@@ -47,6 +52,76 @@ async function fixture(amount = '100', withTrade = false) {
       include: { transactions: true },
     })
     transactionId = position.transactions[0].id
+  } else if (withImportedTrade) {
+    if (!exchangeId) throw new Error('Missing fixture exchange')
+    const externalId = `KRAKEN:order:${randomUUID()}`
+    const asset = await prisma.asset.create({
+      data: {
+        symbol: `FIXTURE-${randomUUID()}`,
+        name: 'Disposable imported cash test asset',
+        exchangeId,
+      },
+    })
+    const position = await prisma.position.create({
+      data: {
+        userId,
+        accountId: account.id,
+        assetId: asset.id,
+        openDate: new Date('2026-10-02T00:00:00Z'),
+        entryPrice: '60',
+        quantity: 1,
+        totalBuyValue: '60',
+        buyFees: '1',
+        capitalAllocated: '61',
+        origin: 'IMPORT_TRADE',
+        externalRef: externalId,
+        transactions: {
+          create: {
+            type: 'BUY',
+            date: new Date('2026-10-02T00:00:00Z'),
+            quantity: 1,
+            price: '60',
+            totalValue: '60',
+            fees: '1',
+            brokerRef: externalId,
+          },
+        },
+      },
+      include: { transactions: true },
+    })
+    transactionId = position.transactions[0].id
+    const batch = await prisma.importBatch.create({
+      data: {
+        userId,
+        accountId: account.id,
+        source: 'KRAKEN',
+        method: 'CSV',
+        status: 'COMMITTED',
+        fileNames: ['cash-fixture.csv'],
+      },
+    })
+    const event = await prisma.importedEvent.create({
+      data: {
+        batchId: batch.id,
+        userId,
+        source: 'KRAKEN',
+        externalId,
+        kind: 'BUY',
+        status: 'APPLIED',
+        occurredAt: new Date('2026-10-02T00:00:00Z'),
+        baseAsset: 'FIXTURE',
+        quoteCurrency: 'AUD',
+        exchangeCode: 'KRAKEN:AUD',
+        quantity: '1',
+        price: '60',
+        grossValue: '60',
+        fee: '1',
+        feeCurrency: 'AUD',
+        appliedPositionIds: [position.id],
+        raw: {},
+      },
+    })
+    eventId = event.id
   }
   const { previewAccountOpening } =
     await import('./accounting-preview-service.js')
@@ -65,6 +140,7 @@ async function fixture(amount = '100', withTrade = false) {
     accountId: account.id,
     statementId: saved.statement.id,
     transactionId,
+    eventId,
   }
 }
 
@@ -174,6 +250,643 @@ describe.skipIf(!enabled)(
       expect(
         await prisma.position.count({ where: { accountId: f.accountId } })
       ).toBe(0)
+    })
+    it('stages manual BUY and SELL cash once with source-derived values and rejects unsupported source identities', async () => {
+      const { saveDraftManualExecutionCash, reconcileDraftOpening } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('100', true)
+      if (!f.transactionId) throw new Error('Missing fixture trade')
+      const buy = await prisma.transaction.findUniqueOrThrow({
+        where: { id: f.transactionId },
+      })
+      const sale = await prisma.transaction.create({
+        data: {
+          positionId: buy.positionId,
+          type: 'SELL',
+          date: new Date('2026-10-03T00:00:00Z'),
+          quantity: 0.5,
+          price: '80',
+          totalValue: '40',
+          fees: '1',
+        },
+      })
+      const { recomputePositionFromTransactions } =
+        await import('./position-service.js')
+      await recomputePositionFromTransactions(buy.positionId)
+      const { previewAccountOpening } =
+        await import('./accounting-preview-service.js')
+      const { saveOpeningStatement } = await import('./opening-statements.js')
+      const input = {
+        openingDate: '2026-10-01',
+        cashBalances: [{ currency: 'AUD', amount: '100' }],
+      }
+      const preview = await previewAccountOpening(f.userId, f.accountId, input)
+      const statement = await saveOpeningStatement(f.userId, f.accountId, {
+        ...input,
+        sourceFingerprint: preview.sourceFingerprint,
+      })
+      const statementId = statement.statement.id
+      const initialReport = await reconcileDraftOpening(
+        f.userId,
+        statementId,
+        f.accountId
+      )
+      expect(initialReport.cashManualExecutions).toHaveLength(2)
+      expect(
+        initialReport.cashManualExecutions.every((row) => row.stageable)
+      ).toBe(true)
+      const results = await Promise.all([
+        saveDraftManualExecutionCash(
+          f.userId,
+          f.accountId,
+          statementId,
+          buy.id,
+          1
+        ),
+        saveDraftManualExecutionCash(
+          f.userId,
+          f.accountId,
+          statementId,
+          buy.id,
+          1
+        ),
+      ])
+      expect(results.map((row) => row.created).sort()).toEqual([false, true])
+      const sold = await saveDraftManualExecutionCash(
+        f.userId,
+        f.accountId,
+        statementId,
+        sale.id,
+        1
+      )
+      expect(sold.replay.balances[0].endingAmount).toBe('78')
+      const report = await reconcileDraftOpening(
+        f.userId,
+        statementId,
+        f.accountId
+      )
+      expect(
+        report.cashManualExecutions.every(
+          (row) => row.reason === 'ALREADY_LINKED'
+        )
+      ).toBe(true)
+      expect(report.tradeSources.every((row) => row.linkage === 'LINKED')).toBe(
+        true
+      )
+      expect(report.accountingActive).toBe(false)
+      await expect(
+        saveDraftManualExecutionCash(
+          f.userId,
+          'wrong-account',
+          statementId,
+          buy.id,
+          1
+        )
+      ).rejects.toMatchObject({ status: 404 })
+      await expect(
+        saveDraftManualExecutionCash(
+          f.userId,
+          f.accountId,
+          statementId,
+          buy.id,
+          2
+        )
+      ).rejects.toMatchObject({ status: 409 })
+      await prisma.transaction.update({
+        where: { id: sale.id },
+        data: { brokerRef: 'KRAKEN:order:reserved' },
+      })
+      await expect(
+        saveDraftManualExecutionCash(
+          f.userId,
+          f.accountId,
+          statementId,
+          sale.id,
+          1
+        )
+      ).rejects.toMatchObject({ status: 404 })
+      expect(
+        await prisma.transaction.count({
+          where: { positionId: buy.positionId },
+        })
+      ).toBe(2)
+    })
+    it('rolls back unaffordable manual staging without changing the source trade', async () => {
+      const { saveDraftManualExecutionCash } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('60', true)
+      if (!f.transactionId) throw new Error('Missing fixture trade')
+      const before = await prisma.transaction.findUniqueOrThrow({
+        where: { id: f.transactionId },
+      })
+      await expect(
+        saveDraftManualExecutionCash(
+          f.userId,
+          f.accountId,
+          f.statementId,
+          f.transactionId,
+          1
+        )
+      ).rejects.toMatchObject({ status: 422 })
+      expect(
+        await prisma.draftCashOperation.count({
+          where: { statementId: f.statementId },
+        })
+      ).toBe(0)
+      expect(
+        await prisma.draftCashPosting.count({
+          where: { operation: { statementId: f.statementId } },
+        })
+      ).toBe(0)
+      expect(
+        await prisma.draftOperationTradeLink.count({
+          where: { statementId: f.statementId },
+        })
+      ).toBe(0)
+      expect(
+        await prisma.transaction.findUniqueOrThrow({
+          where: { id: f.transactionId },
+        })
+      ).toEqual(before)
+    })
+    it('stages applied Kraken execution cash from persisted event and parcel identities', async () => {
+      const { saveDraftImportedExecutionCash, reconcileDraftOpening } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, true)
+      if (!f.eventId || !f.transactionId)
+        throw new Error('Missing imported execution fixture')
+
+      const result = await saveDraftImportedExecutionCash(
+        f.userId,
+        f.accountId,
+        f.statementId,
+        f.eventId,
+        1
+      )
+      const retry = await saveDraftImportedExecutionCash(
+        f.userId,
+        f.accountId,
+        f.statementId,
+        f.eventId,
+        1
+      )
+
+      expect(result.replay.balances[0].endingAmount).toBe('39')
+      expect(retry).toMatchObject({
+        operationId: result.operationId,
+        created: false,
+      })
+      expect(
+        await prisma.draftOperationTradeLink.findMany({
+          where: { operationId: result.operationId },
+          select: { transactionId: true },
+        })
+      ).toEqual([{ transactionId: f.transactionId }])
+      const report = await reconcileDraftOpening(
+        f.userId,
+        f.statementId,
+        f.accountId
+      )
+      expect(report.cashImportExecutions).toMatchObject([
+        {
+          eventId: f.eventId,
+          transactionIds: [f.transactionId],
+          stageable: false,
+          reason: 'ALREADY_STAGED',
+          operationId: result.operationId,
+        },
+      ])
+      expect(
+        await prisma.transaction.count({
+          where: { position: { accountId: f.accountId } },
+        })
+      ).toBe(1)
+    })
+    it('resequences imported cash with immutable execution values, retry identity and source revalidation', async () => {
+      const {
+        saveDraftImportedExecutionCash,
+        correctDraftImportedExecutionCash,
+        reconcileDraftOpening,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, true)
+      if (!f.eventId || !f.transactionId)
+        throw new Error('Missing import fixture')
+      const saved = await saveDraftImportedExecutionCash(
+        f.userId,
+        f.accountId,
+        f.statementId,
+        f.eventId,
+        1
+      )
+      const input = {
+        idempotencyKey: 'import-sequence-1',
+        expectedRevisionId: saved.operationId,
+        reason: 'Broker sequence confirmed',
+        sequence: 3,
+      }
+      const corrected = await correctDraftImportedExecutionCash(
+        f.userId,
+        f.accountId,
+        f.statementId,
+        saved.operationId,
+        input
+      )
+      expect(corrected.replay.balances[0].endingAmount).toBe('39')
+      expect(corrected.replay.activity[0].sequence).toBe(3)
+      expect(
+        await correctDraftImportedExecutionCash(
+          f.userId,
+          f.accountId,
+          f.statementId,
+          saved.operationId,
+          input
+        )
+      ).toMatchObject({ created: false, revisionId: corrected.revisionId })
+      const next = await correctDraftImportedExecutionCash(
+        f.userId,
+        f.accountId,
+        f.statementId,
+        saved.operationId,
+        {
+          ...input,
+          idempotencyKey: 'import-sequence-2',
+          expectedRevisionId: corrected.revisionId,
+          sequence: 4,
+        }
+      )
+      const oldRetry = await correctDraftImportedExecutionCash(
+        f.userId,
+        f.accountId,
+        f.statementId,
+        saved.operationId,
+        input
+      )
+      expect(oldRetry).toMatchObject({
+        created: false,
+        revisionId: corrected.revisionId,
+      })
+      expect(oldRetry.replay.activity[0].sequence).toBe(4)
+      expect(
+        await saveDraftImportedExecutionCash(
+          f.userId,
+          f.accountId,
+          f.statementId,
+          f.eventId,
+          1
+        )
+      ).toMatchObject({ created: false, operationId: saved.operationId })
+      const report = await reconcileDraftOpening(
+        f.userId,
+        f.statementId,
+        f.accountId
+      )
+      expect(report.accountingActive).toBe(false)
+      expect(report.cashOperations[0]).toMatchObject({
+        status: 'CORRECTED',
+        currentRevisionId: next.revisionId,
+        sequence: 4,
+      })
+      const audit = await prisma.draftCashOperation.findUniqueOrThrow({
+        where: { id: saved.operationId },
+        include: {
+          postings: true,
+          revisions: {
+            orderBy: { revisionNumber: 'asc' },
+            include: { postings: true },
+          },
+        },
+      })
+      expect(audit.sequence).toBe(1n)
+      expect(audit.revisions).toHaveLength(2)
+      expect(audit.revisions[0].request).toMatchObject({
+        replacement: {
+          effectiveDate: '2026-10-02',
+          consideration: { currency: 'AUD', amount: '60' },
+          fees: [{ currency: 'AUD', amount: '1' }],
+          transactionIds: [f.transactionId],
+          sequence: 3,
+        },
+      })
+      expect(
+        audit.revisions[0].postings
+          .map((row) => `${row.phase}:${row.amount.toFixed()}`)
+          .sort()
+      ).toEqual([
+        'REPLACEMENT:-1',
+        'REPLACEMENT:-60',
+        'REVERSAL:1',
+        'REVERSAL:60',
+      ])
+      await expect(
+        correctDraftImportedExecutionCash(
+          f.userId,
+          'wrong-account',
+          f.statementId,
+          saved.operationId,
+          input
+        )
+      ).rejects.toMatchObject({ status: 404 })
+      await expect(
+        correctDraftImportedExecutionCash(
+          f.userId,
+          f.accountId,
+          f.statementId,
+          saved.operationId,
+          { ...input, sequence: 5 }
+        )
+      ).rejects.toMatchObject({ status: 409 })
+      await expect(
+        correctDraftImportedExecutionCash(
+          f.userId,
+          f.accountId,
+          f.statementId,
+          saved.operationId,
+          {
+            ...input,
+            idempotencyKey: 'stale-revision',
+            sequence: 5,
+          }
+        )
+      ).rejects.toMatchObject({ status: 409 })
+      await prisma.importedEvent.update({
+        where: { id: f.eventId },
+        data: { fee: '2' },
+      })
+      await expect(
+        correctDraftImportedExecutionCash(
+          f.userId,
+          f.accountId,
+          f.statementId,
+          saved.operationId,
+          {
+            ...input,
+            idempotencyKey: 'source-changed',
+            expectedRevisionId: next.revisionId,
+            sequence: 5,
+          }
+        )
+      ).rejects.toMatchObject({ status: 409 })
+      await prisma.importedEvent.update({
+        where: { id: f.eventId },
+        data: { fee: '1' },
+      })
+      await prisma.transaction.update({
+        where: { id: f.transactionId },
+        data: { brokerRef: 'changed-broker-reference' },
+      })
+      await expect(
+        correctDraftImportedExecutionCash(
+          f.userId,
+          f.accountId,
+          f.statementId,
+          saved.operationId,
+          {
+            ...input,
+            idempotencyKey: 'link-changed',
+            expectedRevisionId: next.revisionId,
+            sequence: 5,
+          }
+        )
+      ).rejects.toMatchObject({ status: 409 })
+      expect(
+        await prisma.draftCashRevision.count({
+          where: { operationId: saved.operationId },
+        })
+      ).toBe(2)
+      expect(
+        (
+          await prisma.transaction.findUniqueOrThrow({
+            where: { id: f.transactionId },
+          })
+        ).fees.toFixed()
+      ).toBe('1')
+    })
+    it('rejects imported sequence changes that cross funding or occupied slots and serializes competing revisions', async () => {
+      const {
+        saveDraftCashOperation,
+        saveDraftImportedExecutionCash,
+        correctDraftImportedExecutionCash,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('0', false, true)
+      if (!f.eventId) throw new Error('Missing import fixture')
+      await saveDraftCashOperation(
+        f.userId,
+        f.statementId,
+        capital(f.accountId, {
+          effectiveDate: '2026-10-02',
+          cash: { currency: 'AUD', amount: '100' },
+          sequence: 2,
+        })
+      )
+      const saved = await saveDraftImportedExecutionCash(
+        f.userId,
+        f.accountId,
+        f.statementId,
+        f.eventId,
+        3
+      )
+      const input = {
+        idempotencyKey: 'too-early',
+        expectedRevisionId: saved.operationId,
+        reason: 'Review ordering',
+        sequence: 1,
+      }
+      await expect(
+        correctDraftImportedExecutionCash(
+          f.userId,
+          f.accountId,
+          f.statementId,
+          saved.operationId,
+          input
+        )
+      ).rejects.toMatchObject({ status: 422 })
+      await expect(
+        correctDraftImportedExecutionCash(
+          f.userId,
+          f.accountId,
+          f.statementId,
+          saved.operationId,
+          { ...input, sequence: 2 }
+        )
+      ).rejects.toMatchObject({ status: 409 })
+      const results = await Promise.allSettled(
+        [4, 5].map((sequence) =>
+          correctDraftImportedExecutionCash(
+            f.userId,
+            f.accountId,
+            f.statementId,
+            saved.operationId,
+            {
+              ...input,
+              idempotencyKey: `concurrent-${sequence}`,
+              sequence,
+            }
+          )
+        )
+      )
+      expect(
+        results.filter((result) => result.status === 'fulfilled')
+      ).toHaveLength(1)
+      expect(
+        results.find((result) => result.status === 'rejected')
+      ).toMatchObject({ status: 'rejected', reason: { status: 409 } })
+      expect(
+        await prisma.draftCashRevision.count({
+          where: { operationId: saved.operationId },
+        })
+      ).toBe(1)
+    })
+    it('corrects capital through the account-scoped review workflow with immutable audit, retries and funding rollback', async () => {
+      const {
+        saveDraftCashOperation,
+        correctDraftReconciliationCashOperation,
+        reconcileDraftOpening,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('0')
+      const original = capital(f.accountId, {
+        cash: { currency: 'AUD', amount: '100' },
+      })
+      const saved = await saveDraftCashOperation(
+        f.userId,
+        f.statementId,
+        original
+      )
+      const raw = {
+        idempotencyKey: 'review-correction',
+        expectedRevisionId: saved.operationId,
+        reason: 'Correct bank amount',
+        replacement: {
+          effectiveDate: original.effectiveDate,
+          sequence: 1,
+          amount: '80',
+        },
+      }
+      const corrected = await correctDraftReconciliationCashOperation(
+        f.userId,
+        f.accountId,
+        f.statementId,
+        saved.operationId,
+        raw
+      )
+      expect(corrected.replay.balances[0].endingAmount).toBe('80')
+      const retry = await correctDraftReconciliationCashOperation(
+        f.userId,
+        f.accountId,
+        f.statementId,
+        saved.operationId,
+        raw
+      )
+      expect(retry).toMatchObject({
+        created: false,
+        revisionId: corrected.revisionId,
+      })
+      const retained = await prisma.draftCashOperation.findUniqueOrThrow({
+        where: { id: saved.operationId },
+        include: { postings: true, revisions: { include: { postings: true } } },
+      })
+      expect(retained.command).toMatchObject({ cash: { amount: '100' } })
+      expect(retained.postings[0].amount.toFixed()).toBe('100')
+      expect(retained.revisions).toHaveLength(1)
+      expect(
+        retained.revisions[0].postings.map((row) => row.amount.toFixed()).sort()
+      ).toEqual(['-100', '80'])
+      const report = await reconcileDraftOpening(
+        f.userId,
+        f.statementId,
+        f.accountId
+      )
+      expect(report.cashOperations[0]).toMatchObject({
+        currentRevisionId: corrected.revisionId,
+        cash: { currency: 'AUD', amount: '80' },
+        status: 'CORRECTED',
+        revisions: [
+          {
+            revisionId: corrected.revisionId,
+            reason: raw.reason,
+            replacement: true,
+          },
+        ],
+      })
+      await saveDraftCashOperation(
+        f.userId,
+        f.statementId,
+        capital(f.accountId, {
+          kind: 'WITHDRAWAL',
+          idempotencyKey: 'spend',
+          source: { origin: 'MANUAL', reference: 'spend' },
+          sequence: 2,
+          cash: { currency: 'AUD', amount: '75' },
+        })
+      )
+      await expect(
+        correctDraftReconciliationCashOperation(
+          f.userId,
+          f.accountId,
+          f.statementId,
+          saved.operationId,
+          {
+            ...raw,
+            idempotencyKey: 'reverse',
+            expectedRevisionId: corrected.revisionId,
+            replacement: null,
+          }
+        )
+      ).rejects.toMatchObject({ status: 422 })
+      await expect(
+        correctDraftReconciliationCashOperation(
+          f.userId,
+          'wrong-account',
+          f.statementId,
+          saved.operationId,
+          raw
+        )
+      ).rejects.toMatchObject({ status: 404 })
+      expect(
+        await prisma.draftCashRevision.count({
+          where: { operationId: saved.operationId },
+        })
+      ).toBe(1)
+    })
+    it('serializes competing review corrections and permits a terminal capital reversal only once', async () => {
+      const {
+        saveDraftCashOperation,
+        correctDraftReconciliationCashOperation,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture()
+      const saved = await saveDraftCashOperation(
+        f.userId,
+        f.statementId,
+        capital(f.accountId)
+      )
+      const results = await Promise.allSettled(
+        [1, 2].map((index) =>
+          correctDraftReconciliationCashOperation(
+            f.userId,
+            f.accountId,
+            f.statementId,
+            saved.operationId,
+            {
+              idempotencyKey: `reverse-${index}`,
+              expectedRevisionId: saved.operationId,
+              reason: 'Remove mistaken entry',
+              replacement: null,
+            }
+          )
+        )
+      )
+      expect(
+        results.filter((result) => result.status === 'fulfilled')
+      ).toHaveLength(1)
+      const failure = results.find((result) => result.status === 'rejected')
+      expect(failure).toMatchObject({
+        status: 'rejected',
+        reason: { status: 409 },
+      })
+      expect(
+        await prisma.draftCashRevision.count({
+          where: { operationId: saved.operationId },
+        })
+      ).toBe(1)
     })
     it('serializes competing withdrawals: one spends, the other cannot overdraw the draft', async () => {
       const { saveDraftCashOperation } = await import('./draft-cash-ledger.js')

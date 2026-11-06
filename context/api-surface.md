@@ -10,12 +10,16 @@
 | PATCH | `/api/accounts/:id` | 🔒 | param, body | [src/controllers/accounts.ts:375](../src/controllers/accounts.ts#L375) |
 | POST | `/api/accounts/:id/close` | 🔒 | param | [src/controllers/accounts.ts:287](../src/controllers/accounts.ts#L287) |
 | POST | `/api/accounts/:id/opening-preview` | 🔒 | param, body ×2 | [src/controllers/accounts.ts:126](../src/controllers/accounts.ts#L126) |
-| GET | `/api/accounts/:id/opening-statements` | 🔒 | param, query | [src/controllers/opening-statements.ts:163](../src/controllers/opening-statements.ts#L163) |
-| POST | `/api/accounts/:id/opening-statements` | 🔒 | param, body ×3 | [src/controllers/opening-statements.ts:101](../src/controllers/opening-statements.ts#L101) |
-| POST | `/api/accounts/:id/opening-statements/:statementId/cash-evidence` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:269](../src/controllers/opening-statements.ts#L269) |
-| POST | `/api/accounts/:id/opening-statements/:statementId/cash-evidence/preview` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:326](../src/controllers/opening-statements.ts#L326) |
-| POST | `/api/accounts/:id/opening-statements/:statementId/cash-operations` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:394](../src/controllers/opening-statements.ts#L394) |
-| GET | `/api/accounts/:id/opening-statements/:statementId/reconciliation` | 🔒 | param ×2 | [src/controllers/opening-statements.ts:211](../src/controllers/opening-statements.ts#L211) |
+| GET | `/api/accounts/:id/opening-statements` | 🔒 | param, query | [src/controllers/opening-statements.ts:167](../src/controllers/opening-statements.ts#L167) |
+| POST | `/api/accounts/:id/opening-statements` | 🔒 | param, body ×3 | [src/controllers/opening-statements.ts:105](../src/controllers/opening-statements.ts#L105) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/cash-evidence` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:273](../src/controllers/opening-statements.ts#L273) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/cash-evidence/preview` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:330](../src/controllers/opening-statements.ts#L330) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/cash-operations` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:398](../src/controllers/opening-statements.ts#L398) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/cash-operations/:operationId/corrections` | 🔒 | param ×3, body ×5 | [src/controllers/opening-statements.ts:550](../src/controllers/opening-statements.ts#L550) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/import-events/:eventId/cash-operation` | 🔒 | param ×3, body ×3 | [src/controllers/opening-statements.ts:466](../src/controllers/opening-statements.ts#L466) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/imported-cash-operations/:operationId/corrections` | 🔒 | param ×3, body ×6 | [src/controllers/opening-statements.ts:617](../src/controllers/opening-statements.ts#L617) |
+| GET | `/api/accounts/:id/opening-statements/:statementId/reconciliation` | 🔒 | param ×2 | [src/controllers/opening-statements.ts:215](../src/controllers/opening-statements.ts#L215) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/transactions/:transactionId/cash-operation` | 🔒 | param ×3, body ×3 | [src/controllers/opening-statements.ts:692](../src/controllers/opening-statements.ts#L692) |
 | POST | `/api/accounts/:id/reopen` | 🔒 | param | [src/controllers/accounts.ts:321](../src/controllers/accounts.ts#L321) |
 | POST | `/api/auth/forgot-password` | — | forgotPasswordLimiter, body | [src/controllers/auth.ts:554](../src/controllers/auth.ts#L554) |
 | POST | `/api/auth/login` | — | — | [src/controllers/auth.ts:225](../src/controllers/auth.ts#L225) |

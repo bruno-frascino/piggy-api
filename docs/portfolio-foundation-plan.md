@@ -4,12 +4,14 @@ Status: increment 1 specification delivered; increment 2 has opening previews, p
 inactive drafts, the cash-command/replay core, locked draft operation/posting persistence
 and immutable inactive capital corrections. It now also has proposed manual BUY/SELL trades,
 opening-parcel sales, read-only reconciliation, user-attested statement cash evidence,
-exact variance review, and separately dated manual deposit/withdrawal staging.
+exact variance review, separately dated manual deposit/withdrawal staging, and
+source-linked cash staging for already-applied Kraken executions.
+The review also supports audited correction/reversal of staged manual deposits and withdrawals.
 An isolated proposed BUY/SELL workflow and its corrections now atomically store draft
 parcels and cash; they do not change real holdings.
 Statement evidence and cash operations remain inactive; live cash posting, opening confirmation
 and activation are not implemented.
-Date: 31 October 2026.
+Date: 6 November 2026.
 Scope: piggy-api and sibling piggy-fe.
 
 ## Goal
@@ -300,7 +302,7 @@ Amounts below are synthetic test data, not existing user balances.
 Use the dashboard's "Opening-balance preview" for a selected real account to review a
 chosen end-of-day date and explicit currency balances. Preview is read-only and cannot confirm
 an account or generate deposits. It shows parcel reconciliation and trade-only projected
-cash, with blockers for incomplete records, ordering and imported execution currencies.
+cash, with blockers for incomplete records, ordering and unsupported imported currencies.
 
 After reviewing, "Save inactive draft" explicitly persists a new statement revision with
 its cash and inventory snapshots. Saved drafts can be reopened as inputs, but must be
@@ -310,14 +312,14 @@ alter trades. Retrying the same reviewed content returns the existing draft.
 The cash engine now prepares exact trade/fee and deposit/withdrawal legs and checks the entire
 dated cash timeline using explicitly supplied intraday order. It distinguishes external capital
 from profit and refuses historical funding gaps, duplicate execution cash, missing currency
-balances and precision overflow. It is not yet wired to financial writes or exposed as a deposit
-workflow; existing accounts remain inactive.
+balances and precision overflow. It is not wired to live financial writes; staged operations
+remain inactive and existing accounts remain unconfirmed.
 
 Inactive drafts now retain cash operation identities, exact postings and snapshot trade links.
 Internal staging serializes writes by locking the account and rejects stale source records,
 duplicate execution cash and historical funding gaps. Database tests cover competing withdrawals,
-idempotent retries, atomic child-write rollback and erasure cascades. These are isolated draft
-histories, not live account cash; there is no deposit/staging UI or activation endpoint yet.
+idempotent retries, atomic child-write rollback and erasure cascades. Manual cash-flow staging is
+available in the review UI, but these are isolated draft histories, not live account cash.
 
 Manual full/partial close, close-event correction and parcel deletion now share the owned-account
 lock with draft staging. Sale creation/correction and parcel recomputation commit together, and
@@ -476,10 +478,50 @@ live cash or holdings. Cash remains `UNVERIFIED`, and the report always returns
 `accountingActive: false` and `activationReady: false`, even when replay exactly matches
 user-attested evidence.
 
-Next integrate verified execution-currency import adapters and duplicate reconciliation,
-then address atomic live trade/posting corrections and the remaining supported financial
-paths. Do not enable confirmed accounts until every financial edit/delete/import path
-maintains the ledger and concurrency tests pass.
+The same review now lists already-applied Kraken BUY/SELL executions and can stage an execution
+using only its persisted import amounts and transaction links. The user must supply an explicit
+stable sequence; the endpoint does not accept cash amounts or infer intraday ordering. Duplicate
+event identities and transaction identities already linked to another draft operation,
+opening-boundary executions, unsupported currencies, missing/mismatched transaction links and
+incompatible opening-sale proposals are rejected or shown as ineligible. Transaction identity
+remains reserved after reversal, preventing the same live trade from being staged again under a
+different source reference.
+Imported execution cash now permits audited sequence-only corrections through a dedicated
+source-aware endpoint and review control. The account-locked writer revalidates the original
+applied Kraken event and complete transaction links; date, consideration, fees, currency and
+source identities remain unchanged. Revision replay checks the same invariant, retains exact
+reversal/replacement audit legs and rejects occupied slots or a sequence that creates an intraday
+funding deficit. Expected revision checks and retry hashes prevent competing edits or duplicate
+effects. Original staging retries return the corrected projection. Cash-only reversals and
+financial/source edits remain unavailable: those require coordinated trade and cash correction.
+This remains inactive draft cash, not broker verification or live posting.
+
+The review now exposes the existing immutable capital-correction engine for manual deposits and
+withdrawals. Users can replace a date, stable sequence or amount, or explicitly reverse a mistaken
+entry, with an audit reason and review acknowledgement. Currency, kind and source identity are
+retained from the original entry. Corrections require the expected revision, preserve retry
+identity, reject downstream funding deficits and expose audit reasons in the report. Reversal is
+terminal. Corrections do not change attested statement evidence; its current variance is recomputed.
+This does not expose trade/import corrections or enable live accounting.
+
+Kraken remains the only supported import integration. Additional exchanges are optional,
+demand-driven follow-ups after the accounting foundation, not a prerequisite for cutover. CSV
+imports need no separate activation switch; future read-only API connections will require explicit
+per-user connection and disconnection controls. Binance and Coinbase enum entries do not imply
+implemented adapters.
+
+Next address financial execution corrections, atomic live trade/posting integration and the
+remaining supported financial paths. Do not enable confirmed accounts until every financial
+edit/delete/import path maintains the ledger and concurrency tests pass.
+
+Recorded manual long BUY/SELL transactions can now be staged from the same review, using only
+their transaction identity and an explicitly entered intraday sequence. Money, fees, currency and
+date are sourced from the persisted trade and checked again under the account lock. Broker-linked
+allocations use the import workflow instead; imported parcels and short positions are excluded.
+The report explains unavailable entries, including already-reserved transaction identities.
+Concurrent identical submissions have one cash effect; funding/source failures roll back without
+changing trades. This closes the missing manual execution-linking workflow, not financial
+execution correction or automatic live posting. Those remain the next accounting milestones.
 
 ## Existing implementation references
 

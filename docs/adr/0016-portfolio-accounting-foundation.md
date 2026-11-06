@@ -545,8 +545,9 @@ sale cannot invalidate later sales, and reducing/reversing proceeds cannot inval
 spending. Reversal restores only draft units and cash, never live holdings. Recorded live-trade
 cash operations and opening-sale proposals cannot coexist in the same statement (including
 reserved reversed originals), avoiding a second cash posting for a legacy disposal. Capital
-operations and isolated proposed purchases remain supported. A verified source/import
-reconciliation path is still required before mixing historical execution cash and parcel replay.
+operations and isolated proposed purchases remain supported. A Kraken-first import reconciliation
+path can stage persisted execution cash in an inactive draft; it does not establish external
+verification or enable live cash posting.
 
 ### Read-only opening reconciliation
 
@@ -582,21 +583,80 @@ bounded note for each currency; those decisions are audit records only, do not c
 and do not resolve a variance. Current reconciliation replays each saved snapshot against
 effective dated operations while retaining the original attestation and decision history.
 
-The review UI exposes the cash, source, inventory and trade-link comparison. It allows only
+The review UI exposes the cash, source, inventory and trade-link comparison. It allows
 explicitly sourced, separately dated manual deposits/withdrawals through the account-locked
 inactive writer, which retains stable ordering, exact arithmetic and funding validation.
+It also exposes capital-only correction/reversal commands using the same immutable revision
+engine. Replacements accept only effective date, sequence and amount; currency, source and kind
+are derived from the original command. The URL account is checked before and after locking.
+Expected revision IDs prevent lost updates, unchanged retry keys/content reuse the recorded
+correction, and full dated replay rejects downstream deficits. An audit reason is required;
+terminal reversal never frees a source identity for reuse. The report includes current revision,
+capital amount and correction/reversal reasons. Saved statement evidence is retained and its
+variance is recomputed, not silently rewritten. No capital correction can alter a trade/import.
 These operations are not balancing adjustments and never affect live cash or holdings. Exact
 agreement with attested evidence does not enable confirmation or activation.
 
+### Applied Kraken execution cash staging (inactive only)
+
+The reconciliation report lists applied Kraken BUY/SELL events and their persisted
+`brokerRef` transaction/parcel links. Staging accepts only the applied event identity and an
+explicit positive intraday sequence; execution currency, gross consideration and fee amount are
+read from the stored event, never supplied by the caller. The writer verifies event ownership,
+account, status, date, supported currencies, gross/fee amounts and the complete transaction and
+parcel identity before replaying or persisting one source-linked operation. A multi-parcel SELL
+therefore has one cash effect, not one effect per allocation.
+
+An event already represented in that statement, or a transaction identity already linked to any
+draft operation, an event on/before the opening boundary, unsupported amount/currency treatment,
+missing or inconsistent links, stale opening data and an opening-sale proposal conflict are never
+stageable. The writer enforces the transaction-link check under the account lock, including
+reversed operations, so changing a source reference cannot stage the same live trade twice.
+Stable ordering is supplied explicitly; timestamps are shown for review but do not determine
+sequence. Imported execution operations cannot use manual cash corrections. A dedicated
+source-aware sequence correction accepts only idempotency key, expected revision, audit reason
+and corrected sequence. It retains date, consideration, fees, currencies and complete source links
+from the immutable original; the original is revalidated against the applied Kraken event under
+the account lock. Every stored imported revision is also checked against this sequence-only
+contract before replay. Changed source records fail closed rather than silently restating money.
+Original commands and exact reversal/replacement audit legs remain intact. Full cash replay
+rejects intraday funding deficits and occupied effective slots. Identical retries reuse the saved
+revision and return current projections, including after another correction; original staging
+retries likewise cannot duplicate the effect. The UI shows only sequence and audit inputs,
+refreshes conflicts without retrying mutations and disables stale/offline editors.
+Cash-only reversals and financial execution changes remain unsupported until source trades and
+cash can change atomically.
+
 No legacy writer spends draft cash or maintains its postings. Draft operations must never be
-counted as spendable cash or portfolio value. Next integrate verified execution-currency import
-adapters and duplicate reconciliation, then connect atomic live trade/posting corrections and
-remaining financial paths before confirmation. Existing preview ordering stays deliberately
-unverified; it cannot be promoted into stable ledger order automatically.
+counted as spendable cash or portfolio value. The Kraken path reconciles persisted import records
+only; it does not verify them with the broker or enable live posting. Kraken remains the only
+supported adapter while accounting is completed. Binance/Coinbase and other demand-driven
+integrations are deferred, not cutover prerequisites; a CSV upload needs no activation switch,
+while future read-only API connections must be explicitly enabled by each user. Next connect
+financial execution corrections, atomic live trade/posting integration and remaining financial
+paths before confirmation. Existing preview ordering stays deliberately unverified; it cannot be
+promoted into stable ledger order automatically.
 
 Live trade/posting atomicity, live command idempotency, concurrent live funding, persisted opening confirmations,
 cutover invalidation, production XIRR, corporate-action tax treatment and scheduling
 remain unimplemented. Each needs targeted tests in its delivery increment.
+
+### Recorded manual execution staging
+
+The inactive reconciliation review also lists persisted manual long BUY/SELL transactions.
+Staging accepts a transaction identity and explicit sequence only. The server constructs the
+command from persisted date, exchange currency, gross consideration and fees, then checks the
+source again under the existing account lock before storing any postings. Imported parcels and
+transactions with a broker reference are excluded: in particular, an imported SELL allocation
+against a manual opening parcel must not be posted as a separate manual execution.
+
+The durable identity is `manual-transaction:<transactionId>` within the opening statement.
+Existing duplicate-link checks reserve transaction identities even after reversal. Identical
+retries return the existing operation; changing sequence is not an implicit correction. Source,
+boundary, funding, account-state and opening-sale-scenario guards remain authoritative. The UI
+requires explicit ordering, masks money in privacy mode, disables offline mutations and refreshes
+conflicts without retrying. This adds neither live trade edits nor independent cash corrections
+for executions. Financial source/cash corrections still require a coordinated atomic workflow.
 
 ## Consequences
 

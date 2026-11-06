@@ -32,15 +32,30 @@ const mocks = vi.hoisted(() => ({
   evidenceFindUnique: vi.fn(),
   evidenceCreate: vi.fn(),
   evidencePreview: vi.fn(),
+  importedEvents: vi.fn(),
+  importedEvent: vi.fn(),
 }))
-vi.mock('./prisma.js', () => ({ prisma: { $transaction: mocks.transaction } }))
+vi.mock('./prisma.js', () => ({
+  prisma: {
+    $transaction: mocks.transaction,
+    transaction: { findMany: mocks.transactions },
+    importedEvent: {
+      findMany: mocks.importedEvents,
+      findFirst: mocks.importedEvent,
+    },
+  },
+}))
 vi.mock('./user-lock.js', () => ({ lockActiveUser: vi.fn() }))
 vi.mock('./accounting-preview-service.js', () => ({
   readAccountOpeningPreview: mocks.preview,
 }))
 import {
   saveDraftCashOperation,
+  saveDraftImportedExecutionCash,
+  saveDraftManualExecutionCash,
   correctDraftCashOperation,
+  correctDraftReconciliationCashOperation,
+  correctDraftImportedExecutionCash,
   correctDraftManualTrade,
   saveDraftManualTrade,
   reconcileDraftOpening,
@@ -156,6 +171,8 @@ beforeEach(() => {
   mocks.evidenceFindUnique.mockResolvedValue(null)
   mocks.evidenceCreate.mockResolvedValue({ id: 'evidence-1' })
   mocks.evidencePreview.mockResolvedValue({})
+  mocks.importedEvents.mockResolvedValue([])
+  mocks.importedEvent.mockResolvedValue(null)
   mocks.transactions.mockResolvedValue([trade])
   mocks.create.mockResolvedValue({ id: 'op-new' })
   mocks.transaction.mockImplementation(
@@ -175,6 +192,10 @@ beforeEach(() => {
           findUnique: mocks.evidenceFindUnique,
           create: mocks.evidenceCreate,
         },
+        importedEvent: {
+          findMany: mocks.importedEvents,
+          findFirst: mocks.importedEvent,
+        },
         transaction: { findMany: mocks.transactions },
         $queryRaw: mocks.lock,
         asset: { findUnique: mocks.asset },
@@ -184,6 +205,65 @@ beforeEach(() => {
 })
 
 describe('persistent inactive cash staging', () => {
+  it('stages a zero-fee manual SELL without inventing a fee posting', async () => {
+    mocks.transactions.mockResolvedValue([
+      { ...trade, type: 'SELL', fees: new Decimal('0'), brokerRef: null },
+    ])
+    const result = await saveDraftManualExecutionCash('u1', 'a1', 's1', 't1', 3)
+    expect(result.replay.balances[0].endingAmount).toBe('160')
+    expect(mocks.create.mock.calls[0][0].data.command).toMatchObject({
+      kind: 'SELL',
+      fees: [],
+    })
+  })
+  it('stages persisted manual execution cash with only a caller-supplied sequence', async () => {
+    mocks.transactions.mockResolvedValue([{ ...trade, brokerRef: null }])
+    const result = await saveDraftManualExecutionCash('u1', 'a1', 's1', 't1', 3)
+    expect(result.replay.balances[0].endingAmount).toBe('39')
+    expect(mocks.transactions.mock.calls[0][0].where).toEqual({
+      id: 't1',
+      brokerRef: null,
+      position: {
+        accountId: 'a1',
+        userId: 'u1',
+        origin: 'MANUAL',
+        positionType: 'LONG',
+      },
+    })
+    expect(mocks.create.mock.calls[0][0].data.command).toMatchObject({
+      kind: 'BUY',
+      sequence: 3,
+      effectiveDate: '2026-10-02',
+      consideration: { currency: 'AUD', amount: '60' },
+      fees: [{ currency: 'AUD', amount: '1' }],
+      transactionIds: ['t1'],
+      source: { origin: 'MANUAL', reference: 'manual-transaction:t1' },
+    })
+  })
+  it('rejects missing/foreign manual transactions and source changes discovered under the account lock', async () => {
+    mocks.transactions.mockResolvedValueOnce([])
+    await expect(
+      saveDraftManualExecutionCash('u1', 'a1', 's1', 't1', 3)
+    ).rejects.toMatchObject({ status: 404 })
+    mocks.transactions
+      .mockResolvedValueOnce([{ ...trade, brokerRef: null }])
+      .mockResolvedValue([{ ...trade, brokerRef: 'KRAKEN:order:1' }])
+    await expect(
+      saveDraftManualExecutionCash('u1', 'a1', 's1', 't1', 3)
+    ).rejects.toMatchObject({ status: 409 })
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+  it('rejects a manual execution amount changed between loading and locking', async () => {
+    mocks.transactions
+      .mockResolvedValueOnce([{ ...trade, brokerRef: null }])
+      .mockResolvedValue([
+        { ...trade, brokerRef: null, totalValue: new Decimal('61') },
+      ])
+    await expect(
+      saveDraftManualExecutionCash('u1', 'a1', 's1', 't1', 3)
+    ).rejects.toMatchObject({ status: 409 })
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
   it('rejects opening-cash tampering instead of replaying against unreviewed capital', async () => {
     mocks.statement.mockResolvedValue({
       ...statement,
@@ -192,6 +272,15 @@ describe('persistent inactive cash staging', () => {
     await expect(saveDraftCashOperation('u1', 's1', deposit)).rejects.toThrow(
       'reviewed input identity'
     )
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+  it('rejects cash operations on the opening boundary', async () => {
+    await expect(
+      saveDraftCashOperation('u1', 's1', {
+        ...deposit,
+        effectiveDate: '2026-10-01',
+      })
+    ).rejects.toThrow('after the opening statement boundary')
     expect(mocks.create).not.toHaveBeenCalled()
   })
   it('locks the owned account, rereads after the lock and atomically stores normalized command/postings', async () => {
@@ -248,6 +337,161 @@ describe('persistent inactive cash staging', () => {
     })
     expect(mocks.create.mock.calls[0][0].data.postings.create).toHaveLength(2)
   })
+  it('stages cash from an applied Kraken event and its exact persisted transaction links', async () => {
+    const event = {
+      id: 'event-1',
+      userId: 'u1',
+      source: 'KRAKEN',
+      externalId: 'KRAKEN:order:1',
+      kind: 'BUY',
+      status: 'APPLIED',
+      occurredAt: new Date('2026-10-02T00:00:00.000Z'),
+      quoteCurrency: 'AUD',
+      grossValue: new Decimal('60.12345678'),
+      fee: new Decimal('1'),
+      feeCurrency: 'AUD',
+      appliedPositionIds: ['p1'],
+      batch: { accountId: 'a1', userId: 'u1' },
+    }
+    const importedTransaction = {
+      id: 'it1',
+      positionId: 'p1',
+      brokerRef: event.externalId,
+      type: 'BUY',
+      date: event.occurredAt,
+      totalValue: new Decimal('60'),
+      fees: new Decimal('1'),
+      quantity: 1,
+      position: {
+        origin: 'IMPORT_TRADE',
+        positionType: 'LONG',
+        asset: { exchange: { currency: 'AUD' } },
+      },
+    }
+    mocks.importedEvent.mockResolvedValue(event)
+    mocks.transactions.mockResolvedValue([importedTransaction])
+
+    const result = await saveDraftImportedExecutionCash(
+      'u1',
+      'a1',
+      's1',
+      'event-1',
+      2
+    )
+
+    expect(result).toMatchObject({ created: true, state: 'DRAFT' })
+    expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sourceOrigin: 'IMPORT',
+          sourceReference: event.externalId,
+          command: expect.objectContaining({
+            kind: 'BUY',
+            idempotencyKey: 'import-event:event-1',
+            effectiveDate: '2026-10-02',
+            sequence: 2,
+            consideration: { currency: 'AUD', amount: '60.12345678' },
+            fees: [{ currency: 'AUD', amount: '1' }],
+            transactionIds: ['it1'],
+          }),
+        }),
+      })
+    )
+  })
+  it('refuses to stage an imported execution whose transaction is already linked to another draft operation', async () => {
+    const event = {
+      id: 'event-duplicate',
+      userId: 'u1',
+      source: 'KRAKEN',
+      externalId: 'KRAKEN:order:duplicate',
+      kind: 'SELL',
+      status: 'APPLIED',
+      occurredAt: new Date('2026-10-02T00:00:00.000Z'),
+      quoteCurrency: 'AUD',
+      grossValue: new Decimal('60'),
+      fee: new Decimal('1'),
+      feeCurrency: 'AUD',
+      appliedPositionIds: ['p1'],
+      batch: { accountId: 'a1', userId: 'u1' },
+    }
+    mocks.importedEvent.mockResolvedValue(event)
+    mocks.transactions.mockResolvedValue([
+      {
+        ...trade,
+        id: 'imported-transaction',
+        positionId: 'p1',
+        brokerRef: event.externalId,
+        type: 'SELL',
+        position: { ...trade.position, origin: 'MANUAL' },
+      },
+    ])
+    const existing = {
+      ...stored({
+        ...buy,
+        kind: 'SELL',
+        fees: [{ currency: 'AUD', amount: '1' }],
+        source: { origin: 'MANUAL', reference: 'reviewed-before-import' },
+        transactionIds: ['imported-transaction'],
+      }),
+      tradeLinks: [{ transactionId: 'imported-transaction' }],
+    }
+    mocks.rows.mockResolvedValue([existing])
+
+    await expect(
+      saveDraftImportedExecutionCash('u1', 'a1', 's1', event.id, 3)
+    ).rejects.toThrow('already linked to a draft cash operation')
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+  it('uses the Kraken quote-currency values when a multi-currency SELL is allocated to a parcel', async () => {
+    const event = {
+      id: 'event-sell-1',
+      userId: 'u1',
+      source: 'KRAKEN',
+      externalId: 'KRAKEN:order:sell-1',
+      kind: 'SELL',
+      status: 'APPLIED',
+      occurredAt: new Date('2026-10-02T00:00:00.000Z'),
+      quoteCurrency: 'AUD',
+      grossValue: new Decimal('60'),
+      fee: new Decimal('1'),
+      feeCurrency: 'AUD',
+      appliedPositionIds: ['p1'],
+      batch: { accountId: 'a1', userId: 'u1' },
+    }
+    mocks.importedEvent.mockResolvedValue(event)
+    mocks.transactions.mockResolvedValue([
+      {
+        id: 'it-sell-1',
+        positionId: 'p1',
+        brokerRef: event.externalId,
+        type: 'SELL',
+        date: event.occurredAt,
+        totalValue: new Decimal('90'),
+        fees: new Decimal('1.5'),
+        quantity: 1,
+        position: {
+          origin: 'MANUAL',
+          positionType: 'LONG',
+          asset: { exchange: { currency: 'USD' } },
+        },
+      },
+    ])
+
+    await saveDraftImportedExecutionCash('u1', 'a1', 's1', event.id, 2)
+
+    expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          command: expect.objectContaining({
+            kind: 'SELL',
+            consideration: { currency: 'AUD', amount: '60' },
+            fees: [{ currency: 'AUD', amount: '1' }],
+            transactionIds: ['it-sell-1'],
+          }),
+        }),
+      })
+    )
+  })
   it('reuses an identical saved command even after its source preview changes, without posting again', async () => {
     mocks.rows.mockResolvedValue([stored()])
     mocks.preview.mockResolvedValue({ sourceFingerprint: 'b'.repeat(64) })
@@ -289,7 +533,7 @@ describe('persistent inactive cash staging', () => {
       }),
     ])
     await expect(saveDraftCashOperation('u1', 's1', deposit)).rejects.toThrow(
-      'inconsistent'
+      'unsupported commands'
     )
   })
   it('rejects stale opening source data before append', async () => {
@@ -1068,6 +1312,114 @@ describe('read-only opening reconciliation', () => {
     mocks.transactions.mockResolvedValue([recordedSell])
   })
 
+  it('reports exact manual money separately from imported allocations and existing links', async () => {
+    const row = { ...trade, brokerRef: null, positionId: 'legacy-position' }
+    mocks.transactions.mockResolvedValue([
+      row,
+      { ...row, id: 'allocation', brokerRef: 'KRAKEN:order:1' },
+      {
+        ...row,
+        id: 'imported',
+        position: { ...row.position, origin: 'IMPORT_TRADE' },
+      },
+    ])
+    let result = await reconcileDraftOpening('u1', 's1', 'a1')
+    expect(result.cashManualExecutions).toEqual([
+      {
+        transactionId: 't1',
+        positionId: 'legacy-position',
+        kind: 'BUY',
+        effectiveDate: '2026-10-02',
+        currency: 'AUD',
+        grossValue: '60',
+        fee: '1',
+        stageable: true,
+        reason: null,
+        operationId: null,
+      },
+    ])
+    const operation = { ...stored(buy), tradeLinks: [{ transactionId: 't1' }] }
+    mocks.rows.mockResolvedValue([operation])
+    result = await reconcileDraftOpening('u1', 's1', 'a1')
+    expect(result.cashManualExecutions[0]).toMatchObject({
+      stageable: false,
+      reason: 'ALREADY_LINKED',
+      operationId: 'op1',
+    })
+  })
+  it.each([
+    [
+      'boundary',
+      { date: new Date('2026-10-01T00:00:00Z') },
+      'ON_OR_BEFORE_BOUNDARY',
+    ],
+    [
+      'future',
+      { date: new Date('2099-01-01T00:00:00Z') },
+      'AFTER_OBSERVATION_DATE',
+    ],
+    [
+      'non-positive gross',
+      { totalValue: new Decimal('0') },
+      'UNSUPPORTED_EXECUTION',
+    ],
+    ['invalid fee', { fees: new Decimal('-1') }, 'UNSUPPORTED_EXECUTION'],
+    ['invalid quantity', { quantity: 0 }, 'UNSUPPORTED_EXECUTION'],
+    [
+      'short',
+      { position: { ...trade.position, positionType: 'SHORT' } },
+      'UNSUPPORTED_EXECUTION',
+    ],
+    [
+      'unsupported currency',
+      {
+        position: {
+          ...trade.position,
+          asset: { exchange: { currency: 'BTC' } },
+        },
+      },
+      'UNSUPPORTED_EXECUTION',
+    ],
+  ])(
+    'does not offer manual staging for %s executions',
+    async (_label, overrides, reason) => {
+      mocks.transactions.mockResolvedValue([
+        {
+          ...trade,
+          brokerRef: null,
+          positionId: 'legacy-position',
+          ...overrides,
+        },
+      ])
+      const result = await reconcileDraftOpening('u1', 's1', 'a1')
+      expect(result.cashManualExecutions[0]).toMatchObject({
+        stageable: false,
+        reason,
+      })
+    }
+  )
+  it('disables manual staging when the opening source or account is not eligible', async () => {
+    mocks.transactions.mockResolvedValue([
+      { ...trade, brokerRef: null, positionId: 'legacy-position' },
+    ])
+    mocks.preview.mockResolvedValue({
+      ...livePreview,
+      sourceFingerprint: 'b'.repeat(64),
+    })
+    expect(
+      (await reconcileDraftOpening('u1', 's1', 'a1')).cashManualExecutions[0]
+        .reason
+    ).toBe('STALE_OPENING_SOURCE')
+    mocks.preview.mockResolvedValue(livePreview)
+    mocks.statement.mockResolvedValue({
+      ...openingStatement,
+      account: { ...statement.account, status: 'CLOSED' },
+    })
+    expect(
+      (await reconcileDraftOpening('u1', 's1', 'a1')).cashManualExecutions[0]
+        .reason
+    ).toBe('ACCOUNT_NOT_ELIGIBLE')
+  })
   describe('persisted dated cash evidence and external capital operations', () => {
     beforeEach(() => {
       mocks.preview.mockResolvedValue({
@@ -1489,6 +1841,56 @@ describe('read-only opening reconciliation', () => {
     expect(reversed.reviewReasons).toContain('RECORDED_TRADES_NOT_FULLY_LINKED')
   })
 
+  it('reports an imported execution as already represented when its transaction is linked under another source reference', async () => {
+    const event = {
+      id: 'event-duplicate',
+      batchId: 'batch-1',
+      externalId: 'KRAKEN:order:duplicate',
+      kind: 'SELL',
+      occurredAt: new Date('2026-10-02T00:00:00.000Z'),
+      quoteCurrency: 'AUD',
+      grossValue: new Decimal('60'),
+      fee: new Decimal('1'),
+      feeCurrency: 'AUD',
+      appliedPositionIds: ['legacy-position'],
+    }
+    const transaction = {
+      ...recordedSell,
+      id: 'imported-transaction',
+      type: 'SELL',
+      brokerRef: event.externalId,
+      position: {
+        origin: 'MANUAL',
+        positionType: 'LONG',
+        asset: { exchange: { currency: 'AUD' } },
+      },
+    }
+    const existing = {
+      ...stored({
+        ...buy,
+        kind: 'SELL',
+        fees: [{ currency: 'AUD', amount: '1' }],
+        source: { origin: 'MANUAL', reference: 'reviewed-before-import' },
+        transactionIds: [transaction.id],
+      }),
+      tradeLinks: [{ transactionId: transaction.id }],
+    }
+    mocks.rows.mockResolvedValue([existing])
+    mocks.transactions.mockResolvedValue([transaction])
+    mocks.importedEvents.mockResolvedValue([event])
+
+    const result = await reconcileDraftOpening('u1', 's1')
+
+    expect(result.cashImportExecutions).toMatchObject([
+      {
+        eventId: event.id,
+        stageable: false,
+        reason: 'TRANSACTION_ALREADY_LINKED',
+        operationId: existing.id,
+      },
+    ])
+  })
+
   it('excludes pre-boundary and future live transactions from the observed linkage report', async () => {
     mocks.transactions.mockResolvedValue([
       recordedSell,
@@ -1509,12 +1911,15 @@ describe('read-only opening reconciliation', () => {
     expect(result.cashOperations).toEqual([
       {
         operationId: 'op1',
+        currentRevisionId: 'op1',
         idempotencyKey: 'deposit-1',
         kind: 'DEPOSIT',
         effectiveDate: '2026-10-02',
         sequence: 1,
         sourceOrigin: 'MANUAL',
         sourceReference: 'bank-statement-1',
+        cash: { currency: 'AUD', amount: '100' },
+        revisions: [],
         status: 'EFFECTIVE',
       },
     ])
@@ -1784,6 +2189,132 @@ describe('atomic proposed trade corrections', () => {
 })
 
 describe('immutable inactive cash corrections', () => {
+  it('rejects imported sequence correction on a manual operation and validates URL ownership', async () => {
+    mocks.rows.mockResolvedValue([stored()])
+    const raw = {
+      idempotencyKey: 'import-fix',
+      expectedRevisionId: 'op1',
+      reason: 'Broker sequence',
+      sequence: 3,
+    }
+    await expect(
+      correctDraftImportedExecutionCash('u1', 'a1', 's1', 'op1', raw)
+    ).rejects.toThrow('Only imported')
+    await expect(
+      correctDraftImportedExecutionCash('u1', 'other', 's1', 'op1', raw)
+    ).rejects.toMatchObject({ status: 404 })
+    expect(mocks.createRevision).not.toHaveBeenCalled()
+  })
+
+  it('rejects stored imported financial changes or reversal even if hashes and posting audit match', async () => {
+    const imported = {
+      ...buy,
+      idempotencyKey: 'import-event:e1',
+      source: { origin: 'IMPORT', reference: 'KRAKEN:order:1' },
+    }
+    for (const replacement of [
+      null,
+      {
+        ...imported,
+        idempotencyKey: 'correction-1',
+        consideration: { currency: 'AUD', amount: '59' },
+      },
+      {
+        ...imported,
+        idempotencyKey: 'correction-1',
+        effectiveDate: '2026-10-03',
+      },
+      { ...imported, idempotencyKey: 'correction-1', fees: [] },
+    ]) {
+      mocks.rows.mockResolvedValue([
+        {
+          ...stored(imported),
+          tradeLinks: [{ transactionId: 't1' }],
+          revisions: [
+            storedRevision(
+              {
+                idempotencyKey: 'correction-1',
+                expectedRevisionId: 'op1',
+                reason: 'Corrupt source economics',
+                replacement,
+              },
+              imported
+            ),
+          ],
+        },
+      ])
+      await expect(
+        correctDraftImportedExecutionCash('u1', 'a1', 's1', 'op1', {
+          idempotencyKey: 'next',
+          expectedRevisionId: 'rev1',
+          reason: 'Review',
+          sequence: 3,
+        })
+      ).rejects.toThrow(
+        'Stored imported correction must retain execution values'
+      )
+    }
+    expect(mocks.createRevision).not.toHaveBeenCalled()
+  })
+  it('scopes review corrections to the URL account and derives unchanged source identity', async () => {
+    mocks.rows.mockResolvedValue([stored()])
+    const raw = {
+      idempotencyKey: 'capital-correction',
+      expectedRevisionId: 'op1',
+      reason: 'Correct bank amount',
+      replacement: { effectiveDate: '2026-10-03', sequence: 3, amount: '80' },
+    }
+    await expect(
+      correctDraftReconciliationCashOperation(
+        'u1',
+        'wrong-account',
+        's1',
+        'op1',
+        raw
+      )
+    ).rejects.toMatchObject({ status: 404 })
+    expect(mocks.createRevision).not.toHaveBeenCalled()
+    const result = await correctDraftReconciliationCashOperation(
+      'u1',
+      'a1',
+      's1',
+      'op1',
+      raw
+    )
+    expect(result).toMatchObject({ revisionId: 'rev1', created: true })
+    expect(result.replay.balances[0].endingAmount).toBe('180')
+    expect(
+      mocks.createRevision.mock.calls[0][0].data.request.replacement
+    ).toMatchObject({
+      accountId: 'a1',
+      kind: 'DEPOSIT',
+      source: deposit.source,
+      cash: { currency: 'AUD', amount: '80' },
+    })
+  })
+
+  it('rechecks the URL account after locking and refuses trade corrections through review', async () => {
+    const raw = {
+      idempotencyKey: 'k',
+      expectedRevisionId: 'op1',
+      reason: 'Fix',
+      replacement: null,
+    }
+    mocks.statement
+      .mockResolvedValueOnce(statement)
+      .mockResolvedValueOnce({ ...statement, accountId: 'other' })
+    await expect(
+      correctDraftReconciliationCashOperation('u1', 'a1', 's1', 'op1', raw)
+    ).rejects.toMatchObject({ status: 404 })
+    mocks.statement.mockResolvedValue(statement)
+    mocks.rows.mockResolvedValue([
+      { ...stored(buy), tradeLinks: [{ transactionId: 't1' }] },
+    ])
+    await expect(
+      correctDraftReconciliationCashOperation('u1', 'a1', 's1', 'op1', raw)
+    ).rejects.toThrow('Only manual deposits and withdrawals')
+    expect(mocks.createRevision).not.toHaveBeenCalled()
+  })
   beforeEach(() => mocks.rows.mockResolvedValue([stored()]))
 
   it('appends reversal and replacement with a reason and an expected head; never updates the original', async () => {

@@ -169,8 +169,123 @@ export function prepareDraftTradeRevision(
   )
 }
 
+export function prepareCapitalCashRevision(
+  raw: unknown,
+  original: CashCommand,
+  now = new Date()
+): PreparedCashRevision {
+  if (
+    original.source.origin !== 'MANUAL' ||
+    (original.kind !== 'DEPOSIT' && original.kind !== 'WITHDRAWAL')
+  )
+    cashRevisionConflict(
+      'Only manual deposits and withdrawals can use this correction workflow'
+    )
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+    cashRevisionConflict('Capital correction must be an object', 400)
+  const row = raw as Record<string, unknown>
+  if (
+    Object.keys(row).some(
+      (key) =>
+        ![
+          'idempotencyKey',
+          'expectedRevisionId',
+          'reason',
+          'replacement',
+        ].includes(key)
+    )
+  )
+    cashRevisionConflict('Unsupported capital correction fields', 400)
+  let replacement: CashCommand | null = null
+  if (row.replacement !== null) {
+    if (
+      !row.replacement ||
+      typeof row.replacement !== 'object' ||
+      Array.isArray(row.replacement)
+    )
+      cashRevisionConflict(
+        'Supply replacement date, sequence and amount, or null for reversal',
+        400
+      )
+    const next = row.replacement as Record<string, unknown>
+    if (
+      Object.keys(next).some(
+        (key) => !['effectiveDate', 'sequence', 'amount'].includes(key)
+      )
+    )
+      cashRevisionConflict(
+        'Replacement cannot change the currency, source or operation identity',
+        400
+      )
+    replacement = prepareCashCommand(
+      {
+        ...original,
+        idempotencyKey: row.idempotencyKey,
+        effectiveDate: next.effectiveDate,
+        sequence: next.sequence,
+        cash: { currency: original.cash.currency, amount: next.amount },
+      },
+      now
+    ).command
+  }
+  return prepareCashRevision(
+    {
+      idempotencyKey: row.idempotencyKey,
+      expectedRevisionId: row.expectedRevisionId,
+      reason: row.reason,
+      replacement,
+    },
+    now
+  )
+}
+
 export interface RevisionLeg extends CashLeg {
   phase: 'REVERSAL' | 'REPLACEMENT'
+}
+
+export function prepareImportedCashRevision(
+  raw: unknown,
+  original: CashCommand,
+  now = new Date()
+): PreparedCashRevision {
+  if (
+    original.source.origin !== 'IMPORT' ||
+    (original.kind !== 'BUY' && original.kind !== 'SELL')
+  )
+    cashRevisionConflict(
+      'Only imported executions can use sequence corrections'
+    )
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+    cashRevisionConflict('Imported sequence correction must be an object', 400)
+  const row = raw as Record<string, unknown>
+  if (
+    Object.keys(row).some(
+      (key) =>
+        ![
+          'idempotencyKey',
+          'expectedRevisionId',
+          'reason',
+          'sequence',
+        ].includes(key)
+    )
+  )
+    cashRevisionConflict(
+      'Imported corrections accept only sequence and audit fields',
+      400
+    )
+  return prepareCashRevision(
+    {
+      idempotencyKey: row.idempotencyKey,
+      expectedRevisionId: row.expectedRevisionId,
+      reason: row.reason,
+      replacement: {
+        ...original,
+        idempotencyKey: row.idempotencyKey,
+        sequence: row.sequence,
+      },
+    },
+    now
+  )
 }
 
 export function prepareRevisionLegs(
