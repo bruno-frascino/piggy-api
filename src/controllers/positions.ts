@@ -613,6 +613,10 @@ router.get(
  *     description: >
  *       Updates the sale and parcel totals atomically under an owned-account and parcel lock.
  *       Does not activate or spend inactive draft cash. Concurrent parcel moves require reload.
+ *       Imported broker-linked execution values are immutable here. Financial changes to
+ *       cash-linked manual trades require the coordinated acquisition/sale-correction endpoints in opening
+ *       reconciliation; this ordinary editor returns 409 instead.
+ *       Notes and close reason remain editable; unchanged financial values are not rewritten.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -655,7 +659,7 @@ router.get(
  *       404:
  *         description: Close event not found
  *       409:
- *         description: Parcel or close event moved concurrently; reload and retry
+ *         description: Concurrent move, imported execution change or financial edit of a cash-linked trade
  */
 router.patch(
   '/close-events/:id',
@@ -902,6 +906,11 @@ router.post(
  *       and recheck the demo/real boundary. Inactive draft cash is not spent or activated.
  *       An edit or move that would leave open holdings in a closed account returns 409;
  *       reopen the account first. Corrections and moves of fully closed history remain allowed.
+ *       Imported acquisition values and source identities cannot be changed here. Financial
+ *       edits, instrument/account changes and deletion of cash-linked trades require coordinated
+ *       correction and return 409 here, including for reversed cash operations. The opening
+ *       reconciliation workflow supports manual acquisition and sale corrections, not deletion or moves.
+ *       Notes and metadata remain editable; resubmitting unchanged financial values is allowed.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -1364,6 +1373,9 @@ router.post(
  *     description: >
  *       Deletes under owned-account and parcel locks. Inactive opening and cash draft
  *       snapshot references are retained; source changes prevent further draft appends.
+ *       Imported parcels, parcels containing broker-linked allocations and parcels with any
+ *       cash-linked transaction cannot be deleted here. Dedicated coordinated correction
+ *       or source-aware adjustment is required; reversing cash does not release its identity.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -1381,7 +1393,7 @@ router.post(
  *       404:
  *         description: Position not found
  *       409:
- *         description: Position moved accounts concurrently; reload and retry
+ *         description: Concurrent move or parcel has imported execution records or durable draft cash links
  */
 router.delete(
   '/:id',

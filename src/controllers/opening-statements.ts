@@ -6,6 +6,10 @@ import {
   handleValidationErrors,
 } from '../middleware/validation.js'
 import {
+  parseSaleCorrection,
+  parseAcquisitionCorrection,
+} from '../lib/execution-correction.js'
+import {
   listOpeningStatements,
   saveOpeningStatement,
 } from '../lib/opening-statements.js'
@@ -17,6 +21,8 @@ import {
   saveDraftReconciliationCashOperation,
   saveDraftImportedExecutionCash,
   saveDraftManualExecutionCash,
+  correctDraftRecordedSale,
+  correctDraftRecordedAcquisition,
   previewDraftCashEvidence,
 } from '../lib/draft-cash-ledger.js'
 
@@ -206,7 +212,7 @@ router.get(
  *         required: true
  *         schema: { type: string }
  *     responses:
- *       200: { description: 'Read-only draft reconciliation including cash evidence/variances, cash-operation currentRevisionId/capital cash/revisions (revisionId, reason, replacement boolean), effective or reversed sources, imported execution eligibility with duplicate transaction-link detection and cashManualExecutions (transactionId, positionId, kind, effectiveDate, currency, grossValue, fee, stageable, reason, operationId). Manual eligibility excludes broker-linked allocations, imported/short parcels, unsupported money, boundary/future dates, stale snapshots, unavailable accounts and incompatible opening-sale proposals.' }
+ *       200: { description: 'Read-only draft reconciliation including cash evidence/variances, source savedFingerprint/acceptedFingerprint/currentFingerprint/correctionCount/changed, cash-operation currentRevisionId/capital cash/revisions (revisionId, reason, replacement boolean, nullable executionAudit containing number, previousFingerprint, nextFingerprint, reviewed input and before/after transaction snapshots; acquisition audits have kind BUY and input quantity, historical sale audits are untagged), effective or reversed sources, imported execution eligibility with duplicate transaction-link detection and cashManualExecutions (transactionId, positionId, kind, quantity, effectiveDate, occurredAt, currency, price, grossValue, fee, stageable, reason, operationId). Audit snapshots include transactionId, positionId, ISO date, quantity, price, totalValue, fees and currency. Manual eligibility excludes broker-linked allocations, imported/short parcels, unsupported money, boundary/future dates, stale snapshots, unavailable accounts and incompatible opening-sale proposals.' }
  *       401: { description: Authentication required. }
  *       404: { description: Account or opening statement not found. }
  *       409: { description: Stored draft audit history is inconsistent. }
@@ -718,6 +724,160 @@ router.post(
       String(req.params.statementId),
       String(req.params.transactionId),
       req.body.sequence
+    )
+    res.set('Cache-Control', 'no-store')
+    res.json({ success: true, data: result })
+  })
+)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/opening-statements/{statementId}/cash-operations/{operationId}/sale-corrections:
+ *   post:
+ *     summary: Correct a recorded manual sale and its draft cash atomically
+ *     description: >
+ *       Explicitly changes the live manual SELL date, price and fees, recomputes parcel
+ *       totals, and appends exact cash reversal/replacement postings with immutable before/after
+ *       trade snapshots and source fingerprint continuation. Quantity, parcel, instrument,
+ *       currency and source identity cannot change. Imported sources and cash-only reversal
+ *       are unsupported. Gross consideration is quantity times price rounded half-up to the
+ *       transaction's two decimal places. A same-Sydney-date correction preserves the original
+ *       timestamp; changing date records the new calendar date at 01:00 UTC. Dates must remain
+ *       after opening, on/after acquisition and within the original observation date.
+ *       Same-day sales must follow effective acquisition cash in explicit sequence order.
+ *       The original opening snapshot and statement evidence never change; other drafts
+ *       become stale. Expected revision/source and idempotency checks serialize edits.
+ *       This changes live trade history and can make existing tax reports stale, but does
+ *       not activate accounting or post spendable cash.
+ *     tags: [Accounts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *       - { in: path, name: statementId, required: true, schema: { type: string } }
+ *       - { in: path, name: operationId, required: true, schema: { type: string } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: false
+ *             required: [idempotencyKey, expectedRevisionId, expectedSourceFingerprint, reason, effectiveDate, sequence, price, fees]
+ *             properties:
+ *               idempotencyKey: { type: string, minLength: 1, maxLength: 200 }
+ *               expectedRevisionId: { type: string, minLength: 1, maxLength: 200 }
+ *               expectedSourceFingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+ *               reason: { type: string, minLength: 1, maxLength: 1000 }
+ *               effectiveDate: { type: string, format: date }
+ *               sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+ *               price: { type: string, description: Positive exact decimal with at most 12 integer and 12 fractional digits }
+ *               fees: { type: string, description: Non-negative exact decimal with at most 10 integer and 8 fractional digits }
+ *     responses:
+ *       200: { description: Draft operationId, revisionId, state DRAFT, created flag and current dated cash replay. Identical retries do not rewrite the live sale. }
+ *       400: { description: Unsupported fields, amount precision or unchanged correction. }
+ *       401: { description: Authentication required. }
+ *       404: { description: Owned manual sale, statement or operation not found. }
+ *       409: { description: Stale source/head, invalid boundary, unsupported parcel or conflicting idempotency key. }
+ *       422: { description: Dated funding deficit, occupied ordering slot or audit limit. }
+ */
+router.post(
+  '/:id/opening-statements/:statementId/cash-operations/:operationId/sale-corrections',
+  [
+    param('id').isString().trim().isLength({ min: 1, max: 100 }),
+    param('statementId').isString().trim().isLength({ min: 1, max: 100 }),
+    param('operationId').isString().trim().isLength({ min: 1, max: 100 }),
+    body().custom((raw: unknown) => {
+      parseSaleCorrection(raw)
+      return true
+    }),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await correctDraftRecordedSale(
+      req.user!.userId,
+      String(req.params.id),
+      String(req.params.statementId),
+      String(req.params.operationId),
+      req.body
+    )
+    res.set('Cache-Control', 'no-store')
+    res.json({ success: true, data: result })
+  })
+)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/opening-statements/{statementId}/cash-operations/{operationId}/acquisition-corrections:
+ *   post:
+ *     summary: Correct a recorded manual acquisition and its draft cash atomically
+ *     description: >
+ *       Changes the live manual long BUY date, quantity, price and fees, recomputes parcel
+ *       cost basis, remaining inventory and realized results, and appends an immutable cash
+ *       revision with before/after source snapshots and fingerprint continuation. Sale
+ *       quantities and allocations never change. The parcel must have exactly one BUY, cover
+ *       all sales and precede their dates. Same-day sales require effective draft cash ordered
+ *       after the acquisition. Imported parcels and broker-linked sales are excluded.
+ *       Account, instrument, currency and source identity cannot change. The acquisition must
+ *       stay after opening and within the original observation date. Quantity is an exact
+ *       decimal string with at most 12 fractional digits, at most 9007199254740991, and must
+ *       round-trip through the existing Float storage without changing decimal value.
+ *       Gross consideration is quantity times price rounded half-up to 2 decimal places.
+ *       Same-Sydney-date edits retain timestamps; changed dates use 01:00 UTC. The original
+ *       opening and statement evidence remain unchanged; unrelated drafts and tax reports
+ *       can become stale. No spendable cash or accounting activation is enabled.
+ *     tags: [Accounts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *       - { in: path, name: statementId, required: true, schema: { type: string } }
+ *       - { in: path, name: operationId, required: true, schema: { type: string } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: false
+ *             required: [idempotencyKey, expectedRevisionId, expectedSourceFingerprint, reason, effectiveDate, sequence, price, fees, quantity]
+ *             properties:
+ *               idempotencyKey: { type: string, minLength: 1, maxLength: 200 }
+ *               expectedRevisionId: { type: string, minLength: 1, maxLength: 200 }
+ *               expectedSourceFingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+ *               reason: { type: string, minLength: 1, maxLength: 1000 }
+ *               effectiveDate: { type: string, format: date }
+ *               sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+ *               price: { type: string, description: Positive exact decimal with at most 12 integer and 12 fractional digits }
+ *               fees: { type: string, description: Non-negative exact decimal with at most 10 integer and 8 fractional digits }
+ *               quantity: { type: string, description: Positive representable decimal quantity covering all existing sales }
+ *     responses:
+ *       200: { description: Draft operationId, revisionId, state DRAFT, created flag and current dated cash replay. Identical retries never rewrite the live acquisition. }
+ *       400: { description: Invalid fields, precision, quantity, storage overflow or unchanged correction. }
+ *       401: { description: Authentication required. }
+ *       404: { description: Owned manual acquisition, statement or operation not found. }
+ *       409: { description: Stale source/head, invalid boundary, unsupported parcel, insufficient inventory, imported sale allocation or conflicting idempotency key. }
+ *       422: { description: Dated funding deficit, occupied ordering slot or audit limit. }
+ */
+router.post(
+  '/:id/opening-statements/:statementId/cash-operations/:operationId/acquisition-corrections',
+  [
+    param('id').isString().trim().isLength({ min: 1, max: 100 }),
+    param('statementId').isString().trim().isLength({ min: 1, max: 100 }),
+    param('operationId').isString().trim().isLength({ min: 1, max: 100 }),
+    body().custom((raw: unknown) => {
+      parseAcquisitionCorrection(raw)
+      return true
+    }),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await correctDraftRecordedAcquisition(
+      req.user!.userId,
+      String(req.params.id),
+      String(req.params.statementId),
+      String(req.params.operationId),
+      req.body
     )
     res.set('Cache-Control', 'no-store')
     res.json({ success: true, data: result })

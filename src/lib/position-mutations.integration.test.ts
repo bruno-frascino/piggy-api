@@ -132,6 +132,237 @@ describe.skipIf(!enabled)(
       expect(parcel.status).toBe('PARTIAL')
       expect(parcel.realizedPnL?.toFixed()).toBe('9.8')
     })
+    async function stagedFixture() {
+      const f = await fixture()
+      const closed = await closePosition(f.userId, f.position.id, input)
+      const { previewAccountOpening } =
+        await import('./accounting-preview-service.js')
+      const { saveOpeningStatement } = await import('./opening-statements.js')
+      const opening = {
+        openingDate: '2026-10-01',
+        cashBalances: [{ currency: 'AUD', amount: '1000' }],
+      }
+      const preview = await previewAccountOpening(
+        f.userId,
+        f.account.id,
+        opening
+      )
+      const saved = await saveOpeningStatement(f.userId, f.account.id, {
+        ...opening,
+        sourceFingerprint: preview.sourceFingerprint,
+      })
+      const sell = closed.transactions.find((row) => row.type === 'SELL')
+      if (!sell) throw new Error('Missing fixture disposal')
+      return { ...f, sell, statementId: saved.statement.id }
+    }
+    it('protects linked manual trades from financial edits, moves and deletion, even after cash reversal', async () => {
+      const f = await stagedFixture()
+      const { saveDraftManualExecutionCash } =
+        await import('./draft-cash-ledger.js')
+      const staged = await saveDraftManualExecutionCash(
+        f.userId,
+        f.account.id,
+        f.statementId,
+        f.sell.id,
+        1
+      )
+      const before = await prisma.position.findUniqueOrThrow({
+        where: { id: f.position.id },
+        include: { transactions: { orderBy: { id: 'asc' } } },
+      })
+      const destination = await prisma.tradingAccount.create({
+        data: { userId: f.userId, name: `Destination ${randomUUID()}` },
+      })
+      for (const edit of [
+        () => updateCloseEvent(f.userId, f.sell.id, { exitPrice: 13 }),
+        () =>
+          updatePositionAcquisition(
+            f.userId,
+            f.position.id,
+            { buyFees: 3 },
+            {}
+          ),
+        () =>
+          updatePositionAcquisition(
+            f.userId,
+            f.position.id,
+            {},
+            {},
+            destination.id
+          ),
+        () => deletePosition(f.userId, f.position.id),
+      ])
+        await expect(edit()).rejects.toMatchObject({
+          status: 409,
+          message: /coordinated trade\/cash correction/,
+        })
+      // Reversed cash still reserves the source identity; legacy editors must not bypass it.
+      const { prepareCashRevision, prepareRevisionLegs } =
+        await import('./cash-revisions.js')
+      const { prepareCashCommand } = await import('./cash-ledger.js')
+      const operation = await prisma.draftCashOperation.findUniqueOrThrow({
+        where: { id: staged.operationId },
+      })
+      const revision = prepareCashRevision({
+        idempotencyKey: 'fixture-reversal',
+        expectedRevisionId: staged.operationId,
+        reason: 'Existing reversed audit fixture',
+        replacement: null,
+      })
+      const legs = prepareRevisionLegs(
+        prepareCashCommand(operation.command).command,
+        null
+      )
+      await prisma.draftCashRevision.create({
+        data: {
+          statementId: f.statementId,
+          operationId: staged.operationId,
+          revisionNumber: 1,
+          idempotencyKey: revision.request.idempotencyKey,
+          payloadHash: revision.payloadHash,
+          reason: revision.request.reason,
+          request: { ...revision.request },
+          postings: {
+            create: legs.map((leg, legIndex) => ({ ...leg, legIndex })),
+          },
+        },
+      })
+      await expect(
+        updateCloseEvent(f.userId, f.sell.id, { sellFees: 2 })
+      ).rejects.toMatchObject({ status: 409 })
+      expect(
+        await prisma.position.findUniqueOrThrow({
+          where: { id: f.position.id },
+          include: { transactions: { orderBy: { id: 'asc' } } },
+        })
+      ).toEqual(before)
+      expect(
+        await prisma.draftCashOperation.count({
+          where: { statementId: f.statementId },
+        })
+      ).toBe(1)
+    })
+    it.each(['edit', 'delete', 'move'] as const)(
+      'serializes cash staging against a legacy %s without allowing both changes',
+      async (action) => {
+        const f = await stagedFixture()
+        const { saveDraftManualExecutionCash } =
+          await import('./draft-cash-ledger.js')
+        const destination = await prisma.tradingAccount.create({
+          data: { userId: f.userId, name: `Race destination ${randomUUID()}` },
+        })
+        const mutate =
+          action === 'edit'
+            ? () => updateCloseEvent(f.userId, f.sell.id, { exitPrice: 13 })
+            : action === 'delete'
+              ? () => deletePosition(f.userId, f.position.id)
+              : () =>
+                  updatePositionAcquisition(
+                    f.userId,
+                    f.position.id,
+                    {},
+                    {},
+                    destination.id
+                  )
+        const results = await Promise.allSettled([
+          saveDraftManualExecutionCash(
+            f.userId,
+            f.account.id,
+            f.statementId,
+            f.sell.id,
+            1
+          ),
+          mutate(),
+        ])
+        expect(
+          results.filter((row) => row.status === 'fulfilled')
+        ).toHaveLength(1)
+        const operationCount = await prisma.draftCashOperation.count({
+          where: { statementId: f.statementId },
+        })
+        if (results[0].status === 'fulfilled') {
+          expect(operationCount).toBe(1)
+          const sell = await prisma.transaction.findUniqueOrThrow({
+            where: { id: f.sell.id },
+            include: { position: true },
+          })
+          expect(sell.price.toFixed()).toBe('12')
+          expect(sell.position.accountId).toBe(f.account.id)
+        } else {
+          expect(operationCount).toBe(0)
+          expect(
+            await prisma.draftOperationTradeLink.count({
+              where: { statementId: f.statementId },
+            })
+          ).toBe(0)
+        }
+      }
+    )
+    it('preserves imported BUY/SELL values while allowing notes and unchanged financial fields', async () => {
+      const f = await stagedFixture()
+      const buy = f.position.transactions[0]
+      await prisma.position.update({
+        where: { id: f.position.id },
+        data: { origin: 'IMPORT_TRADE' },
+      })
+      await prisma.transaction.update({
+        where: { id: buy.id },
+        data: { brokerRef: 'KRAKEN:order:buy-fixture' },
+      })
+      await prisma.transaction.update({
+        where: { id: f.sell.id },
+        data: { brokerRef: 'KRAKEN:order:sell-fixture' },
+      })
+      await expect(
+        updatePositionAcquisition(
+          f.userId,
+          f.position.id,
+          { entryPrice: 11 },
+          {}
+        )
+      ).rejects.toMatchObject({ status: 409 })
+      await expect(
+        updateCloseEvent(f.userId, f.sell.id, { sellFees: 2 })
+      ).rejects.toMatchObject({ status: 409 })
+      await expect(
+        deletePosition(f.userId, f.position.id)
+      ).rejects.toMatchObject({ status: 409 })
+      await updatePositionAcquisition(
+        f.userId,
+        f.position.id,
+        {
+          openDate: f.position.openDate,
+          entryPrice: 10,
+          quantity: 10,
+          buyFees: 2,
+        },
+        { notes: 'Reviewed import' },
+        f.account.id
+      )
+      await updateCloseEvent(f.userId, f.sell.id, {
+        closeDate: f.sell.date,
+        exitPrice: 12,
+        sellFees: 1,
+        notes: 'Reviewed allocation',
+      })
+      const rows = await prisma.transaction.findMany({
+        where: { positionId: f.position.id },
+        orderBy: { type: 'asc' },
+      })
+      expect(rows.find((row) => row.id === buy.id)).toMatchObject({
+        price: buy.price,
+        totalValue: buy.totalValue,
+        fees: buy.fees,
+        date: buy.date,
+      })
+      expect(rows.find((row) => row.id === f.sell.id)).toMatchObject({
+        price: f.sell.price,
+        totalValue: f.sell.totalValue,
+        fees: f.sell.fees,
+        date: f.sell.date,
+        notes: 'Reviewed allocation',
+      })
+    })
     it('creates a parcel with exactly one nested BUY and rolls back account creation if the parcel write fails', async () => {
       const f = await fixture()
       const created = await createPosition(

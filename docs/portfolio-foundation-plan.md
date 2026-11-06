@@ -8,9 +8,10 @@ exact variance review, separately dated manual deposit/withdrawal staging, and
 source-linked cash staging for already-applied Kraken executions.
 The review also supports audited correction/reversal of staged manual deposits and withdrawals.
 An isolated proposed BUY/SELL workflow and its corrections now atomically store draft
-parcels and cash; they do not change real holdings.
-Statement evidence and cash operations remain inactive; live cash posting, opening confirmation
-and activation are not implemented.
+parcels and cash; they do not change real holdings. A new live BUY/SELL writer now posts
+manual trades and cash atomically, but only behind an explicitly confirmed statement and
+active account cash ledger. No activation endpoint or account provisioning flow exists, so
+legacy accounts remain on their existing behavior.
 Date: 6 November 2026.
 Scope: piggy-api and sibling piggy-fe.
 
@@ -309,11 +310,13 @@ its cash and inventory snapshots. Saved drafts can be reopened as inputs, but mu
 previewed against current records again. Saving creates no spendable balance and does not
 alter trades. Retrying the same reviewed content returns the existing draft.
 
-The cash engine now prepares exact trade/fee and deposit/withdrawal legs and checks the entire
+The cash engine prepares exact trade/fee and deposit/withdrawal legs and checks the entire
 dated cash timeline using explicitly supplied intraday order. It distinguishes external capital
 from profit and refuses historical funding gaps, duplicate execution cash, missing currency
-balances and precision overflow. It is not wired to live financial writes; staged operations
-remain inactive and existing accounts remain unconfirmed.
+balances and precision overflow. Draft operations remain inactive. A separate live writer now
+requires an active ledger plus its matching confirmed Sydney opening statement, verifies the
+source-fingerprint chain and trade snapshots, then commits the trade, cash postings and ledger
+head atomically. No endpoint confirms or activates accounts.
 
 Inactive drafts now retain cash operation identities, exact postings and snapshot trade links.
 Internal staging serializes writes by locking the account and rejects stale source records,
@@ -510,7 +513,7 @@ imports need no separate activation switch; future read-only API connections wil
 per-user connection and disconnection controls. Binance and Coinbase enum entries do not imply
 implemented adapters.
 
-Next address financial execution corrections, atomic live trade/posting integration and the
+Next address atomic live trade/posting integration and the
 remaining supported financial paths. Do not enable confirmed accounts until every financial
 edit/delete/import path maintains the ledger and concurrency tests pass.
 
@@ -522,6 +525,68 @@ The report explains unavailable entries, including already-reserved transaction 
 Concurrent identical submissions have one cash effect; funding/source failures roll back without
 changing trades. This closes the missing manual execution-linking workflow, not financial
 execution correction or automatic live posting. Those remain the next accounting milestones.
+
+Financial correction policy is manual-first: imported execution values remain source records;
+future import corrections need separate audited, source-aware adjustments rather than overrides.
+As a prerequisite, legacy editors now reject financial edits, instrument/account changes and
+deletion of trades already linked to draft cash, including reversed operations. Imported
+acquisitions and broker-linked SELL allocations cannot be financially rewritten, moved or deleted
+through those editors. Guards run under the same account/parcel locks as staging. Notes and
+non-financial metadata remain editable; frontend editors submit only changed financial fields,
+so a notes save cannot overwrite an imported timestamp, rounded fee or partial parcel quantity.
+Those guards remain in place; the dedicated coordinated manual acquisition and sale workflows
+below are the only financial execution corrections currently exposed. Live accounting remains disabled.
+
+Manual SELL corrections now update the live sale, recomputed parcel results and linked draft
+cash atomically. The review requires exact price/fee strings, effective date, stable sequence,
+audit reason, explicit acknowledgement, expected operation head and expected source fingerprint.
+Quantity, instrument, parcel, currency and source identity cannot change. Date corrections must
+stay after opening, on/after acquisition and within the original observation date. Same-day
+corrections preserve the original timestamp. Gross cash uses the existing transaction precision:
+quantity times price rounded half-up to 2 decimal places; price supports 12 fractional digits and
+fees 8. Unrepresentable values fail before the live write.
+
+The approved opening policy is **audited continuation**. Each immutable cash revision includes
+before/after sale snapshots and a numbered before/after source fingerprint link. All reads and
+appends validate the chain from the original opening fingerprint and verify its current source
+snapshots; the opening statement itself is never rewritten. Other drafts become stale. Statement
+evidence stays unchanged and variances are recomputed. Dated funding failures, source/head drift,
+occupied slots and audit failures roll back every live and draft change. Retries reuse their
+saved audit revision without rewriting the trade, including after later corrections.
+
+Manual acquisition corrections now share that atomic writer and audited continuation. They can
+change the purchase date, exact quantity, price and fees while retaining every existing sale.
+The corrected quantity must cover all sales; the date must precede their dates, stay after opening
+and within the reviewed observation date. Same-day sales require effective draft cash explicitly
+ordered after the purchase. Broker-linked sale allocations and imported acquisitions are excluded.
+The single-BUY parcel's cost basis, total bought value, fees, capital allocation, remaining quantity,
+status and realized results are updated together; stale acquisition-based drawdown/run-up and
+unrealized PnL caches are cleared. A quantity correction can close or reopen the parcel without
+changing any sale allocation. The UI explicitly warns about cost-basis/tax impacts and protects
+offline/stale edits, exact amount strings and retry identity.
+
+Existing live quantities use Float storage. This workflow rejects quantities above the safe integer
+limit, with more than 12 fractional digits or whose decimal value changes through a Float round trip;
+it does not migrate or replace existing live portfolio calculation arithmetic. New purchase audits
+are tagged `kind: BUY`; historical untagged sale audits retain their original canonical hashes.
+Both execution kinds share one globally ordered source continuation chain.
+
+The gated live writer now handles manual BUY/SELL commands and complete supported Kraken BUY/SELL
+import batches, with exact cash postings, source snapshots, account-scoped manual idempotency and
+funding validation. Imported execution sequence is derived from timestamps within each Sydney
+date; identical timestamps and any existing cash/trade activity on an affected Sydney date are
+blocked. Pre-commit source validation excludes only the locked pending batch being committed;
+unrelated source drift remains a conflict. Legacy position creation/close, financial edits,
+moves, deletion and account deletion remain blocked for ledger-backed accounts until coordinated
+correction workflows exist. Kraken imports to legacy accounts retain their existing behavior.
+There is deliberately no account activation or opening-confirmation workflow, and the existing
+trade-entry UI still uses the legacy path for legacy accounts.
+
+Next deliver the remaining supported financial paths and a reviewed activation/cutover workflow
+before enabling any real account. Imported financial adjustments, execution reversals, moves and
+deletion remain unsupported coordinated workflows. Live trades remain unavailable to ordinary
+legacy accounts, and accounting-backed balances/performance are not exposed or substituted for
+legacy portfolio results.
 
 ## Existing implementation references
 

@@ -10,17 +10,20 @@
 | PATCH | `/api/accounts/:id` | 🔒 | param, body | [src/controllers/accounts.ts:375](../src/controllers/accounts.ts#L375) |
 | POST | `/api/accounts/:id/close` | 🔒 | param | [src/controllers/accounts.ts:287](../src/controllers/accounts.ts#L287) |
 | POST | `/api/accounts/:id/opening-preview` | 🔒 | param, body ×2 | [src/controllers/accounts.ts:126](../src/controllers/accounts.ts#L126) |
-| GET | `/api/accounts/:id/opening-statements` | 🔒 | param, query | [src/controllers/opening-statements.ts:167](../src/controllers/opening-statements.ts#L167) |
-| POST | `/api/accounts/:id/opening-statements` | 🔒 | param, body ×3 | [src/controllers/opening-statements.ts:105](../src/controllers/opening-statements.ts#L105) |
-| POST | `/api/accounts/:id/opening-statements/:statementId/cash-evidence` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:273](../src/controllers/opening-statements.ts#L273) |
-| POST | `/api/accounts/:id/opening-statements/:statementId/cash-evidence/preview` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:330](../src/controllers/opening-statements.ts#L330) |
-| POST | `/api/accounts/:id/opening-statements/:statementId/cash-operations` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:398](../src/controllers/opening-statements.ts#L398) |
-| POST | `/api/accounts/:id/opening-statements/:statementId/cash-operations/:operationId/corrections` | 🔒 | param ×3, body ×5 | [src/controllers/opening-statements.ts:550](../src/controllers/opening-statements.ts#L550) |
-| POST | `/api/accounts/:id/opening-statements/:statementId/import-events/:eventId/cash-operation` | 🔒 | param ×3, body ×3 | [src/controllers/opening-statements.ts:466](../src/controllers/opening-statements.ts#L466) |
-| POST | `/api/accounts/:id/opening-statements/:statementId/imported-cash-operations/:operationId/corrections` | 🔒 | param ×3, body ×6 | [src/controllers/opening-statements.ts:617](../src/controllers/opening-statements.ts#L617) |
-| GET | `/api/accounts/:id/opening-statements/:statementId/reconciliation` | 🔒 | param ×2 | [src/controllers/opening-statements.ts:215](../src/controllers/opening-statements.ts#L215) |
-| POST | `/api/accounts/:id/opening-statements/:statementId/transactions/:transactionId/cash-operation` | 🔒 | param ×3, body ×3 | [src/controllers/opening-statements.ts:692](../src/controllers/opening-statements.ts#L692) |
+| GET | `/api/accounts/:id/opening-statements` | 🔒 | param, query | [src/controllers/opening-statements.ts:173](../src/controllers/opening-statements.ts#L173) |
+| POST | `/api/accounts/:id/opening-statements` | 🔒 | param, body ×3 | [src/controllers/opening-statements.ts:111](../src/controllers/opening-statements.ts#L111) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/cash-evidence` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:279](../src/controllers/opening-statements.ts#L279) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/cash-evidence/preview` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:336](../src/controllers/opening-statements.ts#L336) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/cash-operations` | 🔒 | param ×2, body ×8 | [src/controllers/opening-statements.ts:404](../src/controllers/opening-statements.ts#L404) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/cash-operations/:operationId/acquisition-corrections` | 🔒 | param ×3, body | [src/controllers/opening-statements.ts:862](../src/controllers/opening-statements.ts#L862) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/cash-operations/:operationId/corrections` | 🔒 | param ×3, body ×5 | [src/controllers/opening-statements.ts:556](../src/controllers/opening-statements.ts#L556) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/cash-operations/:operationId/sale-corrections` | 🔒 | param ×3, body | [src/controllers/opening-statements.ts:784](../src/controllers/opening-statements.ts#L784) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/import-events/:eventId/cash-operation` | 🔒 | param ×3, body ×3 | [src/controllers/opening-statements.ts:472](../src/controllers/opening-statements.ts#L472) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/imported-cash-operations/:operationId/corrections` | 🔒 | param ×3, body ×6 | [src/controllers/opening-statements.ts:623](../src/controllers/opening-statements.ts#L623) |
+| GET | `/api/accounts/:id/opening-statements/:statementId/reconciliation` | 🔒 | param ×2 | [src/controllers/opening-statements.ts:221](../src/controllers/opening-statements.ts#L221) |
+| POST | `/api/accounts/:id/opening-statements/:statementId/transactions/:transactionId/cash-operation` | 🔒 | param ×3, body ×3 | [src/controllers/opening-statements.ts:698](../src/controllers/opening-statements.ts#L698) |
 | POST | `/api/accounts/:id/reopen` | 🔒 | param | [src/controllers/accounts.ts:321](../src/controllers/accounts.ts#L321) |
+| POST | `/api/accounts/:id/trades` | 🔒 | param, body ×7 | [src/controllers/account-trades.ts:86](../src/controllers/account-trades.ts#L86) |
 | POST | `/api/auth/forgot-password` | — | forgotPasswordLimiter, body | [src/controllers/auth.ts:554](../src/controllers/auth.ts#L554) |
 | POST | `/api/auth/login` | — | — | [src/controllers/auth.ts:225](../src/controllers/auth.ts#L225) |
 | POST | `/api/auth/logout` | 🔒 | — | [src/controllers/auth.ts:494](../src/controllers/auth.ts#L494) |
@@ -41,13 +44,13 @@
 | POST | `/api/portfolio/snapshot` | 🔒 | body ×2 | [src/controllers/portfolio.ts:151](../src/controllers/portfolio.ts#L151) |
 | GET | `/api/positions` | 🔒 | query ×6 | [src/controllers/positions.ts:129](../src/controllers/positions.ts#L129) |
 | POST | `/api/positions` | 🔒 | body ×22 | [src/controllers/positions.ts:299](../src/controllers/positions.ts#L299) |
-| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1386](../src/controllers/positions.ts#L1386) |
-| PATCH | `/api/positions/:id` | 🔒 | param, body ×24 | [src/controllers/positions.ts:991](../src/controllers/positions.ts#L991) |
-| POST | `/api/positions/:id/check-stop-loss` | 🔒 | param, body | [src/controllers/positions.ts:839](../src/controllers/positions.ts#L839) |
-| POST | `/api/positions/:id/close` | 🔒 | param, body ×6 | [src/controllers/positions.ts:1308](../src/controllers/positions.ts#L1308) |
-| POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:733](../src/controllers/positions.ts#L733) |
+| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1398](../src/controllers/positions.ts#L1398) |
+| PATCH | `/api/positions/:id` | 🔒 | param, body ×24 | [src/controllers/positions.ts:1000](../src/controllers/positions.ts#L1000) |
+| POST | `/api/positions/:id/check-stop-loss` | 🔒 | param, body | [src/controllers/positions.ts:843](../src/controllers/positions.ts#L843) |
+| POST | `/api/positions/:id/close` | 🔒 | param, body ×6 | [src/controllers/positions.ts:1317](../src/controllers/positions.ts#L1317) |
+| POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:737](../src/controllers/positions.ts#L737) |
 | GET | `/api/positions/close-events` | 🔒 | query ×5 | [src/controllers/positions.ts:513](../src/controllers/positions.ts#L513) |
-| PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×5 | [src/controllers/positions.ts:660](../src/controllers/positions.ts#L660) |
+| PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×5 | [src/controllers/positions.ts:664](../src/controllers/positions.ts#L664) |
 | GET | `/api/screener` | 🔒 | query ×10 | [src/controllers/screener.ts:124](../src/controllers/screener.ts#L124) |
 | GET | `/api/screener/saved-screens` | 🔒 | — | [src/controllers/screener.ts:301](../src/controllers/screener.ts#L301) |
 | POST | `/api/screener/saved-screens` | 🔒 | body ×2 | [src/controllers/screener.ts:344](../src/controllers/screener.ts#L344) |

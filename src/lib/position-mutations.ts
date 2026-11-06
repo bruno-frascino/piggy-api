@@ -35,6 +35,61 @@ function nonNegative(value: number, label: string): void {
     fail(400, `${label} must be a finite non-negative number`)
 }
 
+type MutationDb = Pick<
+  typeof prisma,
+  'draftOperationTradeLink' | 'accountCashOperation'
+>
+
+async function requireUnlinkedTrades(
+  db: MutationDb,
+  transactionIds: string[]
+): Promise<void> {
+  const link = await db.draftOperationTradeLink.findFirst({
+    where: { transactionId: { in: transactionIds } },
+    select: { operationId: true },
+  })
+  if (link)
+    fail(
+      409,
+      'This trade is linked to an inactive cash draft. Financial edits, moves and deletion require coordinated trade/cash correction. Use the opening reconciliation review for manual acquisition or sale corrections; moves and deletion are not yet supported there. Notes remain editable.'
+    )
+  const liveLink = await db.accountCashOperation.findFirst({
+    where: { transactionId: { in: transactionIds } },
+    select: { id: true },
+  })
+  if (liveLink)
+    fail(
+      409,
+      'This trade is linked to the active account cash ledger. Financial edits, moves and deletion require a coordinated cash correction, which is not yet available. Notes remain editable.'
+    )
+}
+
+async function requireNoCashLedger(
+  db: Pick<typeof prisma, 'accountCashLedger'>,
+  accountIds: string[]
+): Promise<void> {
+  for (const accountId of new Set(accountIds)) {
+    if (
+      await db.accountCashLedger.findUnique({
+        where: { accountId },
+        select: { accountId: true },
+      })
+    )
+      fail(
+        409,
+        'This account has a confirmed cash ledger. Financial edits, moves and deletion require a coordinated accounting workflow, which is not yet available.'
+      )
+  }
+}
+
+function requireManualSource(imported: boolean): void {
+  if (imported)
+    fail(
+      409,
+      'Imported execution records must be preserved. Financial edits, moves and deletion require a source-aware adjustment workflow, which is not yet available. Notes remain editable.'
+    )
+}
+
 export interface ClosePositionInput {
   closeDate: Date
   exitPrice: number
@@ -65,6 +120,7 @@ export async function closePosition(
       include: { transactions: { orderBy: { date: 'asc' } } },
     })
     if (!position) fail(404, 'Position not found')
+    await requireNoCashLedger(db, [position.accountId])
     if (position.status === 'CLOSED') fail(400, 'Position is already closed')
     const buyQty = position.transactions
       .filter((tx) => tx.type === 'BUY')
@@ -140,17 +196,39 @@ export async function updateCloseEvent(
     }
     const pointer = await db.transaction.findFirst({
       where,
-      select: { positionId: true, quantity: true },
+      select: {
+        positionId: true,
+        quantity: true,
+        position: { select: { accountId: true } },
+      },
     })
     if (!pointer) fail(404, 'Close event not found')
     await lockOwnedPosition(db, userId, pointer.positionId)
     const event = await db.transaction.findFirst({
       where,
-      select: { positionId: true, quantity: true },
+      select: {
+        positionId: true,
+        quantity: true,
+        date: true,
+        price: true,
+        fees: true,
+        brokerRef: true,
+      },
     })
     if (!event) fail(404, 'Close event not found')
     if (event.positionId !== pointer.positionId)
       fail(409, 'Close event moved parcels concurrently. Reload and try again.')
+    const financial =
+      (input.closeDate !== undefined &&
+        input.closeDate.getTime() !== event.date.getTime()) ||
+      (input.exitPrice !== undefined &&
+        input.exitPrice !== Number(event.price)) ||
+      (input.sellFees !== undefined && input.sellFees !== Number(event.fees))
+    if (financial) {
+      requireManualSource(event.brokerRef !== null)
+      await requireNoCashLedger(db, [pointer.position.accountId])
+      await requireUnlinkedTrades(db, [transactionId])
+    }
     const totalValue =
       input.exitPrice === undefined
         ? undefined
@@ -160,12 +238,15 @@ export async function updateCloseEvent(
     const updated = await db.transaction.update({
       where: { id: transactionId },
       data: {
-        ...(input.closeDate !== undefined && { date: input.closeDate }),
-        ...(input.exitPrice !== undefined && {
-          price: input.exitPrice,
-          totalValue,
-        }),
-        ...(input.sellFees !== undefined && { fees: input.sellFees }),
+        ...(financial &&
+          input.closeDate !== undefined && { date: input.closeDate }),
+        ...(financial &&
+          input.exitPrice !== undefined && {
+            price: input.exitPrice,
+            totalValue,
+          }),
+        ...(financial &&
+          input.sellFees !== undefined && { fees: input.sellFees }),
         ...(input.notes !== undefined && { notes: input.notes.trim() || null }),
         ...(input.closeReason !== undefined && {
           closeReason: input.closeReason,
@@ -186,8 +267,20 @@ export async function deletePosition(
     await lockOwnedPosition(db, userId, positionId)
     const position = await db.position.findFirst({
       where: { id: positionId, userId },
+      include: { transactions: { select: { id: true, brokerRef: true } } },
     })
     if (!position) fail(404, 'Position not found')
+    await requireNoCashLedger(db, [position.accountId])
+    requireManualSource(
+      position.origin !== 'MANUAL' ||
+        position.transactions.some(
+          (transaction) => transaction.brokerRef !== null
+        )
+    )
+    await requireUnlinkedTrades(
+      db,
+      position.transactions.map((transaction) => transaction.id)
+    )
     await db.position.delete({ where: { id: positionId } })
   }, transactionOptions)
 }
@@ -218,6 +311,7 @@ export async function createPosition(
     if (!currentAccount) fail(404, 'Trading account not found')
     if (currentAccount.status === 'CLOSED')
       fail(409, 'Reopen the trading account before adding open holdings')
+    await requireNoCashLedger(db, [resolved.id])
     return db.position.create({
       data: { ...data, userId, accountId: resolved.id },
       include: {
@@ -275,13 +369,44 @@ export async function updatePositionAcquisition(
         fail(400, 'Positions cannot be moved between demo and real accounts')
       accountStatus = destination.status
     }
-    const financial = Object.values(input).some((value) => value !== undefined)
+    const buys = existing.transactions.filter((tx) => tx.type === 'BUY')
+    const financial =
+      (input.openDate !== undefined &&
+        input.openDate.getTime() !== existing.openDate.getTime()) ||
+      (input.entryPrice !== undefined &&
+        input.entryPrice !== Number(existing.entryPrice)) ||
+      (input.quantity !== undefined &&
+        (buys.length !== 1 || input.quantity !== Number(buys[0].quantity))) ||
+      (input.buyFees !== undefined &&
+        input.buyFees !== Number(existing.buyFees))
+    const moving =
+      destinationAccountId !== undefined &&
+      destinationAccountId !== existing.accountId
+    const changingAsset =
+      metadata.assetId !== undefined && metadata.assetId !== existing.assetId
+    if (financial || moving || changingAsset) {
+      await requireNoCashLedger(db, [
+        existing.accountId,
+        ...(destinationAccountId ? [destinationAccountId] : []),
+      ])
+      requireManualSource(
+        existing.origin !== 'MANUAL' ||
+          (financial && buys.some((buy) => buy.brokerRef !== null)) ||
+          ((moving || changingAsset) &&
+            existing.transactions.some(
+              (transaction) => transaction.brokerRef !== null
+            ))
+      )
+      await requireUnlinkedTrades(
+        db,
+        existing.transactions.map((transaction) => transaction.id)
+      )
+    }
     const data = {
       ...metadata,
       ...(destinationAccountId ? { accountId: destinationAccountId } : {}),
     }
     if (financial) {
-      const buys = existing.transactions.filter((tx) => tx.type === 'BUY')
       if (buys.length !== 1)
         fail(
           409,

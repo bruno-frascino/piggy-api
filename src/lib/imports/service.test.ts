@@ -25,11 +25,15 @@ const m = vi.hoisted(() => ({
   saveHistory: vi.fn(),
   queryRaw: vi.fn(),
   accountFindFirst: vi.fn(),
+  cashLedgerFindUnique: vi.fn(),
+  beginLiveImportPosting: vi.fn(),
+  finishLiveImportPosting: vi.fn(),
 }))
 
 vi.mock('../prisma.js', () => {
   const tx = {
     $queryRaw: m.queryRaw,
+    accountCashLedger: { findUnique: m.cashLedgerFindUnique },
     tradingAccount: { findFirst: m.accountFindFirst },
     importBatch: {
       findFirst: m.batchFindFirst,
@@ -61,6 +65,7 @@ vi.mock('../prisma.js', () => {
         findUnique: m.positionFindUnique,
         update: m.positionUpdate,
       },
+      accountCashLedger: { findUnique: m.cashLedgerFindUnique },
       $transaction: (fn: (client: typeof tx) => unknown) => fn(tx),
     },
   }
@@ -68,6 +73,9 @@ vi.mock('../prisma.js', () => {
 vi.mock('../position-service.js', () => ({
   findOrCreateAsset: m.findOrCreateAsset,
   recomputePositionFromTransactions: m.recompute,
+}))
+vi.mock('../draft-cash-ledger.js', () => ({
+  beginLiveImportPosting: m.beginLiveImportPosting,
 }))
 vi.mock('../fx-rates.js', () => ({ getHistoricalFxRateToAud: m.fx }))
 vi.mock('../crypto/pricing.js', () => ({ getCryptoDailyCloses: m.closes }))
@@ -144,6 +152,9 @@ beforeEach(() => {
   m.runUp.mockResolvedValue(null)
   m.queryRaw.mockResolvedValue([{ id: 'acc1' }])
   m.accountFindFirst.mockResolvedValue({ isDemo: false, status: 'ACTIVE' })
+  m.cashLedgerFindUnique.mockResolvedValue(null)
+  m.beginLiveImportPosting.mockResolvedValue(m.finishLiveImportPosting)
+  m.finishLiveImportPosting.mockResolvedValue(undefined)
   m.recompute.mockResolvedValue({ id: 'pos1' })
 })
 
@@ -399,6 +410,46 @@ describe('commitBatch', () => {
     price: { toFixed: () => '120' },
     grossValue: { toFixed: () => '120' },
     fee: { toFixed: () => '2' },
+  })
+
+  it('posts import cash with the imported trades in the same live-ledger transaction', async () => {
+    m.eventFindMany.mockResolvedValue([buyRow])
+    m.cashLedgerFindUnique.mockResolvedValue({
+      accountId: 'acc1',
+      openingStatementId: 'statement1',
+      state: 'ACTIVE',
+    })
+    await commitBatch('b1', 'u1')
+    expect(m.beginLiveImportPosting).toHaveBeenCalledWith(
+      expect.any(Object),
+      'u1',
+      'acc1',
+      'b1',
+      [{ id: 'buy1', occurredAt: buyRow.occurredAt }]
+    )
+    expect(m.positionCreate).toHaveBeenCalled()
+    expect(m.transactionCreate).not.toHaveBeenCalled()
+    expect(m.finishLiveImportPosting).toHaveBeenCalledWith(['buy1'])
+    expect(m.batchUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      m.finishLiveImportPosting.mock.invocationCallOrder[0]
+    )
+  })
+
+  it('rejects partial live-ledger batches before writing any import records', async () => {
+    m.eventFindMany.mockResolvedValue([buyRow, sellRow])
+    m.cashLedgerFindUnique.mockResolvedValue({
+      accountId: 'acc1',
+      openingStatementId: 'statement1',
+      state: 'ACTIVE',
+    })
+
+    await expect(commitBatch('b1', 'u1', ['buy1'])).rejects.toMatchObject({
+      status: 409,
+      message: /one complete batch/,
+    })
+    expect(m.beginLiveImportPosting).not.toHaveBeenCalled()
+    expect(m.positionCreate).not.toHaveBeenCalled()
+    expect(m.eventUpdate).not.toHaveBeenCalled()
   })
 
   it('locks the owned account before rereading and writing financial records', async () => {

@@ -77,6 +77,15 @@ export async function deleteTradingAccount(userId: string, id: string) {
     await lockOwnedTradingAccount(db, userId, id)
     const account = await loadAccount(db, userId, id)
     if (!account.isDemo) {
+      if (
+        await db.accountCashLedger.findUnique({
+          where: { accountId: id },
+          select: { accountId: true },
+        })
+      )
+        conflict(
+          `Account '${account.name}' has a confirmed cash ledger. Close it to retain its cash and trade history.`
+        )
       const count = await db.position.count({
         where: { accountId: id, userId },
       })

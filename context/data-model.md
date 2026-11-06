@@ -24,6 +24,12 @@ erDiagram
     DraftCashRevision ||--o{ DraftCashRevisionPosting : "revision"
     DraftCashOperation ||--o{ DraftManualTrade : "operation"
     DraftCashOperation ||--o{ DraftOperationTradeLink : "operation"
+    TradingAccount ||--o{ AccountCashLedger : "account"
+    AccountOpeningStatement ||--o{ AccountCashLedger : "openingStatement"
+    AccountCashLedger ||--o{ AccountCashOperation : "ledger"
+    Transaction ||--o{ AccountCashOperation : "transaction"
+    ImportedEvent ||--o{ AccountCashOperation : "importedEvent"
+    AccountCashOperation ||--o{ AccountCashPosting : "operation"
     Exchange ||--o{ Asset : "exchange"
     Asset ||--o{ PriceHistory : "asset"
     User ||--o{ Position : "user"
@@ -126,6 +132,7 @@ Constraints: `@@index([purgeAfter])`
 | portfolioSnapshots | `PortfolioSnapshot[]` | — |
 | importBatches | `ImportBatch[]` | — |
 | openingStatements | `AccountOpeningStatement[]` | — |
+| cashLedger | `AccountCashLedger?` | — |
 
 Constraints: `@@unique([userId, name])`
 
@@ -148,6 +155,7 @@ Constraints: `@@unique([userId, name])`
 | parcels | `OpeningParcelBalance[]` | — |
 | cashOperations | `DraftCashOperation[]` | — |
 | cashEvidence | `DraftCashEvidence[]` | — |
+| cashLedger | `AccountCashLedger?` | — |
 
 Constraints: `@@unique([accountId, version])`, `@@unique([accountId, sourceFingerprint])`
 
@@ -328,6 +336,61 @@ Constraints: `@@index([parcelKey])`
 
 Constraints: `@@unique([statementId, transactionId])`
 
+### `AccountCashLedger` (table: `account_cash_ledgers`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| accountId | `String` | @id |
+| openingStatementId | `String` | @unique |
+| state | `String` | @default("ACTIVE") |
+| openingSourceFingerprint | `String` | — |
+| acceptedSourceFingerprint | `String` | — |
+| createdAt | `DateTime` | @default(now()) |
+| updatedAt | `DateTime` | @updatedAt |
+| account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
+| openingStatement | `AccountOpeningStatement` | @relation(fields: [openingStatementId], references: [id], onDelete: Restrict) |
+| operations | `AccountCashOperation[]` | — |
+
+### `AccountCashOperation` (table: `account_cash_operations`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| accountId | `String` | — |
+| idempotencyKey | `String` | — |
+| payloadHash | `String` | — |
+| transactionId | `String` | @unique |
+| importedEventId | `String?` | @unique |
+| kind | `String` | — |
+| effectiveDate | `DateTime` | @db.Date |
+| sequence | `BigInt` | — |
+| auditNumber | `Int` | — |
+| command | `Json` | — |
+| previousFingerprint | `String` | — |
+| nextFingerprint | `String` | — |
+| transactionSnapshot | `Json` | — |
+| recordedAt | `DateTime` | @default(now()) |
+| ledger | `AccountCashLedger` | @relation(fields: [accountId], references: [accountId], onDelete: Cascade) |
+| transaction | `Transaction` | @relation(fields: [transactionId], references: [id], onDelete: Restrict) |
+| importedEvent | `ImportedEvent?` | @relation(fields: [importedEventId], references: [id], onDelete: Restrict) |
+| postings | `AccountCashPosting[]` | — |
+
+Constraints: `@@unique([accountId, id])`, `@@unique([accountId, idempotencyKey])`, `@@unique([accountId, effectiveDate, sequence])`, `@@unique([accountId, auditNumber])`
+
+### `AccountCashPosting` (table: `account_cash_postings`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| operationId | `String` | — |
+| legIndex | `Int` | — |
+| currency | `String` | — |
+| amount | `Decimal` | @db.Decimal(38, 12) |
+| role | `String` | — |
+| operation | `AccountCashOperation` | @relation(fields: [operationId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@unique([operationId, legIndex])`
+
 ### `Asset` (table: `assets`)
 
 | Field | Type | Attributes |
@@ -438,6 +501,7 @@ Constraints: `@@unique([userId, assetId, openDate, entryPrice, accountId, extern
 | createdAt | `DateTime` | @default(now()) |
 | updatedAt | `DateTime` | @updatedAt |
 | position | `Position` | @relation(fields: [positionId], references: [id], onDelete: Cascade) |
+| cashOperation | `AccountCashOperation?` | — |
 
 ### `PortfolioSnapshot` (table: `portfolio_snapshots`)
 
@@ -597,6 +661,7 @@ Constraints: `@@index([userId, createdAt])`
 | raw | `Json` | — |
 | createdAt | `DateTime` | @default(now()) |
 | batch | `ImportBatch` | @relation(fields: [batchId], references: [id], onDelete: Cascade) |
+| cashOperation | `AccountCashOperation?` | — |
 
 Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, status])`
 
@@ -635,3 +700,5 @@ Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, s
 - `20261101082040_draft_cash_revisions`
 - `20261101085022_draft_manual_trades`
 - `20261101201744_draft_cash_statement_evidence`
+- `20261106195301_add_gated_live_cash_ledger`
+- `20261106212113_add_imported_cash_operation_source`

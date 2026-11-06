@@ -8,7 +8,8 @@ export async function wipeDatabase(args: string[]): Promise<void> {
 
   console.log(
     'Wipe all users, auth tokens, trading accounts, positions, transactions, ' +
-      'snapshots, tax reports, watchlists, saved screens, assets, price history, and FX cache.'
+      'snapshots, tax reports, watchlists, saved screens, opening statements, ' +
+      'opening balances, draft accounting data, assets, price history, and FX cache.'
   )
   console.log(
     'Preserve exchanges, database schema, and Prisma migration history.'
@@ -49,6 +50,21 @@ export async function wipeDatabase(args: string[]): Promise<void> {
         public."watchlist_items",
         public."watchlists",
         public."saved_screens",
+        public."draft_operation_trade_links",
+        public."draft_manual_trades",
+        public."draft_cash_revision_postings",
+        public."draft_cash_revisions",
+        public."draft_cash_postings",
+        public."draft_cash_operations",
+        public."draft_cash_evidence_decisions",
+        public."draft_cash_evidence_balances",
+        public."draft_cash_evidence",
+        public."account_cash_postings",
+        public."account_cash_operations",
+        public."account_cash_ledgers",
+        public."opening_parcel_balances",
+        public."opening_cash_balances",
+        public."account_opening_statements",
         public."imported_events",
         public."import_batches",
         public."transactions",

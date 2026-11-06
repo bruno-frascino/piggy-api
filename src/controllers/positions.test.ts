@@ -27,6 +27,9 @@ const {
   transactionFindFirstMock,
   transactionCreateMock,
   transactionUpdateMock,
+  tradeLinkFindFirstMock,
+  liveTradeLinkFindFirstMock,
+  cashLedgerFindUniqueMock,
   exchangeFindUniqueMock,
   assetFindUniqueMock,
   assetCreateMock,
@@ -48,6 +51,9 @@ const {
   transactionFindFirstMock: vi.fn(),
   transactionCreateMock: vi.fn(),
   transactionUpdateMock: vi.fn(),
+  tradeLinkFindFirstMock: vi.fn(),
+  liveTradeLinkFindFirstMock: vi.fn(),
+  cashLedgerFindUniqueMock: vi.fn(),
   exchangeFindUniqueMock: vi.fn(),
   assetFindUniqueMock: vi.fn(),
   assetCreateMock: vi.fn(),
@@ -77,6 +83,9 @@ vi.mock('../lib/account-lock.js', () => ({
 
 vi.mock('../lib/prisma.js', () => {
   const db = {
+    draftOperationTradeLink: { findFirst: tradeLinkFindFirstMock },
+    accountCashOperation: { findFirst: liveTradeLinkFindFirstMock },
+    accountCashLedger: { findUnique: cashLedgerFindUniqueMock },
     position: {
       findMany: positionFindManyMock,
       count: positionCountMock,
@@ -126,6 +135,9 @@ function createApp() {
 describe('positions controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    tradeLinkFindFirstMock.mockResolvedValue(null)
+    liveTradeLinkFindFirstMock.mockResolvedValue(null)
+    cashLedgerFindUniqueMock.mockResolvedValue(null)
     derived.history.mockResolvedValue(undefined)
     derived.stop.mockResolvedValue(undefined)
     positionFindUniqueMock.mockImplementation(() => positionFindFirstMock())
@@ -429,7 +441,11 @@ describe('positions controller', () => {
           type: 'SELL',
           position: { userId: 'u_1' },
         },
-        select: { positionId: true, quantity: true },
+        select: {
+          positionId: true,
+          quantity: true,
+          position: { select: { accountId: true } },
+        },
       })
     })
 
@@ -437,6 +453,11 @@ describe('positions controller', () => {
       transactionFindFirstMock.mockResolvedValue({
         positionId: 'p_1',
         quantity: 5,
+        position: { accountId: 'a_1' },
+        date: new Date('2026-01-31'),
+        price: 11,
+        fees: 0,
+        brokerRef: null,
       })
       transactionUpdateMock.mockResolvedValue({ id: 'tx_1', price: 12 })
       positionFindUniqueMock.mockResolvedValue({
@@ -493,6 +514,11 @@ describe('positions controller', () => {
       transactionFindFirstMock.mockResolvedValue({
         positionId: 'p_1',
         quantity: 5,
+        position: { accountId: 'a_1' },
+        date: new Date('2026-01-31'),
+        price: 12,
+        fees: 1,
+        brokerRef: null,
       })
       transactionUpdateMock.mockResolvedValue({ id: 'tx_1' })
       positionFindUniqueMock.mockResolvedValue({
@@ -970,6 +996,8 @@ describe('positions controller', () => {
       }
       positionFindFirstMock.mockResolvedValue({
         id: 'p_1',
+        assetId: 'a_1',
+        origin: 'MANUAL',
         asset,
         transactions: [],
         quantity: 1,
@@ -1003,6 +1031,7 @@ describe('positions controller', () => {
     describe('moving between accounts', () => {
       const positionIn = (isDemo: boolean) => ({
         id: 'p_1',
+        origin: 'MANUAL',
         assetId: 'a_1',
         quantity: 5,
         entryPrice: 10,
@@ -1139,15 +1168,16 @@ describe('positions controller', () => {
     it('rebuilds totalBuyValue from bought units, not remaining units', async () => {
       positionFindFirstMock.mockResolvedValue({
         id: 'p_1',
+        origin: 'MANUAL',
         assetId: 'a_1',
         quantity: 0, // fully closed — remaining units are zero
         entryPrice: 10,
         buyFees: 3,
-        openDate: '2026-01-01T00:00:00.000Z',
+        openDate: new Date('2026-01-01T00:00:00.000Z'),
         asset: { symbol: 'AAPL', exchange: { code: 'NASDAQ' } },
         transactions: [
-          { id: 'tx_buy', type: 'BUY', quantity: 5 },
-          { id: 'tx_sell', type: 'SELL', quantity: 5 },
+          { id: 'tx_buy', type: 'BUY', quantity: 5, brokerRef: null },
+          { id: 'tx_sell', type: 'SELL', quantity: 5, brokerRef: null },
         ],
       })
       positionUpdateMock.mockResolvedValue({ id: 'p_1' })
@@ -1171,6 +1201,7 @@ describe('positions controller', () => {
     it('recomputes remaining units when the bought quantity changes on a partial position', async () => {
       positionFindFirstMock.mockResolvedValue({
         id: 'p_1',
+        origin: 'MANUAL',
         assetId: 'a_1',
         quantity: 4,
         entryPrice: 10,
@@ -1178,8 +1209,8 @@ describe('positions controller', () => {
         openDate: '2026-01-01T00:00:00.000Z',
         asset: { symbol: 'AAPL', exchange: { code: 'NASDAQ' } },
         transactions: [
-          { id: 'tx_buy', type: 'BUY', quantity: 6 },
-          { id: 'tx_sell', type: 'SELL', quantity: 2 },
+          { id: 'tx_buy', type: 'BUY', quantity: 6, brokerRef: null },
+          { id: 'tx_sell', type: 'SELL', quantity: 2, brokerRef: null },
         ],
       })
       positionUpdateMock.mockResolvedValue({ id: 'p_1' })
@@ -1398,13 +1429,55 @@ describe('positions controller', () => {
     })
 
     it('deletes an existing position', async () => {
-      positionFindFirstMock.mockResolvedValue({ id: 'p_1' })
+      positionFindFirstMock.mockResolvedValue({
+        id: 'p_1',
+        origin: 'MANUAL',
+        transactions: [],
+      })
       positionDeleteMock.mockResolvedValue({ id: 'p_1' })
 
       const response = await request(createApp()).delete('/api/positions/p_1')
 
       expect(response.status).toBe(200)
       expect(positionDeleteMock).toHaveBeenCalledWith({ where: { id: 'p_1' } })
+    })
+    describe('financial source preservation', () => {
+      it('returns an actionable conflict instead of rewriting an imported sale allocation', async () => {
+        transactionFindFirstMock.mockResolvedValue({
+          positionId: 'p_1',
+          quantity: 5,
+          position: { accountId: 'a_1' },
+          date: new Date('2026-02-01'),
+          price: 12,
+          fees: 1,
+          brokerRef: 'KRAKEN:order:1',
+        })
+        const response = await request(createApp())
+          .patch('/api/positions/close-events/tx_1')
+          .send({ sellFees: 2, notes: 'Do not partially save' })
+        expect(response.status).toBe(409)
+        expect(response.body).toMatchObject({
+          error: 'Conflict',
+          message: expect.stringContaining(
+            'Imported execution records must be preserved'
+          ),
+        })
+        expect(transactionUpdateMock).not.toHaveBeenCalled()
+      })
+      it('returns a conflict instead of deleting a manual parcel with durable cash links', async () => {
+        positionFindFirstMock.mockResolvedValue({
+          id: 'p_1',
+          origin: 'MANUAL',
+          transactions: [{ id: 'tx_1', brokerRef: null }],
+        })
+        tradeLinkFindFirstMock.mockResolvedValue({ operationId: 'op_1' })
+        const response = await request(createApp()).delete('/api/positions/p_1')
+        expect(response.status).toBe(409)
+        expect(response.body.message).toContain(
+          'coordinated trade/cash correction'
+        )
+        expect(positionDeleteMock).not.toHaveBeenCalled()
+      })
     })
   })
 })

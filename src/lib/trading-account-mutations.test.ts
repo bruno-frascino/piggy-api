@@ -7,6 +7,7 @@ const m = vi.hoisted(() => ({
   reports: vi.fn(),
   update: vi.fn(),
   remove: vi.fn(),
+  cashLedger: vi.fn(),
   transaction: vi.fn(),
 }))
 vi.mock('./account-lock.js', () => ({ lockOwnedTradingAccount: m.lock }))
@@ -22,6 +23,7 @@ const db = {
   tradingAccount: { findFirst: m.account, update: m.update, delete: m.remove },
   position: { count: m.count },
   taxReport: { findMany: m.reports },
+  accountCashLedger: { findUnique: m.cashLedger },
 }
 beforeEach(() => {
   vi.resetAllMocks()
@@ -36,6 +38,7 @@ beforeEach(() => {
   })
   m.count.mockResolvedValue(0)
   m.reports.mockResolvedValue([])
+  m.cashLedger.mockResolvedValue(null)
   m.update.mockResolvedValue({ id: 'a1' })
 })
 
@@ -119,6 +122,15 @@ describe('locked trading account lifecycle', () => {
     await expect(deleteTradingAccount('u1', 'a1')).rejects.toThrow(
       'Injected delete'
     )
+  })
+
+  it('prevents deleting a real account with a confirmed cash ledger', async () => {
+    m.cashLedger.mockResolvedValue({ accountId: 'a1' })
+    await expect(deleteTradingAccount('u1', 'a1')).rejects.toMatchObject({
+      status: 409,
+      message: /retain its cash and trade history/,
+    })
+    expect(m.remove).not.toHaveBeenCalled()
   })
 
   it('propagates lock failures without performing reads or writes', async () => {

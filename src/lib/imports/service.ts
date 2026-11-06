@@ -11,6 +11,7 @@ import {
   findOrCreateAsset,
   recomputePositionFromTransactions,
 } from '../position-service.js'
+import { beginLiveImportPosting } from '../draft-cash-ledger.js'
 import {
   fetchHistoricalMaxDrawdown,
   fetchHistoricalMaxRunUp,
@@ -584,7 +585,7 @@ export async function commitBatch(
   userId: string,
   eventIds?: string[]
 ) {
-  const { batch, plan, snapshot } = await prepareBatch(batchId, userId)
+  const { batch, plan, snapshot, events } = await prepareBatch(batchId, userId)
   if (batch.status === 'DISCARDED') {
     throw new ImportError(409, 'This import was discarded')
   }
@@ -592,8 +593,51 @@ export async function commitBatch(
   const selected = eventIds ? new Set(eventIds) : null
   const inScope = (id: string) => !selected || selected.has(id)
 
+  const initialLedger = await prisma.accountCashLedger.findUnique({
+    where: { accountId: batch.accountId },
+    select: { accountId: true, state: true },
+  })
+  if (initialLedger && initialLedger.state !== 'ACTIVE')
+    throw new ImportError(
+      409,
+      'Exchange import commits require an active cash ledger'
+    )
   const parcelByRef = new Map(plan.newPositions.map((p) => [p.ref, p]))
   const sellById = new Map(plan.sells.map((s) => [s.eventId, s]))
+  const cashEvents = steps.flatMap((step) => {
+    if (step.type === 'SELL') return [{ id: step.eventId, occurredAt: step.at }]
+    const parcel = parcelByRef.get(step.ref)
+    if (!parcel || parcel.origin !== 'IMPORT_TRADE') return []
+    return parcel.eventIds.map((id) => ({
+      id,
+      occurredAt: parcel.acquiredAt,
+    }))
+  })
+  const cashEventIds = new Set(cashEvents.map((event) => event.id))
+  const hasCompleteCashEventCoverage = (pending: readonly { id: string }[]) =>
+    cashEventIds.size === pending.length &&
+    pending.every((event) => cashEventIds.has(event.id))
+  const requireLedgerTradeBatch = (
+    pending: readonly { id: string; kind: string }[]
+  ) => {
+    if (
+      pending.some((event) => event.kind !== 'BUY' && event.kind !== 'SELL') ||
+      !hasCompleteCashEventCoverage(pending) ||
+      (selected && pending.some((event) => !selected.has(event.id)))
+    )
+      throw new ImportError(
+        409,
+        'Live-ledger imports require one complete batch of supported Kraken BUY/SELL executions'
+      )
+  }
+  if (initialLedger) {
+    const pending = events.filter(
+      (event) => event.status === 'PENDING' || event.status === 'DEFERRED'
+    )
+    if (pending.length > 0) requireLedgerTradeBatch(pending)
+    else if (cashEventIds.size > 0)
+      throw new ImportError(409, 'Committed import has unexpected trade steps')
+  }
 
   // Assets are idempotent find-or-create, so they can safely sit outside the transaction.
   const assetIds = new Map<string, string>()
@@ -615,11 +659,45 @@ export async function commitBatch(
 
   await prisma.$transaction(async (tx) => {
     await lockImportAccount(tx, userId, batch.accountId)
+    const ledger = await tx.accountCashLedger.findUnique({
+      where: { accountId: batch.accountId },
+      select: { accountId: true, openingStatementId: true, state: true },
+    })
+    if (ledger && ledger.state !== 'ACTIVE')
+      throw new ImportError(
+        409,
+        'Exchange import commits require an active cash ledger'
+      )
     const current = await loadPlanState(batchId, userId, tx)
     if (current.snapshot !== snapshot)
       throw new ImportError(
         409,
         'Import events or holdings changed during preparation. Review the refreshed plan and try again.'
+      )
+    if (ledger) {
+      const pending = current.rows.filter(
+        (event) => event.status === 'PENDING' || event.status === 'DEFERRED'
+      )
+      if (pending.length > 0) requireLedgerTradeBatch(pending)
+      if (pending.length === 0 && cashEventIds.size > 0)
+        throw new ImportError(
+          409,
+          'Committed import has unexpected trade steps'
+        )
+    }
+    const liveImportPosting = ledger
+      ? await beginLiveImportPosting(
+          tx,
+          userId,
+          batch.accountId,
+          batchId,
+          cashEvents
+        )
+      : null
+    if (ledger && cashEvents.length > 0 && !liveImportPosting)
+      throw new ImportError(
+        409,
+        'This import contains no supported cash executions'
       )
     const positionIds = new Map<string, string>()
     const touched = new Set<string>()
@@ -759,6 +837,9 @@ export async function commitBatch(
               status: hasApplied > 0 ? 'PARTIALLY_APPLIED' : batch.status,
             },
     })
+    if (liveImportPosting) {
+      await liveImportPosting([...eventPositions.keys()])
+    }
   }, transactionOptions)
 
   void backfillHistory(created.map((c) => c.id))

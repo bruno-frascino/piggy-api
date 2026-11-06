@@ -11,27 +11,27 @@ datasource db {
 // ─── Users & Auth ────────────────────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   name         String?
   passwordHash String
-  baseCurrency String   @default("AUD")
+  baseCurrency String    @default("AUD")
   // Set when the user requests deletion. The row survives until purgeAfter
   // passes (see scripts/purge-deleted-users.ts) so the request can be undone.
   deletedAt    DateTime?
   purgeAfter   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  positions          Position[]
-  tradingAccounts    TradingAccount[]
-  importBatches      ImportBatch[]
-  portfolioSnapshots PortfolioSnapshot[]
-  refreshTokens      RefreshToken[]
+  positions           Position[]
+  tradingAccounts     TradingAccount[]
+  importBatches       ImportBatch[]
+  portfolioSnapshots  PortfolioSnapshot[]
+  refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
-  taxReports         TaxReport[]
-  watchlists         Watchlist[]
-  savedScreens       SavedScreen[]
+  taxReports          TaxReport[]
+  watchlists          Watchlist[]
+  savedScreens        SavedScreen[]
 
   @@index([purgeAfter])
   @@map("users")
@@ -66,12 +66,12 @@ model PasswordResetToken {
 model Exchange {
   id           String   @id @default(cuid())
   code         String   @unique // NASDAQ, NYSE, BINANCE
-  name         String   // NASDAQ Stock Market
+  name         String // NASDAQ Stock Market
   currency     String   @default("USD") // ISO 4217 currency code
-  countryName  String   // United States of America
-  countryCode  String   // US
-  symbolSuffix String?  // .AX, .SA, etc.
-  delay        String?  // Real-time, 15 min, etc.
+  countryName  String // United States of America
+  countryCode  String // US
+  symbolSuffix String? // .AX, .SA, etc.
+  delay        String? // Real-time, 15 min, etc.
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -98,6 +98,7 @@ model TradingAccount {
   portfolioSnapshots PortfolioSnapshot[]
   importBatches      ImportBatch[]
   openingStatements  AccountOpeningStatement[]
+  cashLedger         AccountCashLedger?
 
   @@unique([userId, name])
   @@map("trading_accounts")
@@ -125,6 +126,7 @@ model AccountOpeningStatement {
   parcels        OpeningParcelBalance[]
   cashOperations DraftCashOperation[]
   cashEvidence   DraftCashEvidence[]
+  cashLedger     AccountCashLedger?
 
   @@unique([accountId, version])
   @@unique([accountId, sourceFingerprint])
@@ -173,10 +175,10 @@ model DraftCashOperation {
   command         Json
   recordedAt      DateTime @default(now())
 
-  statement  AccountOpeningStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
-  postings   DraftCashPosting[]
-  tradeLinks DraftOperationTradeLink[]
-  revisions  DraftCashRevision[]
+  statement     AccountOpeningStatement   @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  postings      DraftCashPosting[]
+  tradeLinks    DraftOperationTradeLink[]
+  revisions     DraftCashRevision[]
   proposedTrade DraftManualTrade?
 
   @@unique([statementId, id])
@@ -197,7 +199,7 @@ model DraftCashEvidence {
   attested       Boolean
   recordedAt     DateTime @default(now())
 
-  statement AccountOpeningStatement       @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  statement AccountOpeningStatement     @relation(fields: [statementId], references: [id], onDelete: Cascade)
   balances  DraftCashEvidenceBalance[]
   decisions DraftCashEvidenceDecision[]
 
@@ -259,9 +261,9 @@ model DraftCashRevision {
   request            Json
   recordedAt         DateTime @default(now())
 
-  operation DraftCashOperation @relation(fields: [statementId, operationId], references: [statementId, id], onDelete: Cascade)
-  previous  DraftCashRevision?  @relation("CashRevisionChain", fields: [operationId, previousRevisionId], references: [operationId, id], onDelete: NoAction, onUpdate: NoAction)
-  next      DraftCashRevision[] @relation("CashRevisionChain")
+  operation DraftCashOperation         @relation(fields: [statementId, operationId], references: [statementId, id], onDelete: Cascade)
+  previous  DraftCashRevision?         @relation("CashRevisionChain", fields: [operationId, previousRevisionId], references: [operationId, id], onDelete: NoAction, onUpdate: NoAction)
+  next      DraftCashRevision[]        @relation("CashRevisionChain")
   postings  DraftCashRevisionPosting[]
 
   @@unique([operationId, id])
@@ -318,6 +320,65 @@ model DraftOperationTradeLink {
   @@map("draft_operation_trade_links")
 }
 
+model AccountCashLedger {
+  accountId                 String   @id
+  openingStatementId        String   @unique
+  state                     String   @default("ACTIVE")
+  openingSourceFingerprint  String
+  acceptedSourceFingerprint String
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  account          TradingAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  openingStatement AccountOpeningStatement @relation(fields: [openingStatementId], references: [id], onDelete: Restrict)
+  operations       AccountCashOperation[]
+
+  @@map("account_cash_ledgers")
+}
+
+model AccountCashOperation {
+  id                  String   @id @default(cuid())
+  accountId           String
+  idempotencyKey      String
+  payloadHash         String
+  transactionId       String   @unique
+  importedEventId     String?  @unique
+  kind                String
+  effectiveDate       DateTime @db.Date
+  sequence            BigInt
+  auditNumber         Int
+  command             Json
+  previousFingerprint String
+  nextFingerprint     String
+  transactionSnapshot Json
+  recordedAt          DateTime @default(now())
+
+  ledger        AccountCashLedger    @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
+  transaction   Transaction          @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  importedEvent ImportedEvent?       @relation(fields: [importedEventId], references: [id], onDelete: Restrict)
+  postings      AccountCashPosting[]
+
+  @@unique([accountId, id])
+  @@unique([accountId, idempotencyKey])
+  @@unique([accountId, effectiveDate, sequence])
+  @@unique([accountId, auditNumber])
+  @@map("account_cash_operations")
+}
+
+model AccountCashPosting {
+  id          String  @id @default(cuid())
+  operationId String
+  legIndex    Int
+  currency    String
+  amount      Decimal @db.Decimal(38, 12)
+  role        String
+
+  operation AccountCashOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+
+  @@unique([operationId, legIndex])
+  @@map("account_cash_postings")
+}
+
 // ─── Assets ──────────────────────────────────────────────────────────────────
 
 enum AssetType {
@@ -339,7 +400,7 @@ model Asset {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  exchange       Exchange       @relation(fields: [exchangeId], references: [id])
+  exchange       Exchange        @relation(fields: [exchangeId], references: [id])
   positions      Position[]
   priceHistory   PriceHistory[]
   watchlistItems WatchlistItem[]
@@ -370,49 +431,49 @@ model PriceHistory {
 // ─── Positions ───────────────────────────────────────────────────────────────
 
 model Position {
-  id               String         @id @default(cuid())
-  userId           String
-  assetId          String
-  accountId        String
-  openDate         DateTime
-  entryPrice       Decimal        @db.Decimal(24, 12)
-  quantity         Float
-  positionType     PositionType   @default(LONG)
-  status           PositionStatus @default(OPEN)
-  totalBuyValue    Decimal        @db.Decimal(12, 2)
-  buyFees          Decimal        @default(0) @db.Decimal(18, 8)
-  closeDate        DateTime?
-  exitPrice        Decimal?       @db.Decimal(24, 12)
-  totalSellValue   Decimal?       @db.Decimal(12, 2)
-  sellFees         Decimal?       @default(0) @db.Decimal(18, 8)
-  stopLossPrice    Decimal?       @db.Decimal(24, 12)
-  stopLossSetAt    DateTime?
-  stopLossHitAt    DateTime?
-  takeProfitPrice  Decimal?       @db.Decimal(24, 12)
-  riskAmount       Decimal?       @db.Decimal(12, 2)
-  riskPercentage   Decimal?       @db.Decimal(5, 2)
-  capitalAllocated Decimal        @db.Decimal(12, 2)
-  portfolioWeight  Decimal?       @db.Decimal(5, 2)
-  openReason       String?
-  strategy         String?
-  setupType        String?
-  timeframe        String?
-  tags             String[]
-  notes            String?
-  unrealizedPnL    Decimal?       @db.Decimal(12, 2)
-  realizedPnL      Decimal?       @db.Decimal(12, 2)
-  returnPercentage Decimal?       @db.Decimal(8, 4)
-  maxDrawdownPercent Decimal?     @db.Decimal(8, 4)
-  maxRunUpPercent  Decimal?       @db.Decimal(8, 4)
-  tradeGrade       String?
-  lessonsLearned   String?
-  origin           PositionOrigin @default(MANUAL)
-  externalRef      String         @default("")
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id                 String         @id @default(cuid())
+  userId             String
+  assetId            String
+  accountId          String
+  openDate           DateTime
+  entryPrice         Decimal        @db.Decimal(24, 12)
+  quantity           Float
+  positionType       PositionType   @default(LONG)
+  status             PositionStatus @default(OPEN)
+  totalBuyValue      Decimal        @db.Decimal(12, 2)
+  buyFees            Decimal        @default(0) @db.Decimal(18, 8)
+  closeDate          DateTime?
+  exitPrice          Decimal?       @db.Decimal(24, 12)
+  totalSellValue     Decimal?       @db.Decimal(12, 2)
+  sellFees           Decimal?       @default(0) @db.Decimal(18, 8)
+  stopLossPrice      Decimal?       @db.Decimal(24, 12)
+  stopLossSetAt      DateTime?
+  stopLossHitAt      DateTime?
+  takeProfitPrice    Decimal?       @db.Decimal(24, 12)
+  riskAmount         Decimal?       @db.Decimal(12, 2)
+  riskPercentage     Decimal?       @db.Decimal(5, 2)
+  capitalAllocated   Decimal        @db.Decimal(12, 2)
+  portfolioWeight    Decimal?       @db.Decimal(5, 2)
+  openReason         String?
+  strategy           String?
+  setupType          String?
+  timeframe          String?
+  tags               String[]
+  notes              String?
+  unrealizedPnL      Decimal?       @db.Decimal(12, 2)
+  realizedPnL        Decimal?       @db.Decimal(12, 2)
+  returnPercentage   Decimal?       @db.Decimal(8, 4)
+  maxDrawdownPercent Decimal?       @db.Decimal(8, 4)
+  maxRunUpPercent    Decimal?       @db.Decimal(8, 4)
+  tradeGrade         String?
+  lessonsLearned     String?
+  origin             PositionOrigin @default(MANUAL)
+  externalRef        String         @default("")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  asset        Asset         @relation(fields: [assetId], references: [id])
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset        Asset          @relation(fields: [assetId], references: [id])
   account      TradingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
 
@@ -439,7 +500,8 @@ model Transaction {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
-  position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  position      Position              @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  cashOperation AccountCashOperation?
 
   @@map("transactions")
 }
@@ -508,32 +570,32 @@ enum TransactionType {
 // ─── Tax Reports (ATO Capital Gains) ─────────────────────────────────────────
 
 model TaxReport {
-  id                           String   @id @default(cuid())
+  id                           String    @id @default(cuid())
   userId                       String
   financialYearStartYear       Int
   financialYearLabel           String
   accountIds                   Json
   accountsKey                  String
-  version                      Int      @default(1)
+  version                      Int       @default(1)
   // Exactly one revision per (userId, financialYearStartYear, accountsKey) has
   // supersededAt = null; that row is the current report. Enforced in application
   // code (tax-reports.ts) inside a transaction, not by a DB constraint.
   supersededAt                 DateTime?
-  contentHash                  String   @default("")
-  generatedAt                  DateTime @default(now())
-  totalProceedsAud             Decimal  @db.Decimal(15, 2)
-  totalCostBaseAud             Decimal  @db.Decimal(15, 2)
-  totalCapitalGainGrossAud     Decimal  @db.Decimal(15, 2)
-  totalCapitalLossAud          Decimal  @db.Decimal(15, 2)
-  carriedForwardLossOpeningAud Decimal  @db.Decimal(15, 2)
-  discountAppliedAud           Decimal  @db.Decimal(15, 2)
-  netCapitalGainAud            Decimal  @db.Decimal(15, 2)
-  carriedForwardLossClosingAud Decimal  @db.Decimal(15, 2)
+  contentHash                  String    @default("")
+  generatedAt                  DateTime  @default(now())
+  totalProceedsAud             Decimal   @db.Decimal(15, 2)
+  totalCostBaseAud             Decimal   @db.Decimal(15, 2)
+  totalCapitalGainGrossAud     Decimal   @db.Decimal(15, 2)
+  totalCapitalLossAud          Decimal   @db.Decimal(15, 2)
+  carriedForwardLossOpeningAud Decimal   @db.Decimal(15, 2)
+  discountAppliedAud           Decimal   @db.Decimal(15, 2)
+  netCapitalGainAud            Decimal   @db.Decimal(15, 2)
+  carriedForwardLossClosingAud Decimal   @db.Decimal(15, 2)
   lineItems                    Json
   pdfData                      Bytes
   pdfSizeBytes                 Int
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -596,6 +658,7 @@ model SavedScreen {
   @@unique([userId, name])
   @@map("saved_screens")
 }
+
 // ─── Exchange imports ────────────────────────────────────────────────────────
 
 enum ImportSource {
@@ -681,7 +744,8 @@ model ImportedEvent {
   raw                Json
   createdAt          DateTime            @default(now())
 
-  batch ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  batch         ImportBatch           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  cashOperation AccountCashOperation?
 
   @@unique([userId, source, externalId])
   @@index([userId, kind, status])

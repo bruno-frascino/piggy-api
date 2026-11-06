@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto'
 import { AccountingDecimal } from './accounting-values.js'
 import {
+  parseExecutionAudit,
+  type ExecutionAudit,
+} from './execution-correction.js'
+import { sydneyCalendarDate } from './accounting-preview.js'
+import {
   prepareCashCommand,
   type CashCommand,
   type CashLeg,
@@ -17,6 +22,7 @@ export interface CashRevisionRequest {
   reason: string
   replacement: CashCommand | null
   proposedTrade?: DraftTradeRequest | null
+  executionAudit?: ExecutionAudit
 }
 
 export interface PreparedCashRevision {
@@ -65,6 +71,7 @@ export function prepareCashRevision(
           'reason',
           'replacement',
           'proposedTrade',
+          'executionAudit',
         ].includes(key)
     )
   )
@@ -87,6 +94,9 @@ export function prepareCashRevision(
               ? null
               : prepareDraftTradeRequest(row.proposedTrade, now).request,
         }
+      : {}),
+    ...('executionAudit' in row
+      ? { executionAudit: parseExecutionAudit(row.executionAudit) }
       : {}),
   }
   if (
@@ -117,6 +127,32 @@ export function prepareCashRevision(
           400
         )
     }
+  }
+  if (request.executionAudit) {
+    const audit = request.executionAudit
+    const cash = request.replacement
+    if (
+      request.proposedTrade !== undefined ||
+      !cash ||
+      cash.kind !== (audit.kind ?? 'SELL') ||
+      cash.source.origin !== 'MANUAL' ||
+      cash.transactionIds.length !== 1 ||
+      cash.transactionIds[0] !== audit.after.transactionId ||
+      cash.consideration.currency !== audit.after.currency ||
+      cash.consideration.amount !== audit.after.totalValue ||
+      (cash.fees[0]?.amount ?? '0') !== audit.after.fees ||
+      cash.fees.some((fee) => fee.currency !== audit.after.currency) ||
+      cash.effectiveDate !== sydneyCalendarDate(new Date(audit.after.date)) ||
+      cash.effectiveDate !== audit.input.effectiveDate ||
+      cash.sequence !== audit.input.sequence ||
+      request.idempotencyKey !== audit.input.idempotencyKey ||
+      request.expectedRevisionId !== audit.input.expectedRevisionId ||
+      request.reason !== audit.input.reason
+    )
+      cashRevisionConflict(
+        'Source audit must exactly match the manual execution cash revision',
+        400
+      )
   }
   return {
     request,

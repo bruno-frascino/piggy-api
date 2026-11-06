@@ -1,9 +1,10 @@
 # 0016. Confirmed opening statements and source-linked portfolio accounting
 
-- **Status**: Proposed; product scope confirmed, schema awaits review
+- **Status**: Proposed; gated live trade posting is implemented, but no account is activated
 - **Date**: 2026-10-31
-- **Implementation**: executable reference specification, read-only opening preview and
-  persistent inactive drafts with locked cash-operation staging; no live cash posting or confirmation
+- **Implementation**: executable reference specification, read-only opening preview, persistent
+  inactive drafts, and an atomic manual trade/cash writer requiring an explicitly provisioned
+  confirmed opening statement and active cash ledger; no activation workflow
 
 ## Context
 
@@ -637,9 +638,19 @@ financial execution corrections, atomic live trade/posting integration and remai
 paths before confirmation. Existing preview ordering stays deliberately unverified; it cannot be
 promoted into stable ledger order automatically.
 
-Live trade/posting atomicity, live command idempotency, concurrent live funding, persisted opening confirmations,
-cutover invalidation, production XIRR, corporate-action tax treatment and scheduling
-remain unimplemented. Each needs targeted tests in its delivery increment.
+Persisted user-facing opening confirmation, account activation, cutover invalidation, production
+XIRR, corporate-action tax treatment and scheduling remain unimplemented. The current live
+trade writer is gated behind manually provisioned confirmed-ledger state and has integration
+coverage for atomic BUY/SELL posting, retries, source drift, funding and concurrent spending.
+Kraken imports for ledger-backed accounts require one complete batch containing only supported
+BUY/SELL executions. The writer derives Sydney-date sequence from execution timestamps, rejects
+identical timestamps and any existing cash or trade activity on an affected Sydney date. Before
+posting, source-head validation excludes only the locked pending batch being committed; unrelated
+source drift still conflicts. It then posts each source event's cash exactly once (including a
+SELL allocated across multiple parcels) and advances the accepted fingerprint to the resulting
+preview in the same transaction as the import. Unsupported event types and partial live-ledger
+batch commits remain blocked. Legacy financial writers remain blocked until their coordinated
+correction paths exist.
 
 ### Recorded manual execution staging
 
@@ -657,6 +668,141 @@ boundary, funding, account-state and opening-sale-scenario guards remain authori
 requires explicit ordering, masks money in privacy mode, disables offline mutations and refreshes
 conflicts without retrying. This adds neither live trade edits nor independent cash corrections
 for executions. Financial source/cash corrections still require a coordinated atomic workflow.
+
+### Financial source preservation before coordinated correction
+
+Financial correction is manual-first. Imported execution values are preserved; a future
+source-aware adjustment workflow, not an ordinary editor override, must explain any financial
+discrepancy. Legacy acquisition and close-event editors therefore reject actual financial
+changes to imported acquisitions or broker-linked SELL transactions, including imported SELLs
+allocated against manual parcels. Imported parcels and parcels containing broker-linked
+allocations cannot be moved, re-instrumented or individually deleted through the legacy editor.
+Account/user lifecycle deletion remains a separate explicit data-erasure operation.
+
+Any durable draft cash link also prevents legacy financial acquisition/SELL changes and parcel
+instrument/account changes or deletion. The checks run after account/parcel locking, serializing
+with cash staging and import writers; reversing cash never releases the source identity.
+Rejected mixed metadata/financial requests perform no trade update. Metadata and unchanged
+financial inputs remain accepted, and frontend editors omit unchanged financial fields to avoid
+converting displayed date-only values, rounded fees or remaining units into acquisition edits.
+Conflict responses explain the restriction instead of silently abandoning the change.
+
+These guards remain protective prerequisites. The dedicated manual acquisition and sale workflows below
+are the currently exposed coordinated financial execution corrections. The guards do not enable
+live accounting or imported financial overrides.
+
+### Atomic manual sale corrections with audited opening continuation
+
+A dedicated account/statement/operation-scoped command corrects an existing effective manual long
+SELL and its linked draft cash together. It accepts exact decimal price/fees, effective date,
+explicit sequence, audit reason, expected cash head, expected source fingerprint and idempotency
+key. Quantity, parcel, source, currency and instrument are retained. The source must have no
+broker reference; imported SELL allocations cannot enter this workflow. The parcel must have one
+BUY and reconciled remaining inventory. Corrections stay after the opening boundary, on/after
+acquisition and within the reviewed observation date. This is not a reversal or reallocation.
+
+The command uses the existing account/user and parcel locking order, verifies the prior source,
+replays the entire dated cash timeline, updates the live SELL, recomputes parcel totals and appends
+one immutable cash revision with exact reversal/replacement postings in a single transaction.
+It preserves same-Sydney-date execution timestamps; a changed date is represented at 01:00 UTC
+on the requested calendar date, without claiming verified intraday execution timing. Price and
+fees respect their database precision (12 and 8 fractional digits). Gross consideration is
+quantity times price, explicitly rounded half-up to the existing transaction column's 2 decimal
+places, and must fit its 10 integer digits. Sequence-only changes do not rewrite the live sale.
+
+Opening statements remain immutable. The chosen policy is **audited continuation**, stored in
+the existing revision's hashed request as `executionAudit`, not a mutable replacement of
+`sourceFingerprint` or `previewSnapshot`. The audit includes the reviewed correction input,
+exact before/after sale snapshots, statement-wide ordinal, previous accepted fingerprint and new
+fingerprint after recomputation. Replay checks snapshot/cash agreement, identity/quantity
+retention, exact audit postings and the globally ordered source chain rooted at the original
+fingerprint. Current corrected transactions must still match their latest snapshots. Source
+verification for subsequent appends uses the chain's accepted fingerprint. Other statements do
+not inherit that continuation and therefore become stale. Corrupt audit chains and source drift
+fail closed. Legacy histories without source audits retain their original semantics.
+
+Retries reuse the persisted input and revision identity before expected-head checks, returning
+current cash projection without rewriting the sale, even after later corrections. Original
+manual staging retries also reuse their operation after an audited correction. Existing source
+and transaction identities stay reserved. Funding deficits, order collisions, stale revisions,
+source drift, precision overflow and post-update audit failures cannot leave partial live/cash
+changes. Attested statement evidence is never restated; its variances are recomputed against the
+corrected timeline. The UI explicitly warns about changing LIVE trade results and stale tax
+reports, retains failed-request retry identity, disables offline/stale editors, masks amounts
+and refreshes live holdings/history/statistics/tax usage and all draft reconciliations.
+
+Execution reversal, account/instrument moves, deletion, imported
+financial adjustments and atomic new live trade posting remain separate work. This enables
+neither live spendable cash nor accounting activation.
+
+### Coordinated manual acquisition and quantity corrections
+
+The same atomic writer now supports an effective linked manual long BUY. Its dedicated endpoint
+adds exact decimal `quantity` to the sale correction's reviewed input. The account, instrument,
+parcel, currency, transaction and source identity stay fixed. A parcel still has exactly one BUY;
+this is correction of that acquisition, never an additional purchase. All sale quantities and
+allocations remain unchanged. The new bought quantity must cover their sum, and the acquisition
+date must not follow any sale's Sydney calendar date. Same-day sales must have effective draft cash
+ordered after the acquisition; sale corrections enforce that relationship too. Missing or earlier
+sale ordering requires staging/resequencing before the purchase can move onto that day.
+Imported acquisitions and any parcel with a broker-linked sale allocation are ineligible.
+
+The acquisition must stay after the immutable opening boundary and within the original observation
+date. Pre-opening acquisitions need a separate opening-inventory revision workflow and cannot
+enter this path. Same-date edits preserve the full timestamp; changed dates use the existing
+01:00 UTC representation. Quantity must be positive, have at most 12 fractional digits, be at most
+9007199254740991, and retain its decimal value through the existing Float storage round trip.
+This rejects silent quantity normalization without changing the existing live storage schema or
+portfolio calculation arithmetic. Gross consideration is rounded half-up to 2 decimal places,
+and capital allocation (gross plus fees) must fit its existing storage precision.
+
+The transaction, parcel acquisition fields (date, entry price, gross, fees, capital allocation),
+recomputed remaining quantity/status/realized results, and immutable cash revision are committed
+together. Acquisition-based cached drawdown/run-up and unrealized PnL are cleared rather than
+retaining results based on the old purchase. Quantity corrections can close or reopen a parcel,
+but never create/delete/reassign sales. Source drift, insufficient quantity, invalid dates/order,
+funding deficits, stale heads and downstream audit failures roll back every write.
+
+Purchase source audits carry `kind: BUY` and the reviewed quantity. Historical sale audits remain
+untagged with their existing hash representation and fixed-quantity rule. Replay validates the
+audit kind against cash and current persisted transaction type, and checks exact before/after
+snapshots within the same statement-wide continuation chain across both kinds. Original openings
+and evidence remain immutable, unrelated drafts become stale, and retries (including original
+staging retries and retries after a later sale correction) never rewrite the source.
+The shared review editor masks quantity and money, requires explicit acknowledgement of LIVE
+cost-basis/realized-gain/tax-report impacts, and uses the same offline, stale-review and retry
+protections. This does not activate ordinary accounts or expose accounting-backed balances;
+the separately gated live trade writer below requires manually provisioned confirmed-ledger
+state. Imported financial overrides, execution reversals, deletion and moves remain unavailable.
+
+### Gated atomic live manual trade posting
+
+The additive `AccountCashLedger`, `AccountCashOperation` and `AccountCashPosting` records provide
+an append-only live cash audit separate from statement-scoped drafts. No existing account is
+provisioned, and `TradingAccount.status` is not treated as accounting confirmation. A live trade
+is accepted only when the owned account is active and real, an `ACTIVE` cash ledger exists, and
+its linked opening statement is `CONFIRMED` with matching opening fingerprint.
+
+`POST /api/accounts/{id}/trades` accepts exact decimal-string BUY/SELL commands, a positive
+effective-date sequence and an account-scoped idempotency key. Under account (and, for SELL,
+parcel) locks, the writer validates draft cash history and audited source continuation, verifies
+all existing post-opening trades are cash-linked, checks persisted live snapshots/postings and
+replays the complete dated cash timeline. It creates/recomputes the parcel transaction, appends
+the cash legs and source-fingerprint transition, and advances the accepted fingerprint in one
+database transaction. Funding deficits, source drift, occupied order slots, invalid parcel
+inventory, changed idempotency payloads and write failures cannot leave partial state. Same-key,
+same-payload retries return the existing operation.
+
+The legacy position-create/close paths, financial edits/moves/deletions and account deletion
+cannot bypass the ledger: they are rejected for ledger-backed accounts until coordinated cash
+corrections exist. Kraken imports are supported only as complete BUY/SELL batches with
+timestamp-derived sequencing and same-day ambiguity blocks; import records and cash postings
+commit atomically. Closing an account retains its ledger and history. Legacy accounts without a
+ledger retain their previous behavior. The frontend exposes manual-trade transport and a
+non-retrying React Query hook, but does not route the existing trade-entry UI to this endpoint.
+There is no confirmation, activation, balance-read or performance surface in this increment;
+live posting is not available to ordinary users until a separate reviewed activation flow
+provisions the ledger.
 
 ## Consequences
 

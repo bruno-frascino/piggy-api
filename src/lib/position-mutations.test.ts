@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   accountUpsert: vi.fn(),
   create: vi.fn(),
   accountLock: vi.fn(),
+  tradeLink: vi.fn(),
+  liveTradeLink: vi.fn(),
+  cashLedger: vi.fn(),
 }))
 vi.mock('./prisma.js', () => ({ prisma: { $transaction: mocks.transaction } }))
 vi.mock('./user-lock.js', () => ({ lockActiveUser: vi.fn() }))
@@ -34,11 +37,17 @@ import {
 const input = { closeDate: new Date('2026-10-03T00:00:00Z'), exitPrice: 12 }
 const initial = {
   id: 'p1',
+  origin: 'MANUAL',
+  accountId: 'a1',
+  assetId: 'asset1',
   status: 'OPEN',
   quantity: 10,
-  transactions: [{ type: 'BUY', quantity: 10 }],
+  transactions: [{ id: 'b1', type: 'BUY', quantity: 10, brokerRef: null }],
 }
 const tx = {
+  draftOperationTradeLink: { findFirst: mocks.tradeLink },
+  accountCashOperation: { findFirst: mocks.liveTradeLink },
+  accountCashLedger: { findUnique: mocks.cashLedger },
   position: {
     findFirst: mocks.position,
     delete: mocks.remove,
@@ -55,6 +64,9 @@ const tx = {
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.lock.mockResolvedValue(undefined)
+  mocks.tradeLink.mockResolvedValue(null)
+  mocks.liveTradeLink.mockResolvedValue(null)
+  mocks.cashLedger.mockResolvedValue(null)
   mocks.accountLock.mockResolvedValue(undefined)
   mocks.account.mockResolvedValue({ id: 'a1', isDemo: false })
   mocks.accountUpsert.mockResolvedValue({ id: 'a1', isDemo: false })
@@ -62,7 +74,15 @@ beforeEach(() => {
   mocks.position.mockResolvedValue(initial)
   mocks.recompute.mockResolvedValue({ id: 'p1' })
   mocks.sell.mockResolvedValue({ id: 's1' })
-  mocks.event.mockResolvedValue({ positionId: 'p1', quantity: 4 })
+  mocks.event.mockResolvedValue({
+    positionId: 'p1',
+    quantity: 4,
+    position: { accountId: 'a1' },
+    brokerRef: null,
+    date: new Date('2026-10-03T00:00:00Z'),
+    price: 12,
+    fees: 1,
+  })
   mocks.update.mockResolvedValue({ id: 's1' })
   mocks.transaction.mockImplementation(
     (callback: (db: typeof tx) => Promise<unknown>) => callback(tx)
@@ -77,8 +97,8 @@ describe('atomic parcel disposal mutations', () => {
     buyFees: 2,
     account: { isDemo: false },
     transactions: [
-      { id: 'b1', type: 'BUY', quantity: 10 },
-      { id: 's1', type: 'SELL', quantity: 6 },
+      { id: 'b1', type: 'BUY', quantity: 10, brokerRef: null },
+      { id: 's1', type: 'SELL', quantity: 6, brokerRef: null },
     ],
   }
   it('rejects new acquisitions when the account was closed before the lock was acquired', async () => {
@@ -183,6 +203,41 @@ describe('atomic parcel disposal mutations', () => {
       mocks.create.mock.invocationCallOrder[0]
     )
   })
+  it('keeps legacy close and acquisition writes disabled for ledger-backed trades', async () => {
+    mocks.cashLedger.mockResolvedValue({ accountId: 'a1' })
+    await expect(closePosition('u1', 'p1', input)).rejects.toMatchObject({
+      status: 409,
+      message: /account trade posting flow/,
+    })
+    expect(mocks.sell).not.toHaveBeenCalled()
+
+    mocks.cashLedger.mockResolvedValue(null)
+    mocks.liveTradeLink.mockResolvedValue({ id: 'live-op' })
+    mocks.position.mockResolvedValue(acquisition)
+    await expect(
+      updatePositionAcquisition('u1', 'p1', { entryPrice: 11 }, {})
+    ).rejects.toMatchObject({
+      status: 409,
+      message: /active account cash ledger/,
+    })
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+  it('blocks legacy financial edits and deletion of opening parcels behind a cash ledger', async () => {
+    mocks.cashLedger.mockResolvedValue({ accountId: 'a1' })
+    mocks.position.mockResolvedValue(acquisition)
+    await expect(
+      updatePositionAcquisition('u1', 'p1', { entryPrice: 11 }, {})
+    ).rejects.toMatchObject({
+      status: 409,
+      message: /confirmed cash ledger/,
+    })
+    await expect(deletePosition('u1', 'p1')).rejects.toMatchObject({
+      status: 409,
+      message: /confirmed cash ledger/,
+    })
+    expect(mocks.update).not.toHaveBeenCalled()
+    expect(mocks.remove).not.toHaveBeenCalled()
+  })
   it('updates acquisition and disposal totals in the same transaction after rereading inventory', async () => {
     mocks.position.mockResolvedValue(acquisition)
     await updatePositionAcquisition(
@@ -283,7 +338,7 @@ describe('atomic parcel disposal mutations', () => {
     mocks.position.mockResolvedValue({
       ...acquisition,
       transactions: [
-        { id: 'b1', type: 'BUY', quantity: 10 },
+        { id: 'b1', type: 'BUY', quantity: 10, brokerRef: null },
         { id: 's1', type: 'SELL', quantity: Infinity },
       ],
     })
@@ -496,5 +551,128 @@ describe('atomic parcel disposal mutations', () => {
     mocks.position.mockResolvedValue(initial)
     mocks.remove.mockRejectedValue(new Error('Deletion failed'))
     await expect(deletePosition('u1', 'p1')).rejects.toThrow('Deletion failed')
+  })
+  it.each(['IMPORT_TRADE', 'STAKING_REWARD'])(
+    'preserves %s acquisition money, instrument, account and deletion',
+    async (origin) => {
+      mocks.position.mockResolvedValue({ ...acquisition, origin })
+      for (const edit of [
+        () => updatePositionAcquisition('u1', 'p1', { entryPrice: 11 }, {}),
+        () => updatePositionAcquisition('u1', 'p1', { quantity: 11 }, {}),
+        () =>
+          updatePositionAcquisition('u1', 'p1', {}, { assetId: 'other-asset' }),
+        () => updatePositionAcquisition('u1', 'p1', {}, {}, 'a2'),
+        () => deletePosition('u1', 'p1'),
+      ])
+        await expect(edit()).rejects.toMatchObject({
+          status: 409,
+          message: /Imported execution records/,
+        })
+      expect(mocks.update).not.toHaveBeenCalled()
+      expect(mocks.remove).not.toHaveBeenCalled()
+    }
+  )
+  it('preserves imported sale allocations even on a manual acquisition parcel', async () => {
+    mocks.event.mockResolvedValue({
+      positionId: 'p1',
+      quantity: 4,
+      brokerRef: 'KRAKEN:order:1',
+      date: input.closeDate,
+      price: 12,
+      fees: 1,
+    })
+    for (const patch of [
+      { exitPrice: 13 },
+      { sellFees: 2 },
+      { closeDate: new Date('2026-10-04') },
+    ])
+      await expect(updateCloseEvent('u1', 's1', patch)).rejects.toMatchObject({
+        status: 409,
+      })
+    expect(mocks.update).not.toHaveBeenCalled()
+    mocks.position.mockResolvedValue({
+      ...acquisition,
+      transactions: acquisition.transactions.map((row) => ({
+        ...row,
+        brokerRef: row.type === 'SELL' ? 'KRAKEN:order:1' : null,
+      })),
+    })
+    await expect(deletePosition('u1', 'p1')).rejects.toMatchObject({
+      status: 409,
+    })
+    await expect(
+      updatePositionAcquisition('u1', 'p1', {}, {}, 'a2')
+    ).rejects.toMatchObject({ status: 409 })
+    await expect(
+      updatePositionAcquisition('u1', 'p1', {}, { assetId: 'other-asset' })
+    ).rejects.toMatchObject({ status: 409 })
+    expect(mocks.remove).not.toHaveBeenCalled()
+  })
+  it('checks durable cash links after locking and rejects financial edits, moves and deletion', async () => {
+    mocks.position.mockResolvedValue(acquisition)
+    mocks.tradeLink.mockResolvedValue({ operationId: 'cash-operation' })
+    for (const edit of [
+      () => updatePositionAcquisition('u1', 'p1', { entryPrice: 11 }, {}),
+      () =>
+        updatePositionAcquisition('u1', 'p1', {}, { assetId: 'other-asset' }),
+      () => updatePositionAcquisition('u1', 'p1', {}, {}, 'a2'),
+      () => updateCloseEvent('u1', 's1', { sellFees: 2 }),
+      () => deletePosition('u1', 'p1'),
+    ])
+      await expect(edit()).rejects.toMatchObject({
+        status: 409,
+        message: /coordinated trade\/cash correction/,
+      })
+    expect(mocks.lock.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.tradeLink.mock.invocationCallOrder[0]
+    )
+    expect(mocks.tradeLink).toHaveBeenCalledWith({
+      where: { transactionId: { in: ['b1', 's1'] } },
+      select: { operationId: true },
+    })
+    expect(mocks.update).not.toHaveBeenCalled()
+    expect(mocks.remove).not.toHaveBeenCalled()
+  })
+  it('allows imported and linked metadata saves with unchanged financial fields', async () => {
+    mocks.position.mockResolvedValue({ ...acquisition, origin: 'IMPORT_TRADE' })
+    mocks.tradeLink.mockResolvedValue({ operationId: 'cash-operation' })
+    await updatePositionAcquisition(
+      'u1',
+      'p1',
+      {
+        openDate: acquisition.openDate,
+        entryPrice: acquisition.entryPrice,
+        buyFees: acquisition.buyFees,
+        quantity: 10,
+      },
+      { notes: 'reviewed', assetId: 'asset1' },
+      'a1'
+    )
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'p1' },
+      data: { notes: 'reviewed', assetId: 'asset1', accountId: 'a1' },
+    })
+    expect(mocks.recompute).not.toHaveBeenCalled()
+    mocks.update.mockClear()
+    mocks.event.mockResolvedValue({
+      positionId: 'p1',
+      quantity: 4,
+      brokerRef: 'KRAKEN:order:1',
+      date: input.closeDate,
+      price: 12,
+      fees: 1,
+    })
+    await updateCloseEvent('u1', 's1', {
+      closeDate: input.closeDate,
+      exitPrice: 12,
+      sellFees: 1,
+      notes: ' reviewed ',
+      closeReason: 'TARGET',
+    })
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 's1' },
+      data: { notes: 'reviewed', closeReason: 'TARGET' },
+    })
+    expect(mocks.tradeLink).not.toHaveBeenCalled()
   })
 })

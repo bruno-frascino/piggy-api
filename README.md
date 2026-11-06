@@ -178,6 +178,7 @@ Defined in `prisma/schema.prisma`:
 
 - `yarn db:wipe` - Preview a data-only reset (does not connect to the database)
 - `yarn db:wipe --confirm` - Permanently clear all application data, including all users,
+  account opening statements and balances, and draft accounting data,
   while preserving exchanges, the database schema, and Prisma migration history.
   Uses `DATABASE_URL` from the environment or `.env`. Stop the API and other writers
   and take a backup first; this bypasses the user-deletion grace period and cannot

@@ -14,6 +14,7 @@ const {
   taxReportFindManyMock,
   snapshotCountMock,
   queryRawMock,
+  cashLedgerFindUniqueMock,
 } = vi.hoisted(() => ({
   findManyMock: vi.fn(),
   findUniqueMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
   taxReportFindManyMock: vi.fn(),
   snapshotCountMock: vi.fn(),
   queryRawMock: vi.fn(),
+  cashLedgerFindUniqueMock: vi.fn(),
 }))
 
 vi.mock('../middleware/auth.js', () => ({
@@ -53,6 +55,9 @@ vi.mock('../lib/prisma.js', () => {
     },
     portfolioSnapshot: {
       count: snapshotCountMock,
+    },
+    accountCashLedger: {
+      findUnique: cashLedgerFindUniqueMock,
     },
   }
   return {
@@ -91,6 +96,7 @@ describe('accounts controller', () => {
     taxReportFindManyMock.mockResolvedValue([])
     snapshotCountMock.mockResolvedValue(12)
     queryRawMock.mockResolvedValue([{ id: 'a1' }])
+    cashLedgerFindUniqueMock.mockResolvedValue(null)
   })
 
   it('lists accounts for authenticated user', async () => {

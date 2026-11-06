@@ -31,7 +31,8 @@ export async function readAccountOpeningPreview(
   userId: string,
   accountId: string,
   input: ReturnType<typeof parseOpeningPreviewInput>,
-  now: Date
+  now: Date,
+  options: { excludeImportBatchId?: string } = {}
 ) {
   const account = await db.tradingAccount.findFirst({
     where: { id: accountId, userId },
@@ -58,7 +59,14 @@ export async function readAccountOpeningPreview(
     },
   })
   const batches = await db.importBatch.findMany({
-    where: { accountId, userId, status: { not: 'DISCARDED' } },
+    where: {
+      accountId,
+      userId,
+      status: { not: 'DISCARDED' },
+      ...(options.excludeImportBatchId
+        ? { id: { not: options.excludeImportBatchId } }
+        : {}),
+    },
     orderBy: { id: 'asc' },
     take: 501,
     select: {
@@ -90,7 +98,14 @@ export async function readAccountOpeningPreview(
   const events = await db.importedEvent.findMany({
     where: {
       userId,
-      batch: { accountId, userId, status: { not: 'DISCARDED' } },
+      batch: {
+        accountId,
+        userId,
+        status: { not: 'DISCARDED' },
+        ...(options.excludeImportBatchId
+          ? { id: { not: options.excludeImportBatchId } }
+          : {}),
+      },
       OR: [
         {
           kind: {

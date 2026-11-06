@@ -110,6 +110,7 @@ const trade = {
   type: 'BUY',
   date: new Date('2026-10-02T00:00:00Z'),
   totalValue: new Decimal('60'),
+  price: new Decimal('60'),
   fees: new Decimal('1'),
   quantity: 1,
   position: {
@@ -1333,6 +1334,9 @@ describe('read-only opening reconciliation', () => {
         currency: 'AUD',
         grossValue: '60',
         fee: '1',
+        price: '60',
+        occurredAt: '2026-10-02T00:00:00.000Z',
+        quantity: '1',
         stageable: true,
         reason: null,
         operationId: null,

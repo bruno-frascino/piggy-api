@@ -1,5 +1,18 @@
 import { prisma } from './prisma.js'
-import { lockOwnedTradingAccount } from './account-lock.js'
+import { lockOwnedTradingAccount, lockOwnedPosition } from './account-lock.js'
+import {
+  quantityTolerance,
+  recomputePositionFromTransactions,
+} from './position-service.js'
+import {
+  continuedSourceFingerprint,
+  parseExecutionAudit,
+  parseSaleCorrection,
+  parseAcquisitionCorrection,
+  executionCorrectionHash,
+  type ExecutionAudit,
+  type ExecutionSnapshot,
+} from './execution-correction.js'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   AccountingDecimal,
@@ -19,6 +32,10 @@ import {
   resolveCashCommandRetry,
   type CashCommand,
 } from './cash-ledger.js'
+import {
+  accountTradePayloadHash,
+  parseAccountTradeInput,
+} from './account-trade-command.js'
 import {
   prepareCapitalCashRevision,
   prepareImportedCashRevision,
@@ -80,6 +97,24 @@ type HistoryDb = Pick<
   | 'transaction'
   | 'importedEvent'
 >
+type DraftCashTransaction = Pick<
+  typeof prisma,
+  | '$queryRaw'
+  | 'tradingAccount'
+  | 'position'
+  | 'importBatch'
+  | 'transaction'
+  | 'importedEvent'
+  | 'accountOpeningStatement'
+  | 'accountCashLedger'
+  | 'accountCashOperation'
+  | 'draftCashOperation'
+  | 'draftOperationTradeLink'
+  | 'draftCashPosting'
+  | 'draftCashRevision'
+  | 'draftCashRevisionPosting'
+  | 'draftCashEvidence'
+>
 
 type ImportedCashEvent = {
   id: string
@@ -104,6 +139,9 @@ type ImportedCashTransaction = {
   type: string
   date: Date
   quantity: number
+  price: { toFixed(): string }
+  totalValue: { toFixed(): string }
+  fees: { toFixed(): string }
   position: {
     origin: string
     positionType: string
@@ -249,6 +287,9 @@ async function validateImportedHistory(
       type: true,
       date: true,
       quantity: true,
+      price: true,
+      totalValue: true,
+      fees: true,
       position: {
         select: {
           origin: true,
@@ -286,7 +327,8 @@ async function readCashHistory(
   accountId: string,
   openingDate: string,
   now: Date,
-  openingParcels: readonly DraftOpeningParcel[]
+  openingParcels: readonly DraftOpeningParcel[],
+  sourceFingerprint: string
 ) {
   const linkCount = await db.draftOperationTradeLink.count({
     where: { statementId },
@@ -330,6 +372,7 @@ async function readCashHistory(
   const transactions = new Set<string>()
   const effective = new Map<string, CashCommand | null>()
   const proposedTrades: ProposedParcelTrade[] = []
+  const executionAudits: ExecutionAudit[] = []
   for (const row of rows) {
     const existing = prepareCashCommand(row.command, now)
     const command = existing.command
@@ -404,6 +447,27 @@ async function readCashHistory(
       if (!current)
         conflict('A reversed operation cannot have further corrections')
       const prepared = prepareCashRevision(revision.request, now)
+      const audit = prepared.request.executionAudit
+      if (audit) {
+        if (
+          row.proposedTrade ||
+          current.kind !== (audit.kind ?? 'SELL') ||
+          current.source.origin !== 'MANUAL' ||
+          current.transactionIds.length !== 1 ||
+          current.transactionIds[0] !== audit.before.transactionId ||
+          current.consideration.currency !== audit.before.currency ||
+          current.consideration.amount !== audit.before.totalValue ||
+          (current.fees[0]?.amount ?? '0') !== audit.before.fees ||
+          current.effectiveDate !==
+            sydneyCalendarDate(new Date(audit.before.date)) ||
+          prepared.request.replacement?.source.reference !==
+            command.source.reference
+        )
+          conflict(
+            'Manual execution correction does not match its previous source and cash'
+          )
+        executionAudits.push(audit)
+      }
       if (command.source.origin === 'IMPORT') {
         const replacement = prepared.request.replacement
         if (
@@ -483,6 +547,38 @@ async function readCashHistory(
     accountId,
     rows.map((row) => prepareCashCommand(row.command, now).command)
   )
+  continuedSourceFingerprint(sourceFingerprint, executionAudits)
+  if (executionAudits.length) {
+    const latest = new Map<string, ExecutionAudit>()
+    for (const audit of [...executionAudits].sort(
+      (a, b) => a.number - b.number
+    ))
+      latest.set(audit.after.transactionId, audit)
+    const sources = await db.transaction.findMany({
+      where: {
+        id: { in: [...latest.keys()] },
+        position: { userId, accountId },
+      },
+      include: {
+        position: { include: { asset: { include: { exchange: true } } } },
+      },
+    })
+    if (
+      sources.length !== latest.size ||
+      sources.some(
+        (source) =>
+          source.type !== (latest.get(source.id)?.kind ?? 'SELL') ||
+          source.brokerRef !== null ||
+          source.position.origin !== 'MANUAL' ||
+          source.position.positionType !== 'LONG' ||
+          JSON.stringify(executionSnapshot(source)) !==
+            JSON.stringify(latest.get(source.id)?.after)
+      )
+    )
+      conflict(
+        'Corrected manual execution has changed outside its audited source revision'
+      )
+  }
   const parcels = replayDraftTradeParcels(proposedTrades, openingParcels)
   const openingByKey = new Map(
     openingParcels.map((parcel) => [parcel.parcelKey, parcel])
@@ -534,10 +630,16 @@ async function readCashHistory(
     revisionCount,
     proposedTrades,
     parcels,
+    executionAudits,
   }
 }
 
-async function readStatement(db: DraftDb, userId: string, statementId: string) {
+async function readStatement(
+  db: DraftDb,
+  userId: string,
+  statementId: string,
+  expectedState: 'DRAFT' | 'CONFIRMED' = 'DRAFT'
+) {
   const statement = await db.accountOpeningStatement.findFirst({
     where: { id: statementId, account: { userId, user: { deletedAt: null } } },
     include: {
@@ -547,9 +649,14 @@ async function readStatement(db: DraftDb, userId: string, statementId: string) {
     },
   })
   if (!statement) conflict('Opening statement not found', 404)
-  if (statement.state !== 'DRAFT' || statement.timezone !== 'Australia/Sydney')
+  if (
+    statement.state !== expectedState ||
+    statement.timezone !== 'Australia/Sydney'
+  )
     conflict(
-      'Only inactive Sydney opening drafts can hold staged cash operations'
+      expectedState === 'DRAFT'
+        ? 'Only inactive Sydney opening drafts can hold staged cash operations'
+        : 'Live trade posting requires the account confirmed opening statement'
     )
   const opening = parseOpeningPreviewInput({
     openingDate: statement.openingDate.toISOString().slice(0, 10),
@@ -658,6 +765,9 @@ async function validateTrade(
         type: true,
         date: true,
         quantity: true,
+        price: true,
+        totalValue: true,
+        fees: true,
         position: {
           select: {
             origin: true,
@@ -725,7 +835,8 @@ async function validateTrade(
 async function verifyStatementSource(
   db: Parameters<typeof readAccountOpeningPreview>[0],
   userId: string,
-  statement: Awaited<ReturnType<typeof readStatement>>
+  statement: Awaited<ReturnType<typeof readStatement>>,
+  history: Pick<Awaited<ReturnType<typeof readCashHistory>>, 'executionAudits'>
 ) {
   const snapshot = statement.previewSnapshot
   if (
@@ -749,7 +860,13 @@ async function verifyStatementSource(
     },
     new Date(`${snapshot.asOfDate}T01:00:00Z`)
   )
-  if (sourcePreview.sourceFingerprint !== statement.sourceFingerprint)
+  if (
+    sourcePreview.sourceFingerprint !==
+    continuedSourceFingerprint(
+      statement.sourceFingerprint,
+      history.executionAudits
+    )
+  )
     conflict(
       'Opening draft source records have changed. Review and save a fresh opening revision before staging more cash.'
     )
@@ -886,6 +1003,47 @@ export async function saveDraftImportedExecutionCash(
   )
 }
 
+function importedExecutionCashCommand(
+  accountId: string,
+  event: {
+    id: string
+    externalId: string
+    kind: string
+    occurredAt: Date
+    quoteCurrency: string | null
+    grossValue: { toFixed(): string } | null
+    fee: { toFixed(): string }
+    feeCurrency: string | null
+  },
+  transactionIds: string[],
+  sequence: number
+) {
+  if (
+    (event.kind !== 'BUY' && event.kind !== 'SELL') ||
+    !event.quoteCurrency ||
+    !event.grossValue
+  )
+    conflict('Applied Kraken execution does not contain supported cash values')
+  const fee = event.fee.toFixed()
+  return {
+    accountId,
+    kind: event.kind,
+    idempotencyKey: `import-event:${event.id}`,
+    source: { origin: 'IMPORT' as const, reference: event.externalId },
+    effectiveDate: sydneyCalendarDate(event.occurredAt),
+    sequence,
+    consideration: {
+      currency: event.quoteCurrency,
+      amount: event.grossValue.toFixed(),
+    },
+    fees:
+      new AccountingDecimal(fee).gt(0) && event.feeCurrency
+        ? [{ currency: event.feeCurrency, amount: fee }]
+        : [],
+    transactionIds,
+  }
+}
+
 async function persistDraftCashOperation(
   userId: string,
   statementId: string,
@@ -928,14 +1086,39 @@ async function persistDraftCashOperation(
         statement.accountId,
         opening.openingDate,
         now,
-        statement.openingParcels
+        statement.openingParcels,
+        statement.sourceFingerprint
       )
       const { rows } = history
       const prior = rows.find(
         (row) => row.idempotencyKey === prepared.command.idempotencyKey
       )
+      let retryPrepared = prepared
+      const currentPrior = prior ? history.effective.get(prior.id) : null
+      if (
+        prior &&
+        (currentPrior?.kind === 'SELL' || currentPrior?.kind === 'BUY') &&
+        currentPrior.source.origin === 'MANUAL' &&
+        currentPrior.source.reference.startsWith('manual-transaction:') &&
+        prior.revisions.some(
+          (revision) =>
+            prepareCashRevision(revision.request, now).request.executionAudit
+        )
+      ) {
+        const original = prepareCashCommand(prior.command, now)
+        const currentRetry = prepareCashCommand(
+          {
+            ...currentPrior,
+            idempotencyKey: prepared.command.idempotencyKey,
+            sequence: original.command.sequence,
+          },
+          now
+        )
+        if (currentRetry.payloadHash === prepared.payloadHash)
+          retryPrepared = original
+      }
       const retry = resolveCashCommandRetry(
-        prepared,
+        retryPrepared,
         prior
           ? {
               accountId: statement.accountId,
@@ -997,7 +1180,7 @@ async function persistDraftCashOperation(
           'Draft cash history exceeds the supported audit replay limits',
           422
         )
-      await verifyStatementSource(db, userId, statement)
+      await verifyStatementSource(db, userId, statement, history)
       if (
         (prepared.command.kind === 'BUY' || prepared.command.kind === 'SELL') &&
         rows.some((row) => row.proposedTrade?.parcelKey.startsWith('opening:'))
@@ -1087,7 +1270,8 @@ export async function reconcileDraftOpening(
         statement.accountId,
         opening.openingDate,
         now,
-        statement.openingParcels
+        statement.openingParcels,
+        statement.sourceFingerprint
       )
       const replay = replayCashLedger(
         statement.accountId,
@@ -1184,6 +1368,9 @@ export async function reconcileDraftOpening(
             replacement:
               prepareCashRevision(revision.request, now).request.replacement !==
               null,
+            executionAudit:
+              prepareCashRevision(revision.request, now).request
+                .executionAudit ?? null,
           })),
           status:
             current === null
@@ -1220,8 +1407,12 @@ export async function reconcileDraftOpening(
               opening,
               new Date(`${snapshot.asOfDate}T01:00:00Z`)
             )
+      const acceptedFingerprint = continuedSourceFingerprint(
+        statement.sourceFingerprint,
+        history.executionAudits
+      )
       const sourceChanged =
-        originalDatePreview.sourceFingerprint !== statement.sourceFingerprint
+        originalDatePreview.sourceFingerprint !== acceptedFingerprint
       const transactions = await db.transaction.findMany({
         where: { position: { accountId: statement.accountId, userId } },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
@@ -1233,6 +1424,7 @@ export async function reconcileDraftOpening(
           type: true,
           date: true,
           quantity: true,
+          price: true,
           totalValue: true,
           fees: true,
           position: {
@@ -1348,6 +1540,11 @@ export async function reconcileDraftOpening(
             currency,
             grossValue,
             fee,
+            price: transaction.price.toFixed(),
+            quantity: new AccountingDecimal(
+              String(transaction.quantity)
+            ).toFixed(),
+            occurredAt: transaction.date.toISOString(),
             stageable: reason === null,
             reason,
             operationId: operation?.id ?? null,
@@ -1526,6 +1723,8 @@ export async function reconcileDraftOpening(
         source: {
           reviewedAsOfDate: snapshot.asOfDate,
           savedFingerprint: statement.sourceFingerprint,
+          acceptedFingerprint,
+          correctionCount: history.executionAudits.length,
           currentFingerprint: originalDatePreview.sourceFingerprint,
           changed: sourceChanged,
         },
@@ -1638,7 +1837,8 @@ export async function recordDraftCashEvidence(
         statement.accountId,
         opening.openingDate,
         now,
-        statement.openingParcels
+        statement.openingParcels,
+        statement.sourceFingerprint
       )
       const prior = await db.draftCashEvidence.findUnique({
         where: {
@@ -1672,7 +1872,7 @@ export async function recordDraftCashEvidence(
           comparison: compareDraftCashEvidence(prepared.request, replay, false),
         }
       }
-      await verifyStatementSource(db, userId, statement)
+      await verifyStatementSource(db, userId, statement, history)
       const replay = replayCashLedger(
         statement.accountId,
         opening,
@@ -1751,7 +1951,8 @@ export async function previewDraftCashEvidence(
         statement.accountId,
         opening.openingDate,
         now,
-        statement.openingParcels
+        statement.openingParcels,
+        statement.sourceFingerprint
       )
       const replay = replayCashLedger(
         statement.accountId,
@@ -1819,7 +2020,8 @@ export async function saveDraftManualTrade(
         statement.accountId,
         opening.openingDate,
         now,
-        statement.openingParcels
+        statement.openingParcels,
+        statement.sourceFingerprint
       )
       const prior = history.rows.find(
         (row) => row.idempotencyKey === request.idempotencyKey
@@ -1856,7 +2058,7 @@ export async function saveDraftManualTrade(
         request.effectiveDate,
         request.sequence
       )
-      await verifyStatementSource(db, userId, statement)
+      await verifyStatementSource(db, userId, statement, history)
       const tradeId = randomUUID()
       const prepared = prepareDraftTradeCash(request, tradeId, now)
       if (
@@ -2038,6 +2240,969 @@ export async function correctDraftReconciliationCashOperation(
   })
 }
 
+type LiveTradeSnapshot = {
+  transactionId: string
+  positionId: string
+  assetId: string
+  kind: 'BUY' | 'SELL'
+  date: string
+  quantity: string
+  price: string
+  totalValue: string
+  fees: string
+  currency: string
+}
+
+function liveTradeSnapshot(transaction: {
+  id: string
+  positionId: string
+  type: string
+  date: Date
+  quantity: number
+  price: { toFixed(): string }
+  totalValue: { toFixed(): string }
+  fees: { toFixed(): string }
+  position: {
+    assetId: string
+    asset: { exchange: { currency: string } }
+  }
+}): LiveTradeSnapshot {
+  if (transaction.type !== 'BUY' && transaction.type !== 'SELL')
+    conflict('Live cash operations support only BUY and SELL transactions')
+  return {
+    transactionId: transaction.id,
+    positionId: transaction.positionId,
+    assetId: transaction.position.assetId,
+    kind: transaction.type,
+    date: transaction.date.toISOString(),
+    quantity: new AccountingDecimal(String(transaction.quantity)).toFixed(),
+    price: transaction.price.toFixed(),
+    totalValue: transaction.totalValue.toFixed(),
+    fees: transaction.fees.toFixed(),
+    currency: transaction.position.asset.exchange.currency,
+  }
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    conflict('Stored live cash audit is invalid')
+  return value as Record<string, unknown>
+}
+
+function sameLiveTradeSnapshot(
+  value: unknown,
+  expected: LiveTradeSnapshot
+): boolean {
+  const stored = recordValue(value)
+  const keys = Object.keys(expected) as (keyof LiveTradeSnapshot)[]
+  return (
+    Object.keys(stored).length === keys.length &&
+    keys.every((key) => stored[key] === expected[key])
+  )
+}
+
+function importedExecutionSnapshot(
+  event: ImportedCashEvent,
+  transactions: readonly ImportedCashTransaction[]
+): string[] {
+  const fee = event.fee.toFixed()
+  return [
+    JSON.stringify([
+      event.id,
+      event.userId,
+      event.source,
+      event.externalId,
+      event.kind,
+      event.status,
+      event.occurredAt.toISOString(),
+      event.quoteCurrency,
+      event.grossValue?.toFixed() ?? null,
+      fee,
+      event.feeCurrency,
+      [...event.appliedPositionIds].sort(),
+    ]),
+    ...[...transactions]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((transaction) =>
+        JSON.stringify([
+          transaction.id,
+          transaction.positionId,
+          transaction.brokerRef,
+          transaction.type,
+          transaction.date.toISOString(),
+          new AccountingDecimal(String(transaction.quantity)).toFixed(),
+          transaction.price.toFixed(),
+          transaction.totalValue.toFixed(),
+          transaction.fees.toFixed(),
+          transaction.position.origin,
+          transaction.position.positionType,
+          transaction.position.asset.exchange.currency,
+        ])
+      ),
+  ]
+}
+
+function sameImportedExecutionSnapshot(
+  value: unknown,
+  expected: readonly string[]
+): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length === expected.length &&
+    value.every(
+      (row, index) => typeof row === 'string' && row === expected[index]
+    )
+  )
+}
+
+function getOpeningSnapshotDate(statement: {
+  previewSnapshot: unknown
+}): string {
+  const snapshot = statement.previewSnapshot
+  if (
+    !snapshot ||
+    typeof snapshot !== 'object' ||
+    Array.isArray(snapshot) ||
+    !('asOfDate' in snapshot) ||
+    !isAccountingDate(snapshot.asOfDate)
+  )
+    conflict('Confirmed opening statement has no valid source observation date')
+  return snapshot.asOfDate
+}
+
+async function readLiveCashState(
+  db: DraftCashTransaction,
+  userId: string,
+  accountId: string,
+  now: Date,
+  excludedImportBatchId?: string
+) {
+  const account = await db.tradingAccount.findFirst({
+    where: { id: accountId, userId, user: { deletedAt: null } },
+    select: { id: true, status: true, isDemo: true },
+  })
+  if (!account) conflict('Trading account not found', 404)
+  if (account.status !== 'ACTIVE' || account.isDemo)
+    conflict('Live cash posting requires an active real trading account')
+  const ledger = await db.accountCashLedger.findUnique({
+    where: { accountId },
+  })
+  if (!ledger || ledger.state !== 'ACTIVE')
+    conflict(
+      'This legacy account has no active confirmed cash ledger. Existing trade creation remains unchanged.'
+    )
+  const statement = await readStatement(
+    db,
+    userId,
+    ledger.openingStatementId,
+    'CONFIRMED'
+  )
+  if (
+    statement.accountId !== accountId ||
+    statement.sourceFingerprint !== ledger.openingSourceFingerprint
+  )
+    conflict('Confirmed cash ledger and opening statement do not match')
+  const openingDate = statement.openingDate.toISOString().slice(0, 10)
+  const opening = {
+    openingDate,
+    cashBalances: statement.cashBalances.map((row) => ({
+      currency: row.currency,
+      amount: row.amount.toFixed(),
+    })),
+  }
+  const sourceObservationDate = getOpeningSnapshotDate(statement)
+  const openingParcels: DraftOpeningParcel[] = statement.parcels.map((row) => ({
+    parcelKey: `opening:${row.id}`,
+    positionId: row.positionId,
+    symbol: row.symbol,
+    currency: row.currency,
+    quantity: row.quantity.toFixed(),
+  }))
+  const history = await readCashHistory(
+    db,
+    userId,
+    statement.id,
+    accountId,
+    openingDate,
+    now,
+    openingParcels,
+    statement.sourceFingerprint
+  )
+  if (history.proposedTrades.length)
+    conflict(
+      'Resolve isolated proposed trades before enabling live cash posting'
+    )
+  const cashLedgerOps = await db.accountCashOperation.findMany({
+    where: { accountId },
+    orderBy: { auditNumber: 'asc' },
+    include: {
+      postings: { orderBy: { legIndex: 'asc' } },
+      transaction: {
+        include: {
+          position: { include: { asset: { include: { exchange: true } } } },
+        },
+      },
+      importedEvent: { select: { id: true } },
+    },
+    take: 50001,
+  })
+  if (cashLedgerOps.length > 50000)
+    conflict('Live cash history exceeds the supported replay limit', 422)
+  let acceptedFingerprint = continuedSourceFingerprint(
+    statement.sourceFingerprint,
+    history.executionAudits
+  )
+  const liveCommands: CashCommand[] = []
+  const linkedTransactions = new Set(
+    [...history.effective.values()].flatMap((command) =>
+      command && 'transactionIds' in command ? command.transactionIds : []
+    )
+  )
+  for (const [index, operation] of cashLedgerOps.entries()) {
+    const stored = recordValue(operation.command)
+    const prepared = prepareCashCommand(
+      operation.importedEventId
+        ? (() => {
+            if (Object.keys(stored).length !== 1 || !('cashCommand' in stored))
+              conflict('Stored imported cash operation is invalid')
+            return stored.cashCommand
+          })()
+        : (() => {
+            if (
+              Object.keys(stored).length !== 2 ||
+              !('request' in stored) ||
+              !('cashCommand' in stored)
+            )
+              conflict('Stored live cash request is invalid')
+            return stored.cashCommand
+          })(),
+      now
+    )
+    const command = prepared.command
+    if (command.kind !== 'BUY' && command.kind !== 'SELL')
+      conflict('Stored live cash operation is not a trade')
+    const auditNumber = history.executionAudits.length + index + 1
+    const commonInvalid =
+      operation.auditNumber !== auditNumber ||
+      operation.previousFingerprint !== acceptedFingerprint ||
+      operation.accountId !== accountId ||
+      operation.kind !== command.kind ||
+      operation.idempotencyKey !== command.idempotencyKey ||
+      command.accountId !== accountId ||
+      command.effectiveDate !==
+        operation.effectiveDate.toISOString().slice(0, 10) ||
+      command.sequence !== Number(operation.sequence) ||
+      operation.postings.length !== prepared.legs.length ||
+      operation.postings.some(
+        (posting, legIndex) =>
+          posting.legIndex !== legIndex ||
+          posting.currency !== prepared.legs[legIndex].currency ||
+          posting.role !== prepared.legs[legIndex].role ||
+          posting.amount.toFixed() !== prepared.legs[legIndex].amount
+      )
+    if (operation.importedEventId) {
+      const event = await db.importedEvent.findFirst({
+        where: {
+          id: operation.importedEventId,
+          userId,
+          source: 'KRAKEN',
+          status: 'APPLIED',
+          batch: { userId, accountId },
+        },
+        select: {
+          id: true,
+          userId: true,
+          source: true,
+          externalId: true,
+          kind: true,
+          status: true,
+          occurredAt: true,
+          quoteCurrency: true,
+          grossValue: true,
+          fee: true,
+          feeCurrency: true,
+          appliedPositionIds: true,
+          batch: { select: { accountId: true, userId: true } },
+        },
+      })
+      if (!event)
+        conflict('Stored imported cash operation has no applied Kraken source')
+      const transactions = await db.transaction.findMany({
+        where: {
+          brokerRef: event.externalId,
+          position: { accountId, userId },
+        },
+        select: {
+          id: true,
+          positionId: true,
+          brokerRef: true,
+          type: true,
+          date: true,
+          quantity: true,
+          price: true,
+          totalValue: true,
+          fees: true,
+          position: {
+            select: {
+              origin: true,
+              positionType: true,
+              asset: {
+                select: { exchange: { select: { currency: true } } },
+              },
+            },
+          },
+        },
+      })
+      validateImportedExecution(userId, accountId, command, event, transactions)
+      const snapshot = importedExecutionSnapshot(event, transactions)
+      if (
+        commonInvalid ||
+        operation.importedEvent?.id !== event.id ||
+        command.source.origin !== 'IMPORT' ||
+        command.source.reference !== event.externalId ||
+        command.idempotencyKey !== `import-event:${event.id}` ||
+        operation.payloadHash !== prepared.payloadHash ||
+        operation.transactionId !== command.transactionIds[0] ||
+        !sameImportedExecutionSnapshot(operation.transactionSnapshot, snapshot)
+      )
+        conflict(
+          'Stored imported execution, source audit or cash postings are inconsistent'
+        )
+    } else {
+      const storedInput = parseAccountTradeInput(stored.request)
+      const trade = liveTradeSnapshot(operation.transaction)
+      if (
+        commonInvalid ||
+        operation.transactionId !== trade.transactionId ||
+        operation.payloadHash !== accountTradePayloadHash(storedInput) ||
+        command.source.origin !== 'MANUAL' ||
+        command.source.reference !== `live-trade:${operation.transactionId}` ||
+        command.transactionIds.length !== 1 ||
+        command.transactionIds[0] !== operation.transactionId ||
+        storedInput.idempotencyKey !== operation.idempotencyKey ||
+        command.consideration.currency !== trade.currency ||
+        command.consideration.amount !== trade.totalValue ||
+        (command.fees[0]?.amount ?? '0') !== trade.fees ||
+        storedInput.kind !== trade.kind ||
+        storedInput.effectiveDate !==
+          sydneyCalendarDate(new Date(trade.date)) ||
+        storedInput.quantity !== trade.quantity ||
+        storedInput.price !== trade.price ||
+        storedInput.fees !== trade.fees ||
+        (storedInput.kind === 'BUY'
+          ? storedInput.assetId !== trade.assetId
+          : storedInput.positionId !== trade.positionId) ||
+        !sameLiveTradeSnapshot(operation.transactionSnapshot, trade)
+      )
+        conflict(
+          'Stored live trade, source audit or cash postings are inconsistent'
+        )
+    }
+    acceptedFingerprint = operation.nextFingerprint
+    liveCommands.push(command)
+    for (const transactionId of command.transactionIds)
+      linkedTransactions.add(transactionId)
+  }
+  if (ledger.acceptedSourceFingerprint !== acceptedFingerprint)
+    conflict('Live cash source audit head is inconsistent')
+  const existingTrades = await db.transaction.findMany({
+    where: {
+      position: { accountId, userId },
+      type: { in: ['BUY', 'SELL'] },
+    },
+    select: { id: true, date: true },
+    take: 50001,
+  })
+  if (existingTrades.length > 50000)
+    conflict('Account trade history exceeds the supported audit limit', 422)
+  if (
+    existingTrades.some(
+      (trade) =>
+        sydneyCalendarDate(trade.date) > openingDate &&
+        !linkedTransactions.has(trade.id)
+    )
+  )
+    conflict(
+      'Post-opening account trades must be staged in the cash ledger before live posting'
+    )
+  const beforePreview = await readAccountOpeningPreview(
+    db,
+    userId,
+    accountId,
+    opening,
+    new Date(`${sourceObservationDate}T01:00:00Z`),
+    excludedImportBatchId
+      ? { excludeImportBatchId: excludedImportBatchId }
+      : undefined
+  )
+  if (beforePreview.sourceFingerprint !== acceptedFingerprint)
+    conflict(
+      'Confirmed account source changed outside its audited live cash history'
+    )
+  return {
+    ledger,
+    statement,
+    opening,
+    openingDate,
+    sourceObservationDate,
+    history,
+    cashLedgerOps,
+    acceptedFingerprint,
+    liveCommands,
+    linkedTransactions,
+    existingTrades,
+  }
+}
+
+export async function beginLiveImportPosting(
+  db: DraftCashTransaction,
+  userId: string,
+  accountId: string,
+  batchId: string,
+  events: readonly { id: string; occurredAt: Date }[]
+) {
+  if (!events.length) return null
+  const unique = new Set(events.map((event) => event.id))
+  if (unique.size !== events.length)
+    conflict('An imported execution was selected more than once')
+
+  const pendingEvents = await db.importedEvent.findMany({
+    where: {
+      batchId,
+      userId,
+      status: { in: ['PENDING', 'DEFERRED'] },
+      batch: {
+        userId,
+        accountId,
+        status: { in: ['PENDING_REVIEW', 'PARTIALLY_APPLIED'] },
+      },
+    },
+    select: { id: true, source: true, kind: true },
+  })
+  if (
+    pendingEvents.length !== events.length ||
+    pendingEvents.some(
+      (event) =>
+        !unique.has(event.id) ||
+        event.source !== 'KRAKEN' ||
+        (event.kind !== 'BUY' && event.kind !== 'SELL')
+    )
+  )
+    conflict(
+      'A live-ledger import must include every pending supported trade in its batch'
+    )
+
+  const now = new Date()
+  const state = await readLiveCashState(db, userId, accountId, now, batchId)
+  const byDate = new Map<string, { id: string; occurredAt: Date }[]>()
+  for (const event of events) {
+    const date = sydneyCalendarDate(event.occurredAt)
+    if (date <= state.openingDate)
+      conflict(
+        'Imported executions must follow the confirmed end-of-day opening'
+      )
+    const day = byDate.get(date) ?? []
+    day.push(event)
+    byDate.set(date, day)
+  }
+  const ordered = [...byDate.entries()]
+    .flatMap(([date, day]) => {
+      day.sort(
+        (left, right) => left.occurredAt.getTime() - right.occurredAt.getTime()
+      )
+      if (
+        day.some(
+          (event, index) =>
+            index > 0 &&
+            event.occurredAt.getTime() === day[index - 1].occurredAt.getTime()
+        )
+      )
+        conflict(
+          'Kraken executions with identical timestamps need an explicit sequence before posting'
+        )
+      return day.map((event, index) => ({
+        ...event,
+        date,
+        sequence: index + 1,
+      }))
+    })
+    .sort(
+      (left, right) =>
+        left.date.localeCompare(right.date) ||
+        left.occurredAt.getTime() - right.occurredAt.getTime()
+    )
+  const affectedDates = new Set(ordered.map((event) => event.date))
+  if (
+    state.history.rows.some((row) =>
+      affectedDates.has(row.effectiveDate.toISOString().slice(0, 10))
+    ) ||
+    state.cashLedgerOps.some((row) =>
+      affectedDates.has(row.effectiveDate.toISOString().slice(0, 10))
+    ) ||
+    state.existingTrades.some((row) =>
+      affectedDates.has(sydneyCalendarDate(row.date))
+    )
+  )
+    conflict(
+      'Kraken executions cannot be interleaved with existing same-day cash activity'
+    )
+
+  let completed = false
+  return async (appliedEventIds: readonly string[]) => {
+    if (completed) conflict('Imported cash posting was already completed')
+    if (
+      appliedEventIds.length !== events.length ||
+      new Set(appliedEventIds).size !== events.length ||
+      appliedEventIds.some((id) => !unique.has(id))
+    )
+      conflict('Imported cash sources changed during commit')
+    const eventRows = await db.importedEvent.findMany({
+      where: {
+        id: { in: [...unique] },
+        userId,
+        source: 'KRAKEN',
+        kind: { in: ['BUY', 'SELL'] },
+        status: 'APPLIED',
+        batch: { userId, accountId },
+      },
+      select: {
+        id: true,
+        userId: true,
+        source: true,
+        externalId: true,
+        kind: true,
+        status: true,
+        occurredAt: true,
+        quoteCurrency: true,
+        grossValue: true,
+        fee: true,
+        feeCurrency: true,
+        appliedPositionIds: true,
+        batch: { select: { accountId: true, userId: true } },
+      },
+    })
+    if (eventRows.length !== events.length)
+      conflict('Every imported execution must be applied in this account')
+    const eventById = new Map(eventRows.map((event) => [event.id, event]))
+    const externalIds = eventRows.map((event) => event.externalId)
+    const transactions = await db.transaction.findMany({
+      where: {
+        brokerRef: { in: externalIds },
+        position: { accountId, userId },
+      },
+      select: {
+        id: true,
+        positionId: true,
+        brokerRef: true,
+        type: true,
+        date: true,
+        quantity: true,
+        price: true,
+        totalValue: true,
+        fees: true,
+        position: {
+          select: {
+            origin: true,
+            positionType: true,
+            asset: {
+              select: { exchange: { select: { currency: true } } },
+            },
+          },
+        },
+      },
+    })
+    const transactionsByReference = new Map<string, ImportedCashTransaction[]>()
+    for (const transaction of transactions) {
+      if (!transaction.brokerRef) continue
+      const linked = transactionsByReference.get(transaction.brokerRef) ?? []
+      linked.push(transaction)
+      transactionsByReference.set(transaction.brokerRef, linked)
+    }
+    const preparedRows = ordered.map(({ id, occurredAt, sequence }) => {
+      const event = eventById.get(id)
+      if (!event || event.occurredAt.getTime() !== occurredAt.getTime())
+        conflict('Imported execution timestamps changed during commit')
+      const linked = transactionsByReference.get(event.externalId) ?? []
+      const prepared = prepareCashCommand(
+        importedExecutionCashCommand(
+          accountId,
+          event,
+          linked.map((transaction) => transaction.id),
+          sequence
+        ),
+        now
+      )
+      validateImportedExecution(
+        userId,
+        accountId,
+        prepared.command,
+        event,
+        linked
+      )
+      return { event, linked, prepared }
+    })
+    const commands = [
+      ...[...state.history.effective.values()].filter(
+        (command): command is CashCommand => command !== null
+      ),
+      ...state.liveCommands,
+    ]
+    const slots: { effectiveDate: Date; sequence: bigint }[] = [
+      ...state.history.rows.map(({ effectiveDate, sequence }) => ({
+        effectiveDate,
+        sequence,
+      })),
+      ...state.cashLedgerOps.map(({ effectiveDate, sequence }) => ({
+        effectiveDate,
+        sequence,
+      })),
+    ]
+    for (const row of preparedRows) {
+      requireNewOperationSlot(
+        slots.map((slot) => ({
+          effectiveDate: slot.effectiveDate,
+          sequence: slot.sequence,
+        })),
+        row.prepared.command.effectiveDate,
+        row.prepared.command.sequence
+      )
+      commands.push(row.prepared.command)
+      requireFundedCashLedger(
+        replayCashLedger(accountId, state.opening, commands, now)
+      )
+      slots.push({
+        effectiveDate: new Date(
+          `${row.prepared.command.effectiveDate}T00:00:00Z`
+        ),
+        sequence: BigInt(row.prepared.command.sequence),
+      })
+    }
+
+    const afterPreview = await readAccountOpeningPreview(
+      db,
+      userId,
+      accountId,
+      state.opening,
+      new Date(`${state.sourceObservationDate}T01:00:00Z`)
+    )
+    let previousFingerprint = state.acceptedFingerprint
+    const finalFingerprint = afterPreview.sourceFingerprint
+    for (const [index, row] of preparedRows.entries()) {
+      const command = row.prepared.command
+      if (command.kind !== 'BUY' && command.kind !== 'SELL')
+        conflict('Imported cash operation is not a trade')
+      await db.accountCashOperation.create({
+        data: {
+          accountId,
+          idempotencyKey: command.idempotencyKey,
+          payloadHash: row.prepared.payloadHash,
+          transactionId: command.transactionIds[0],
+          importedEventId: row.event.id,
+          kind: command.kind,
+          effectiveDate: new Date(`${command.effectiveDate}T00:00:00Z`),
+          sequence: BigInt(command.sequence),
+          auditNumber:
+            state.history.executionAudits.length +
+            state.cashLedgerOps.length +
+            index +
+            1,
+          command: { cashCommand: command },
+          previousFingerprint,
+          nextFingerprint: finalFingerprint,
+          transactionSnapshot: importedExecutionSnapshot(row.event, row.linked),
+          postings: {
+            create: row.prepared.legs.map((leg, legIndex) => ({
+              ...leg,
+              legIndex,
+            })),
+          },
+        },
+        select: { id: true },
+      })
+      previousFingerprint = finalFingerprint
+    }
+    await db.accountCashLedger.update({
+      where: { accountId },
+      data: { acceptedSourceFingerprint: finalFingerprint },
+    })
+    completed = true
+  }
+}
+
+/** Posts one new manual trade only after an explicit confirmed ledger exists. */
+export async function postAccountTrade(
+  userId: string,
+  accountId: string,
+  raw: unknown
+) {
+  const input = parseAccountTradeInput(raw)
+  const payloadHash = accountTradePayloadHash(input)
+  const now = new Date()
+  return prisma.$transaction(
+    async (db) => {
+      await lockOwnedTradingAccount(db, userId, accountId)
+      const state = await readLiveCashState(db, userId, accountId, now)
+      const {
+        opening,
+        openingDate,
+        sourceObservationDate,
+        history,
+        cashLedgerOps,
+        acceptedFingerprint,
+        liveCommands,
+      } = state
+
+      const existing = await db.accountCashOperation.findUnique({
+        where: {
+          accountId_idempotencyKey: {
+            accountId,
+            idempotencyKey: input.idempotencyKey,
+          },
+        },
+      })
+      const commands = [
+        ...[...history.effective.values()].filter(
+          (command): command is CashCommand => command !== null
+        ),
+        ...liveCommands,
+      ]
+      const replay = replayCashLedger(accountId, opening, commands, now)
+      requireFundedCashLedger(replay)
+      if (existing) {
+        if (existing.payloadHash !== payloadHash)
+          conflict(
+            'Idempotency key is already associated with different live trade content'
+          )
+        return {
+          operationId: existing.id,
+          transactionId: existing.transactionId,
+          created: false,
+          replay,
+        }
+      }
+      const currentTradeSlots = [...history.effective.values()].flatMap(
+        (command) =>
+          command
+            ? [
+                {
+                  effectiveDate: new Date(`${command.effectiveDate}T00:00:00Z`),
+                  sequence: BigInt(command.sequence),
+                },
+              ]
+            : []
+      )
+      requireNewOperationSlot(
+        [...history.rows, ...cashLedgerOps, ...currentTradeSlots],
+        input.effectiveDate,
+        input.sequence
+      )
+      if (input.effectiveDate <= openingDate)
+        conflict('Live trades must be after the confirmed end-of-day opening')
+      const date = new Date(`${input.effectiveDate}T01:00:00Z`)
+      let positionId: string
+      let currency: string
+      if (input.kind === 'BUY') {
+        const asset = await db.asset.findUnique({
+          where: { id: input.assetId },
+          include: { exchange: true },
+        })
+        if (!asset) conflict('Trade asset not found', 404)
+        currency = asset.exchange.currency
+        positionId = randomUUID()
+      } else {
+        await lockOwnedPosition(db, userId, input.positionId)
+        const currentPosition = await db.position.findFirst({
+          where: { id: input.positionId, userId, accountId },
+          include: {
+            asset: { include: { exchange: true } },
+            transactions: { orderBy: { date: 'asc' } },
+          },
+        })
+        if (
+          !currentPosition ||
+          currentPosition.origin !== 'MANUAL' ||
+          currentPosition.positionType !== 'LONG' ||
+          currentPosition.transactions.some(
+            (transaction) => transaction.brokerRef !== null
+          )
+        )
+          conflict(
+            'Live manual sales require an owned long manual parcel without imported allocations'
+          )
+        const buys = currentPosition.transactions.filter(
+          (transaction) => transaction.type === 'BUY'
+        )
+        const buyQuantity = buys.reduce(
+          (sum, transaction) => sum.plus(String(transaction.quantity)),
+          new AccountingDecimal(0)
+        )
+        const soldQuantity = currentPosition.transactions
+          .filter((transaction) => transaction.type === 'SELL')
+          .reduce(
+            (sum, transaction) => sum.plus(String(transaction.quantity)),
+            new AccountingDecimal(0)
+          )
+        const remaining = buyQuantity.minus(soldQuantity)
+        const recorded = new AccountingDecimal(String(currentPosition.quantity))
+        if (
+          buys.length !== 1 ||
+          remaining.lte(0) ||
+          remaining
+            .minus(recorded)
+            .abs()
+            .gt(
+              quantityTolerance(
+                Number(remaining.toFixed()),
+                currentPosition.quantity
+              )
+            ) ||
+          new AccountingDecimal(input.quantity).gt(remaining) ||
+          input.effectiveDate < sydneyCalendarDate(buys[0].date)
+        )
+          conflict(
+            'Sale quantity, acquisition date or parcel inventory is invalid'
+          )
+        if (sydneyCalendarDate(buys[0].date) === input.effectiveDate) {
+          const acquisition = [
+            ...history.effective.values(),
+            ...liveCommands,
+          ].find(
+            (command) =>
+              command?.kind === 'BUY' &&
+              command.transactionIds.includes(buys[0].id) &&
+              command.effectiveDate === input.effectiveDate
+          )
+          if (!acquisition || acquisition.sequence >= input.sequence)
+            conflict(
+              'Same-day sales must follow their acquisition in explicit cash sequence order'
+            )
+        }
+        positionId = currentPosition.id
+        currency = currentPosition.asset.exchange.currency
+      }
+      const transactionGross = new AccountingDecimal(input.quantity)
+        .mul(input.price)
+        .toDecimalPlaces(2, AccountingDecimal.ROUND_HALF_UP)
+      if (
+        !isAccountingAmount(transactionGross.toFixed()) ||
+        transactionGross.gte('10000000000')
+      )
+        conflict(
+          'Trade consideration exceeds transaction storage precision',
+          400
+        )
+      const capital = transactionGross
+        .plus(input.fees)
+        .toDecimalPlaces(2, AccountingDecimal.ROUND_HALF_UP)
+      if (input.kind === 'BUY' && capital.gte('10000000000'))
+        conflict('Trade capital allocation exceeds storage precision', 400)
+      if (input.kind === 'BUY') {
+        await db.position.create({
+          data: {
+            id: positionId,
+            userId,
+            accountId,
+            assetId: input.assetId,
+            openDate: date,
+            entryPrice: input.price,
+            quantity: Number(input.quantity),
+            positionType: 'LONG',
+            totalBuyValue: transactionGross.toFixed(),
+            buyFees: input.fees,
+            capitalAllocated: capital.toFixed(),
+            origin: 'MANUAL',
+            externalRef: `ACCOUNT_TRADE:${positionId}`,
+          },
+        })
+      }
+      const transaction = await db.transaction.create({
+        data: {
+          positionId,
+          type: input.kind,
+          date,
+          quantity: Number(input.quantity),
+          price: input.price,
+          totalValue: transactionGross.toFixed(),
+          fees: input.fees,
+        },
+      })
+      if (!(await recomputePositionFromTransactions(positionId, db)))
+        conflict('Position not found while posting account trade', 404)
+      const postedTransaction = await db.transaction.findUniqueOrThrow({
+        where: { id: transaction.id },
+        include: {
+          position: { include: { asset: { include: { exchange: true } } } },
+        },
+      })
+      const snapshot = liveTradeSnapshot(postedTransaction)
+      if (snapshot.currency !== currency)
+        conflict('Trade cash currency does not match the parcel exchange')
+      const cashPrepared = prepareCashCommand(
+        {
+          accountId,
+          idempotencyKey: input.idempotencyKey,
+          source: {
+            origin: 'MANUAL',
+            reference: `live-trade:${transaction.id}`,
+          },
+          effectiveDate: input.effectiveDate,
+          sequence: input.sequence,
+          kind: input.kind,
+          consideration: { currency, amount: snapshot.totalValue },
+          fees: input.fees === '0' ? [] : [{ currency, amount: input.fees }],
+          transactionIds: [transaction.id],
+        },
+        now
+      )
+      const nextCommands = [...commands, cashPrepared.command]
+      const nextReplay = replayCashLedger(accountId, opening, nextCommands, now)
+      requireFundedCashLedger(nextReplay)
+      const afterPreview = await readAccountOpeningPreview(
+        db,
+        userId,
+        accountId,
+        opening,
+        new Date(`${sourceObservationDate}T01:00:00Z`)
+      )
+      const liveOperation = await db.accountCashOperation.create({
+        data: {
+          accountId,
+          idempotencyKey: input.idempotencyKey,
+          payloadHash,
+          transactionId: transaction.id,
+          kind: input.kind,
+          effectiveDate: date,
+          sequence: BigInt(input.sequence),
+          auditNumber:
+            history.executionAudits.length + cashLedgerOps.length + 1,
+          command: { request: input, cashCommand: cashPrepared.command },
+          previousFingerprint: acceptedFingerprint,
+          nextFingerprint: afterPreview.sourceFingerprint,
+          transactionSnapshot: snapshot,
+          postings: {
+            create: cashPrepared.legs.map((leg, legIndex) => ({
+              ...leg,
+              legIndex,
+            })),
+          },
+        },
+        select: { id: true },
+      })
+      await db.accountCashLedger.update({
+        where: { accountId },
+        data: { acceptedSourceFingerprint: afterPreview.sourceFingerprint },
+      })
+      return {
+        operationId: liveOperation.id,
+        transactionId: transaction.id,
+        created: true,
+        replay: nextReplay,
+      }
+    },
+    { isolationLevel: 'ReadCommitted', timeout: 20000, maxWait: 5000 }
+  )
+}
+
 export async function correctDraftImportedExecutionCash(
   userId: string,
   accountId: string,
@@ -2049,6 +3214,439 @@ export async function correctDraftImportedExecutionCash(
     accountId,
     kind: 'IMPORT',
   })
+}
+
+function executionSnapshot(transaction: {
+  id: string
+  positionId: string
+  date: Date
+  quantity: number
+  price: { toFixed(): string }
+  totalValue: { toFixed(): string }
+  fees: { toFixed(): string }
+  position: { asset: { exchange: { currency: string } } }
+}): ExecutionSnapshot {
+  return {
+    transactionId: transaction.id,
+    positionId: transaction.positionId,
+    date: transaction.date.toISOString(),
+    quantity: new AccountingDecimal(String(transaction.quantity)).toFixed(),
+    price: transaction.price.toFixed(),
+    totalValue: transaction.totalValue.toFixed(),
+    fees: transaction.fees.toFixed(),
+    currency: transaction.position.asset.exchange.currency,
+  }
+}
+
+export async function correctDraftRecordedSale(
+  userId: string,
+  accountId: string,
+  statementId: string,
+  operationId: string,
+  raw: unknown
+) {
+  return correctDraftRecordedExecution(
+    userId,
+    accountId,
+    statementId,
+    operationId,
+    raw,
+    'SELL'
+  )
+}
+
+export async function correctDraftRecordedAcquisition(
+  userId: string,
+  accountId: string,
+  statementId: string,
+  operationId: string,
+  raw: unknown
+) {
+  return correctDraftRecordedExecution(
+    userId,
+    accountId,
+    statementId,
+    operationId,
+    raw,
+    'BUY'
+  )
+}
+
+async function correctDraftRecordedExecution(
+  userId: string,
+  accountId: string,
+  statementId: string,
+  operationId: string,
+  raw: unknown,
+  kind: 'BUY' | 'SELL'
+) {
+  const acquisition = kind === 'BUY' ? parseAcquisitionCorrection(raw) : null
+  const input = acquisition ?? parseSaleCorrection(raw)
+  const now = new Date()
+  return prisma.$transaction(
+    async (db) => {
+      let statement = await readStatement(db, userId, statementId)
+      if (statement.accountId !== accountId)
+        conflict('Opening statement not found for this account', 404)
+      await lockOwnedTradingAccount(db, userId, accountId)
+      statement = await readStatement(db, userId, statementId)
+      if (statement.accountId !== accountId)
+        conflict('Opening statement not found for this account', 404)
+      if (statement.account.status !== 'ACTIVE' || statement.account.isDemo)
+        conflict(
+          'Manual execution corrections require an active real trading account'
+        )
+      const opening = {
+        openingDate: statement.openingDate.toISOString().slice(0, 10),
+        cashBalances: statement.cashBalances.map((row) => ({
+          currency: row.currency,
+          amount: row.amount.toFixed(),
+        })),
+      }
+      const history = await readCashHistory(
+        db,
+        userId,
+        statementId,
+        accountId,
+        opening.openingDate,
+        now,
+        statement.openingParcels,
+        statement.sourceFingerprint
+      )
+      const operation = history.rows.find((row) => row.id === operationId)
+      if (
+        !operation ||
+        operation.proposedTrade ||
+        operation.kind !== kind ||
+        operation.sourceOrigin !== 'MANUAL'
+      )
+        conflict('Recorded manual execution cash operation not found', 404)
+      const prior = history.rows
+        .flatMap((row) => row.revisions)
+        .find((row) => row.idempotencyKey === input.idempotencyKey)
+      if (prior) {
+        const audit = prepareCashRevision(prior.request, now).request
+          .executionAudit
+        if (
+          prior.operationId !== operationId ||
+          !audit ||
+          (audit.kind ?? 'SELL') !== kind ||
+          executionCorrectionHash(audit.input) !==
+            executionCorrectionHash(input)
+        )
+          conflict(
+            'Idempotency key is already associated with different correction content'
+          )
+        const replay = replayCashLedger(
+          accountId,
+          opening,
+          [...history.effective.values()].filter((command) => command !== null),
+          now
+        )
+        requireFundedCashLedger(replay)
+        return {
+          operationId,
+          revisionId: prior.id,
+          state: 'DRAFT' as const,
+          created: false,
+          replay,
+        }
+      }
+      if (history.keys.has(input.idempotencyKey))
+        conflict('Idempotency key is already associated with a cash operation')
+      const latest = operation.revisions.at(-1)
+      if ((latest?.id ?? operationId) !== input.expectedRevisionId)
+        conflict(
+          'Cash operation was corrected concurrently. Review the current revision.'
+        )
+      const current = history.effective.get(operationId)
+      if (
+        !current ||
+        current.kind !== kind ||
+        current.source.origin !== 'MANUAL' ||
+        current.transactionIds.length !== 1
+      )
+        conflict('Only an effective single manual execution can be corrected')
+      const accepted = continuedSourceFingerprint(
+        statement.sourceFingerprint,
+        history.executionAudits
+      )
+      if (accepted !== input.expectedSourceFingerprint)
+        conflict(
+          'Source revision changed. Refresh reconciliation before correcting this execution.'
+        )
+      await verifyStatementSource(db, userId, statement, history)
+      await validateTrade(db, userId, current)
+      const transaction = await db.transaction.findFirst({
+        where: {
+          id: current.transactionIds[0],
+          type: kind,
+          brokerRef: null,
+          position: {
+            accountId,
+            userId,
+            origin: 'MANUAL',
+            positionType: 'LONG',
+          },
+        },
+        include: {
+          position: {
+            include: {
+              asset: { include: { exchange: true } },
+              transactions: true,
+            },
+          },
+        },
+      })
+      if (!transaction)
+        conflict('Owned manual execution not found or source is imported', 404)
+      await lockOwnedPosition(db, userId, transaction.positionId)
+      const buys = transaction.position.transactions.filter(
+        (row) => row.type === 'BUY'
+      )
+      const bought = buys.reduce(
+        (sum, row) => sum.plus(String(row.quantity)),
+        new AccountingDecimal(0)
+      )
+      const sold = transaction.position.transactions
+        .filter((row) => row.type === 'SELL')
+        .reduce(
+          (sum, row) => sum.plus(String(row.quantity)),
+          new AccountingDecimal(0)
+        )
+      if (
+        buys.length !== 1 ||
+        !bought.gt(0) ||
+        sold.gt(bought) ||
+        (kind === 'SELL' &&
+          input.effectiveDate < sydneyCalendarDate(buys[0].date))
+      )
+        conflict(
+          'Execution correction requires a reconciled acquisition parcel and valid acquisition date'
+        )
+      if (acquisition) {
+        const sameDaySales = transaction.position.transactions.filter(
+          (row) =>
+            row.type === 'SELL' &&
+            sydneyCalendarDate(row.date) === input.effectiveDate
+        )
+        for (const sale of sameDaySales) {
+          const cash = [...history.effective.values()].find(
+            (command) =>
+              command?.kind === 'SELL' &&
+              command.transactionIds.includes(sale.id)
+          )
+          if (
+            !cash ||
+            cash.effectiveDate !== input.effectiveDate ||
+            cash.sequence <= input.sequence
+          )
+            conflict(
+              'Same-day sales must have effective draft cash ordered after the corrected acquisition. Stage or resequence those sales first.'
+            )
+        }
+        if (
+          buys[0].id !== transaction.id ||
+          transaction.position.transactions.some(
+            (row) =>
+              row.type === 'SELL' &&
+              (row.brokerRef !== null ||
+                sydneyCalendarDate(row.date) < input.effectiveDate)
+          ) ||
+          new AccountingDecimal(acquisition.quantity).lt(sold)
+        )
+          conflict(
+            'Acquisition must cover all existing sales, precede their dates and have no imported sale allocations'
+          )
+      } else if (input.effectiveDate === sydneyCalendarDate(buys[0].date)) {
+        const acquisitionCash = [...history.effective.values()].find(
+          (command) =>
+            command?.kind === 'BUY' &&
+            command.transactionIds.includes(buys[0].id)
+        )
+        if (
+          !acquisitionCash ||
+          acquisitionCash.effectiveDate !== input.effectiveDate ||
+          acquisitionCash.sequence >= input.sequence
+        )
+          conflict(
+            'A same-day sale must be ordered after its effective acquisition cash'
+          )
+      }
+      const snapshot = statement.previewSnapshot
+      if (
+        !snapshot ||
+        typeof snapshot !== 'object' ||
+        Array.isArray(snapshot) ||
+        !('asOfDate' in snapshot) ||
+        !isAccountingDate(snapshot.asOfDate)
+      )
+        conflict('Opening draft has no valid source observation date')
+      if (
+        input.effectiveDate <= opening.openingDate ||
+        input.effectiveDate > snapshot.asOfDate
+      )
+        conflict(
+          'Corrected execution must remain after the opening boundary and within the reviewed observation date'
+        )
+      const before = executionSnapshot(transaction)
+      const after: ExecutionSnapshot = {
+        ...before,
+        date:
+          input.effectiveDate === sydneyCalendarDate(transaction.date)
+            ? before.date
+            : new Date(`${input.effectiveDate}T01:00:00Z`).toISOString(),
+        price: input.price,
+        fees: input.fees,
+        quantity: acquisition?.quantity ?? before.quantity,
+        totalValue: new AccountingDecimal(input.price)
+          .mul(acquisition?.quantity ?? before.quantity)
+          .toDecimalPlaces(2, AccountingDecimal.ROUND_HALF_UP)
+          .toFixed(),
+      }
+      parseExecutionAudit({
+        number: history.executionAudits.length + 1,
+        previousFingerprint: accepted,
+        nextFingerprint: accepted,
+        input,
+        before,
+        after,
+        ...(acquisition ? { kind: 'BUY' } : {}),
+      })
+      if (
+        kind === 'BUY' &&
+        new AccountingDecimal(after.totalValue)
+          .plus(after.fees)
+          .toDecimalPlaces(2, AccountingDecimal.ROUND_HALF_UP)
+          .gte('10000000000')
+      )
+        conflict(
+          'Acquisition capital allocation exceeds storage precision',
+          400
+        )
+      if (
+        JSON.stringify(before) === JSON.stringify(after) &&
+        current.sequence === input.sequence
+      )
+        conflict(
+          'Correction must change the recorded execution or its stable sequence',
+          400
+        )
+      const replacement = prepareCashCommand(
+        {
+          ...current,
+          idempotencyKey: input.idempotencyKey,
+          effectiveDate: input.effectiveDate,
+          sequence: input.sequence,
+          consideration: {
+            currency: before.currency,
+            amount: after.totalValue,
+          },
+          fees: new AccountingDecimal(after.fees).gt(0)
+            ? [{ currency: before.currency, amount: after.fees }]
+            : [],
+        },
+        now
+      ).command
+      const legs = prepareRevisionLegs(current, replacement, now)
+      if (
+        history.postingCount + legs.length > 100000 ||
+        history.rows.length + history.revisionCount >= 50000
+      )
+        conflict('Draft cash history exceeds supported audit limits', 422)
+      history.effective.set(operationId, replacement)
+      const replay = replayCashLedger(
+        accountId,
+        opening,
+        [...history.effective.values()].filter((command) => command !== null),
+        now
+      )
+      requireFundedCashLedger(replay)
+      if (JSON.stringify(before) !== JSON.stringify(after)) {
+        await db.transaction.update({
+          where: { id: transaction.id },
+          data: {
+            date: new Date(after.date),
+            price: after.price,
+            totalValue: after.totalValue,
+            fees: after.fees,
+            ...(kind === 'BUY' ? { quantity: Number(after.quantity) } : {}),
+          },
+        })
+        if (kind === 'BUY') {
+          await db.position.update({
+            where: { id: transaction.positionId },
+            data: {
+              openDate: new Date(after.date),
+              entryPrice: after.price,
+              totalBuyValue: after.totalValue,
+              buyFees: after.fees,
+              capitalAllocated: new AccountingDecimal(after.totalValue)
+                .plus(after.fees)
+                .toDecimalPlaces(2, AccountingDecimal.ROUND_HALF_UP)
+                .toFixed(),
+              maxDrawdownPercent: null,
+              maxRunUpPercent: null,
+              unrealizedPnL: null,
+            },
+          })
+        }
+        if (
+          !(await recomputePositionFromTransactions(transaction.positionId, db))
+        )
+          conflict('Position not found during manual sale correction', 404)
+      }
+      const next = await readAccountOpeningPreview(
+        db,
+        userId,
+        accountId,
+        opening,
+        new Date(`${snapshot.asOfDate}T01:00:00Z`)
+      )
+      const prepared = prepareCashRevision(
+        {
+          idempotencyKey: input.idempotencyKey,
+          expectedRevisionId: input.expectedRevisionId,
+          reason: input.reason,
+          replacement,
+          executionAudit: {
+            number: history.executionAudits.length + 1,
+            previousFingerprint: accepted,
+            nextFingerprint: next.sourceFingerprint,
+            input,
+            before,
+            after,
+            ...(acquisition ? { kind: 'BUY' } : {}),
+          },
+        },
+        now
+      )
+      const revision = await db.draftCashRevision.create({
+        data: {
+          statementId,
+          operationId,
+          revisionNumber: operation.revisions.length + 1,
+          previousRevisionId: latest?.id ?? null,
+          idempotencyKey: input.idempotencyKey,
+          payloadHash: prepared.payloadHash,
+          reason: input.reason,
+          request: { ...prepared.request },
+          postings: {
+            create: legs.map((leg, legIndex) => ({ ...leg, legIndex })),
+          },
+        },
+        select: { id: true },
+      })
+      return {
+        operationId,
+        revisionId: revision.id,
+        state: 'DRAFT' as const,
+        created: true,
+        replay,
+      }
+    },
+    { isolationLevel: 'ReadCommitted', timeout: 15000, maxWait: 5000 }
+  )
 }
 
 async function correctDraftOperation(
@@ -2087,7 +3685,8 @@ async function correctDraftOperation(
         statement.accountId,
         opening.openingDate,
         now,
-        statement.openingParcels
+        statement.openingParcels,
+        statement.sourceFingerprint
       )
       const operation = history.rows.find((row) => row.id === operationId)
       if (!operation)
@@ -2193,7 +3792,7 @@ async function correctDraftOperation(
           'Draft cash history exceeds the supported audit replay limits',
           422
         )
-      await verifyStatementSource(db, userId, statement)
+      await verifyStatementSource(db, userId, statement, history)
       history.effective.set(operationId, prepared.request.replacement)
       // Restate the economic timeline; reversing a funding deposit "today" cannot hide an earlier deficit.
       const replay = replayCashLedger(

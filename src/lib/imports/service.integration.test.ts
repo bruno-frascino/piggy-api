@@ -128,6 +128,87 @@ async function fixture() {
     })
     return { ...created, sell, buy }
   }
+  async function enableLiveCashLedger(cashAmount: string) {
+    const { previewAccountOpening } =
+      await import('../accounting-preview-service.js')
+    const { saveOpeningStatement } = await import('../opening-statements.js')
+    const input = {
+      openingDate: '2026-01-01',
+      cashBalances: [{ currency: 'AUD' as const, amount: cashAmount }],
+    }
+    const preview = await previewAccountOpening(
+      account.userId,
+      account.id,
+      input
+    )
+    const saved = await saveOpeningStatement(account.userId, account.id, {
+      ...input,
+      sourceFingerprint: preview.sourceFingerprint,
+    })
+    const statement = await prisma.accountOpeningStatement.findUniqueOrThrow({
+      where: { id: saved.statement.id },
+    })
+    await prisma.accountOpeningStatement.update({
+      where: { id: statement.id },
+      data: { state: 'CONFIRMED' },
+    })
+    await prisma.accountCashLedger.create({
+      data: {
+        accountId: account.id,
+        openingStatementId: statement.id,
+        state: 'ACTIVE',
+        openingSourceFingerprint: statement.sourceFingerprint,
+        acceptedSourceFingerprint: statement.sourceFingerprint,
+      },
+    })
+  }
+  async function tradeBatch(
+    executions: {
+      occurredAt: string
+      kind?: 'BUY' | 'SELL'
+      quantity?: string
+      price?: string
+      fee?: string
+      resolution?: { allocations: { positionRef: string; quantity: string }[] }
+    }[]
+  ) {
+    const created = await prisma.importBatch.create({
+      data: {
+        userId: account.userId,
+        accountId: account.id,
+        source: 'KRAKEN',
+        method: 'CSV',
+        fileNames: ['live-cash-fixture.csv'],
+      },
+    })
+    const events = await Promise.all(
+      executions.map((execution) =>
+        prisma.importedEvent.create({
+          data: {
+            batchId: created.id,
+            userId: account.userId,
+            source: 'KRAKEN',
+            externalId: `KRAKEN:order:${randomUUID()}`,
+            kind: execution.kind ?? 'BUY',
+            occurredAt: new Date(execution.occurredAt),
+            baseAsset: 'BTC',
+            quoteCurrency: 'AUD',
+            exchangeCode: 'KRAKEN',
+            quantity: execution.quantity ?? '1',
+            price: execution.price ?? '10',
+            grossValue:
+              Number(execution.quantity ?? '1') *
+              Number(execution.price ?? '10'),
+            fee: execution.fee ?? '0',
+            feeCurrency: 'AUD',
+            resolution: execution.resolution,
+            raw: {},
+          },
+        })
+      )
+    )
+    return { ...created, events }
+  }
   function pausePreparation(arrivals = 1) {
     const ready = deferred()
     const released = deferred()
@@ -139,7 +220,16 @@ async function fixture() {
     })
     return { ready: ready.promise, release: released.resolve }
   }
-  return { userId, account, asset, position, batch, pausePreparation }
+  return {
+    userId,
+    account,
+    asset,
+    position,
+    batch,
+    enableLiveCashLedger,
+    tradeBatch,
+    pausePreparation,
+  }
 }
 
 describe.skipIf(!enabled)(
@@ -209,6 +299,209 @@ describe.skipIf(!enabled)(
           })
         ).status
       ).toBe('COMMITTED')
+    })
+
+    it('posts timestamp-ordered Kraken cash once per execution in a complete batch', async () => {
+      const f = await fixture()
+      await f.enableLiveCashLedger('1000')
+      const batch = await f.tradeBatch([
+        { occurredAt: '2026-03-01T01:20:00Z', price: '20' },
+        { occurredAt: '2026-03-01T01:10:00Z', price: '10' },
+      ])
+
+      const result = await service.commitBatch(batch.id, f.userId)
+      const operations = await prisma.accountCashOperation.findMany({
+        where: { accountId: f.account.id },
+        orderBy: { sequence: 'asc' },
+        include: { postings: { orderBy: { legIndex: 'asc' } } },
+      })
+
+      expect(result.appliedEvents).toBe(2)
+      expect(operations.map((operation) => operation.importedEventId)).toEqual([
+        batch.events[1].id,
+        batch.events[0].id,
+      ])
+      expect(operations.map((operation) => operation.sequence)).toEqual([
+        1n,
+        2n,
+      ])
+      expect(operations).toHaveLength(2)
+    })
+
+    it('posts one imported SELL cash operation for allocations across parcels', async () => {
+      const f = await fixture()
+      await f.enableLiveCashLedger('1000')
+      const batch = await f.tradeBatch([
+        { occurredAt: '2026-02-01T01:10:00Z', price: '10' },
+        {
+          occurredAt: '2026-03-01T01:10:00Z',
+          kind: 'SELL',
+          quantity: '11',
+          price: '20',
+          fee: '1',
+        },
+      ])
+      const initialPlan = await service.planBatch(batch.id, f.userId)
+      const importedPositionRef = initialPlan.plan.newPositions[0].ref
+      await service.saveResolution(batch.id, batch.events[1].id, f.userId, {
+        allocations: [
+          { positionRef: f.position.id, quantity: '10' },
+          { positionRef: importedPositionRef, quantity: '1' },
+        ],
+      })
+
+      const result = await service.commitBatch(batch.id, f.userId)
+      const saleOperation = await prisma.accountCashOperation.findUniqueOrThrow(
+        {
+          where: { importedEventId: batch.events[1].id },
+          include: { postings: true },
+        }
+      )
+
+      expect(result.appliedEvents).toBe(2)
+      expect(saleOperation.kind).toBe('SELL')
+      expect(
+        (saleOperation.command as { cashCommand: { transactionIds: string[] } })
+          .cashCommand.transactionIds
+      ).toHaveLength(2)
+      expect(
+        await prisma.transaction.count({
+          where: {
+            brokerRef: batch.events[1].externalId,
+            position: { accountId: f.account.id },
+          },
+        })
+      ).toBe(2)
+      expect(saleOperation.postings.length).toBeGreaterThan(0)
+    })
+
+    it('rejects equal execution timestamps and rolls back all import writes', async () => {
+      const f = await fixture()
+      await f.enableLiveCashLedger('1000')
+      const batch = await f.tradeBatch([
+        { occurredAt: '2026-03-01T01:10:00Z' },
+        { occurredAt: '2026-03-01T01:10:00Z', price: '20' },
+      ])
+
+      await expect(
+        service.commitBatch(batch.id, f.userId)
+      ).rejects.toMatchObject({
+        status: 409,
+        message: /identical timestamps/,
+      })
+      expect(
+        await prisma.importedEvent.count({
+          where: {
+            id: { in: batch.events.map((event) => event.id) },
+            status: 'PENDING',
+          },
+        })
+      ).toBe(2)
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.account.id },
+        })
+      ).toBe(0)
+      expect(
+        await prisma.position.count({ where: { accountId: f.account.id } })
+      ).toBe(1)
+    })
+
+    it('does not ignore unrelated pending imports during source-head validation', async () => {
+      const f = await fixture()
+      await f.enableLiveCashLedger('1000')
+      const batch = await f.tradeBatch([{ occurredAt: '2026-03-01T01:10:00Z' }])
+      await prisma.importBatch.create({
+        data: {
+          userId: f.userId,
+          accountId: f.account.id,
+          source: 'KRAKEN',
+          method: 'CSV',
+          fileNames: ['unrelated.csv'],
+        },
+      })
+
+      await expect(
+        service.commitBatch(batch.id, f.userId)
+      ).rejects.toMatchObject({
+        status: 409,
+        message: /source changed outside its audited live cash history/,
+      })
+      expect(
+        await prisma.importedEvent.findUniqueOrThrow({
+          where: { id: batch.events[0].id },
+        })
+      ).toMatchObject({ status: 'PENDING', appliedPositionIds: [] })
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.account.id },
+        })
+      ).toBe(0)
+    })
+
+    it('rolls back a live import when opening cash cannot fund the execution', async () => {
+      const f = await fixture()
+      await f.enableLiveCashLedger('1')
+      const batch = await f.tradeBatch([
+        { occurredAt: '2026-03-01T01:10:00Z', price: '10', fee: '1' },
+      ])
+
+      await expect(
+        service.commitBatch(batch.id, f.userId)
+      ).rejects.toMatchObject({
+        status: 422,
+        message: /Insufficient recorded cash/,
+      })
+      expect(
+        await prisma.importedEvent.findUniqueOrThrow({
+          where: { id: batch.events[0].id },
+        })
+      ).toMatchObject({ status: 'PENDING', appliedPositionIds: [] })
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.account.id },
+        })
+      ).toBe(0)
+      expect(
+        await prisma.position.count({ where: { accountId: f.account.id } })
+      ).toBe(1)
+    })
+
+    it('blocks imported executions on a date with existing live cash activity', async () => {
+      const f = await fixture()
+      await f.enableLiveCashLedger('1000')
+      const { postAccountTrade } = await import('../draft-cash-ledger.js')
+      await postAccountTrade(f.userId, f.account.id, {
+        kind: 'BUY',
+        assetId: f.asset.id,
+        idempotencyKey: `same-day-${randomUUID()}`,
+        effectiveDate: '2026-03-01',
+        sequence: 1,
+        quantity: '1',
+        price: '10',
+        fees: '0',
+      })
+      const batch = await f.tradeBatch([{ occurredAt: '2026-03-01T01:10:00Z' }])
+
+      await expect(
+        service.commitBatch(batch.id, f.userId)
+      ).rejects.toMatchObject({
+        status: 409,
+        message: /same-day cash activity/,
+      })
+      expect(
+        await prisma.importedEvent.findUniqueOrThrow({
+          where: { id: batch.events[0].id },
+        })
+      ).toMatchObject({ status: 'PENDING', appliedPositionIds: [] })
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.account.id },
+        })
+      ).toBe(1)
+      expect(
+        await prisma.position.count({ where: { accountId: f.account.id } })
+      ).toBe(2)
     })
 
     it.each(['same batch', 'different batches'])(

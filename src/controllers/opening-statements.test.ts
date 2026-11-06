@@ -14,6 +14,8 @@ const {
   correction,
   importedCorrection,
   manualExecution,
+  saleCorrection,
+  acquisitionCorrection,
 } = vi.hoisted(() => ({
   save: vi.fn(),
   list: vi.fn(),
@@ -25,6 +27,8 @@ const {
   correction: vi.fn(),
   importedCorrection: vi.fn(),
   manualExecution: vi.fn(),
+  saleCorrection: vi.fn(),
+  acquisitionCorrection: vi.fn(),
 }))
 vi.mock('../lib/opening-statements.js', () => ({
   saveOpeningStatement: save,
@@ -39,6 +43,8 @@ vi.mock('../lib/draft-cash-ledger.js', () => ({
   correctDraftReconciliationCashOperation: correction,
   correctDraftImportedExecutionCash: importedCorrection,
   saveDraftManualExecutionCash: manualExecution,
+  correctDraftRecordedSale: saleCorrection,
+  correctDraftRecordedAcquisition: acquisitionCorrection,
 }))
 vi.mock('../middleware/auth.js', () => ({
   authenticateToken: (req: Request, res: Response, next: NextFunction) => {
@@ -86,6 +92,100 @@ beforeEach(() => {
   })
 })
 describe('opening statement endpoints', () => {
+  it('authenticates and validates acquisition corrections, forwarding exact quantity without allowing source overrides', async () => {
+    const path =
+      '/api/accounts/a1/opening-statements/s1/cash-operations/op1/acquisition-corrections'
+    const correctionInput = {
+      idempotencyKey: 'buy-fix',
+      expectedRevisionId: 'op1',
+      expectedSourceFingerprint: 'a'.repeat(64),
+      reason: 'Correct purchase transcription',
+      effectiveDate: '2026-10-02',
+      sequence: 1,
+      price: '60.123456789012',
+      fees: '1.12345678',
+      quantity: '1.25',
+    }
+    await request(app()).post(path).send(correctionInput).expect(401)
+    for (const invalid of [
+      { ...correctionInput, quantity: 1.25 },
+      { ...correctionInput, quantity: '0' },
+      { ...correctionInput, quantity: '9007199254740992' },
+      { ...correctionInput, transactionId: 'other' },
+    ]) {
+      await request(app())
+        .post(path)
+        .set('Authorization', 'Bearer token')
+        .send(invalid)
+        .expect(400)
+    }
+    expect(acquisitionCorrection).not.toHaveBeenCalled()
+    acquisitionCorrection.mockResolvedValue({ state: 'DRAFT', created: true })
+    const response = await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer token')
+      .send(correctionInput)
+      .expect(200)
+    expect(response.headers['cache-control']).toBe('no-store')
+    expect(acquisitionCorrection).toHaveBeenCalledWith(
+      'u1',
+      'a1',
+      's1',
+      'op1',
+      correctionInput
+    )
+  })
+  const saleInput = {
+    idempotencyKey: 'sale-fix',
+    expectedRevisionId: 'op1',
+    expectedSourceFingerprint: 'a'.repeat(64),
+    reason: 'Correct sale fees',
+    effectiveDate: '2026-10-03',
+    sequence: 2,
+    price: '12',
+    fees: '1',
+  }
+  it('authenticates and forwards an account-scoped manual sale correction without accepting financial source identities', async () => {
+    const path =
+      '/api/accounts/a1/opening-statements/s1/cash-operations/op1/sale-corrections'
+    saleCorrection.mockResolvedValue({
+      state: 'DRAFT',
+      revisionId: 'r1',
+      created: true,
+    })
+    expect((await request(app()).post(path).send(saleInput)).status).toBe(401)
+    const response = await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(saleInput)
+    expect(response.status).toBe(200)
+    expect(response.headers['cache-control']).toBe('no-store')
+    expect(saleCorrection).toHaveBeenCalledWith(
+      'u1',
+      'a1',
+      's1',
+      'op1',
+      saleInput
+    )
+    saleCorrection.mockClear()
+    for (const raw of [
+      { ...saleInput, quantity: '2' },
+      { ...saleInput, transactionId: 'other' },
+      { ...saleInput, fees: 1 },
+      { ...saleInput, price: '0' },
+      { ...saleInput, sequence: 0 },
+    ]) {
+      expect(
+        (
+          await request(app())
+            .post(path)
+            .set('Authorization', '******')
+            .send(raw)
+        ).status
+      ).toBe(400)
+    }
+    expect(saleCorrection).not.toHaveBeenCalled()
+  })
   it('stages manual transaction cash from its owned identity and sequence only', async () => {
     manualExecution.mockResolvedValue({ state: 'DRAFT', created: true })
     const response = await request(app())

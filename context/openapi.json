@@ -1,6 +1,79 @@
 {
   "components": {
     "schemas": {
+      "AccountTradeResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "created": {
+                "type": "boolean"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "replay": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "activity": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "balances": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "funded": {
+                    "type": "boolean"
+                  },
+                  "fundingIssues": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "openingDate": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "openingDate",
+                  "funded",
+                  "balances",
+                  "activity",
+                  "fundingIssues"
+                ],
+                "type": "object"
+              },
+              "transactionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operationId",
+              "transactionId",
+              "created",
+              "replay"
+            ],
+            "type": "object"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "type": "object"
+      },
       "Error": {
         "properties": {
           "details": {
@@ -1137,6 +1210,142 @@
         ]
       }
     },
+    "/api/accounts/{id}/opening-statements/{statementId}/cash-operations/{operationId}/acquisition-corrections": {
+      "post": {
+        "description": "Changes the live manual long BUY date, quantity, price and fees, recomputes parcel cost basis, remaining inventory and realized results, and appends an immutable cash revision with before/after source snapshots and fingerprint continuation. Sale quantities and allocations never change. The parcel must have exactly one BUY, cover all sales and precede their dates. Same-day sales require effective draft cash ordered after the acquisition. Imported parcels and broker-linked sales are excluded. Account, instrument, currency and source identity cannot change. The acquisition must stay after opening and within the original observation date. Quantity is an exact decimal string with at most 12 fractional digits, at most 9007199254740991, and must round-trip through the existing Float storage without changing decimal value. Gross consideration is quantity times price rounded half-up to 2 decimal places. Same-Sydney-date edits retain timestamps; changed dates use 01:00 UTC. The original opening and statement evidence remain unchanged; unrelated drafts and tax reports can become stale. No spendable cash or accounting activation is enabled.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "statementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "effectiveDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "expectedRevisionId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedSourceFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "fees": {
+                    "description": "Non-negative exact decimal with at most 10 integer and 8 fractional digits",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "price": {
+                    "description": "Positive exact decimal with at most 12 integer and 12 fractional digits",
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "description": "Positive representable decimal quantity covering all existing sales",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "expectedRevisionId",
+                  "expectedSourceFingerprint",
+                  "reason",
+                  "effectiveDate",
+                  "sequence",
+                  "price",
+                  "fees",
+                  "quantity"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "created flag and current dated cash replay. Identical retries never rewrite the live acquisition.": null,
+            "description": "Draft operationId",
+            "revisionId": null,
+            "state DRAFT": null
+          },
+          "400": {
+            "description": "Invalid fields",
+            "precision": null,
+            "quantity": null,
+            "storage overflow or unchanged correction.": null
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Owned manual acquisition",
+            "statement or operation not found.": null
+          },
+          "409": {
+            "description": "Stale source/head",
+            "imported sale allocation or conflicting idempotency key.": null,
+            "insufficient inventory": null,
+            "invalid boundary": null,
+            "unsupported parcel": null
+          },
+          "422": {
+            "description": "Dated funding deficit",
+            "occupied ordering slot or audit limit.": null
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Correct a recorded manual acquisition and its draft cash atomically",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/accounts/{id}/opening-statements/{statementId}/cash-operations/{operationId}/corrections": {
       "post": {
         "description": "Appends immutable reversal/replacement history with a required audit reason. Currency, kind and source identity are retained from the original entry. Supply replacement null for a terminal reversal. The expected revision prevents lost updates; identical retries return the saved correction. Dated replay rejects downstream funding gaps. No live balances or holdings change.",
@@ -1260,6 +1469,133 @@
           }
         ],
         "summary": "Correct or reverse an inactive manual deposit or withdrawal",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/opening-statements/{statementId}/cash-operations/{operationId}/sale-corrections": {
+      "post": {
+        "description": "Explicitly changes the live manual SELL date, price and fees, recomputes parcel totals, and appends exact cash reversal/replacement postings with immutable before/after trade snapshots and source fingerprint continuation. Quantity, parcel, instrument, currency and source identity cannot change. Imported sources and cash-only reversal are unsupported. Gross consideration is quantity times price rounded half-up to the transaction's two decimal places. A same-Sydney-date correction preserves the original timestamp; changing date records the new calendar date at 01:00 UTC. Dates must remain after opening, on/after acquisition and within the original observation date. Same-day sales must follow effective acquisition cash in explicit sequence order. The original opening snapshot and statement evidence never change; other drafts become stale. Expected revision/source and idempotency checks serialize edits. This changes live trade history and can make existing tax reports stale, but does not activate accounting or post spendable cash.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "statementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "effectiveDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "expectedRevisionId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedSourceFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "fees": {
+                    "description": "Non-negative exact decimal with at most 10 integer and 8 fractional digits",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "price": {
+                    "description": "Positive exact decimal with at most 12 integer and 12 fractional digits",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "expectedRevisionId",
+                  "expectedSourceFingerprint",
+                  "reason",
+                  "effectiveDate",
+                  "sequence",
+                  "price",
+                  "fees"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "created flag and current dated cash replay. Identical retries do not rewrite the live sale.": null,
+            "description": "Draft operationId",
+            "revisionId": null,
+            "state DRAFT": null
+          },
+          "400": {
+            "amount precision or unchanged correction.": null,
+            "description": "Unsupported fields"
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Owned manual sale",
+            "statement or operation not found.": null
+          },
+          "409": {
+            "description": "Stale source/head",
+            "invalid boundary": null,
+            "unsupported parcel or conflicting idempotency key.": null
+          },
+          "422": {
+            "description": "Dated funding deficit",
+            "occupied ordering slot or audit limit.": null
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Correct a recorded manual sale and its draft cash atomically",
         "tags": [
           "Accounts"
         ]
@@ -1477,7 +1813,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Read-only draft reconciliation including cash evidence/variances, cash-operation currentRevisionId/capital cash/revisions (revisionId, reason, replacement boolean), effective or reversed sources, imported execution eligibility with duplicate transaction-link detection and cashManualExecutions (transactionId, positionId, kind, effectiveDate, currency, grossValue, fee, stageable, reason, operationId). Manual eligibility excludes broker-linked allocations, imported/short parcels, unsupported money, boundary/future dates, stale snapshots, unavailable accounts and incompatible opening-sale proposals."
+            "description": "Read-only draft reconciliation including cash evidence/variances, source savedFingerprint/acceptedFingerprint/currentFingerprint/correctionCount/changed, cash-operation currentRevisionId/capital cash/revisions (revisionId, reason, replacement boolean, nullable executionAudit containing number, previousFingerprint, nextFingerprint, reviewed input and before/after transaction snapshots; acquisition audits have kind BUY and input quantity, historical sale audits are untagged), effective or reversed sources, imported execution eligibility with duplicate transaction-link detection and cashManualExecutions (transactionId, positionId, kind, quantity, effectiveDate, occurredAt, currency, price, grossValue, fee, stageable, reason, operationId). Audit snapshots include transactionId, positionId, ISO date, quantity, price, totalValue, fees and currency. Manual eligibility excludes broker-linked allocations, imported/short parcels, unsupported money, boundary/future dates, stale snapshots, unavailable accounts and incompatible opening-sale proposals."
           },
           "401": {
             "description": "Authentication required."
@@ -1617,6 +1953,122 @@
           }
         ],
         "summary": "Reopen a closed trading account",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/trades": {
+      "post": {
+        "description": "Available only to accounts with an explicitly confirmed opening statement and active cash ledger. Legacy account posting remains unchanged; no account is activated by this endpoint.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "assetId": {
+                    "description": "Required for BUY only.",
+                    "type": "string"
+                  },
+                  "effectiveDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "fees": {
+                    "description": "Exact non-negative decimal fee.",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "BUY",
+                      "SELL"
+                    ],
+                    "type": "string"
+                  },
+                  "positionId": {
+                    "description": "Required for SELL only.",
+                    "type": "string"
+                  },
+                  "price": {
+                    "description": "Exact positive decimal price.",
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "description": "Exact positive decimal quantity.",
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "idempotencyKey",
+                  "effectiveDate",
+                  "sequence",
+                  "quantity",
+                  "price",
+                  "fees"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountTradeResponse"
+                }
+              }
+            },
+            "description": "Idempotent retry of an already committed trade."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountTradeResponse"
+                }
+              }
+            },
+            "description": "Trade, cash postings and source audit were committed atomically."
+          },
+          "400": {
+            "description": "Invalid trade command."
+          },
+          "409": {
+            "description": "Account is not ledger-enabled, source history drifted, or cash sequence conflicts."
+          },
+          "422": {
+            "description": "Insufficient cash or unsupported account history."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Atomically post a BUY or SELL with account cash",
         "tags": [
           "Accounts"
         ]
@@ -3059,7 +3511,7 @@
     },
     "/api/positions/close-events/{id}": {
       "patch": {
-        "description": "Updates the sale and parcel totals atomically under an owned-account and parcel lock. Does not activate or spend inactive draft cash. Concurrent parcel moves require reload.\n",
+        "description": "Updates the sale and parcel totals atomically under an owned-account and parcel lock. Does not activate or spend inactive draft cash. Concurrent parcel moves require reload. Imported broker-linked execution values are immutable here. Financial changes to cash-linked manual trades require the coordinated acquisition/sale-correction endpoints in opening reconciliation; this ordinary editor returns 409 instead. Notes and close reason remain editable; unchanged financial values are not rewritten.\n",
         "parameters": [
           {
             "in": "path",
@@ -3122,7 +3574,7 @@
             "description": "Close event not found"
           },
           "409": {
-            "description": "Parcel or close event moved concurrently; reload and retry"
+            "description": "Concurrent move, imported execution change or financial edit of a cash-linked trade"
           }
         },
         "security": [
@@ -3138,7 +3590,7 @@
     },
     "/api/positions/{id}": {
       "delete": {
-        "description": "Deletes under owned-account and parcel locks. Inactive opening and cash draft snapshot references are retained; source changes prevent further draft appends.\n",
+        "description": "Deletes under owned-account and parcel locks. Inactive opening and cash draft snapshot references are retained; source changes prevent further draft appends. Imported parcels, parcels containing broker-linked allocations and parcels with any cash-linked transaction cannot be deleted here. Dedicated coordinated correction or source-aware adjustment is required; reversing cash does not release its identity.\n",
         "parameters": [
           {
             "in": "path",
@@ -3160,7 +3612,7 @@
             "description": "Position not found"
           },
           "409": {
-            "description": "Position moved accounts concurrently; reload and retry"
+            "description": "Concurrent move or parcel has imported execution records or durable draft cash links"
           }
         },
         "security": [
@@ -3174,7 +3626,7 @@
         ]
       },
       "patch": {
-        "description": "Crypto symbols must match the venue quote currency. Changing a Kraken instrument validates its market; unchanged historical instruments remain editable. Acquisition edits commit the BUY and recomputed parcel results together. Bought units cannot be reduced below already-sold units. Account moves lock both accounts in stable order and recheck the demo/real boundary. Inactive draft cash is not spent or activated. An edit or move that would leave open holdings in a closed account returns 409; reopen the account first. Corrections and moves of fully closed history remain allowed.\n",
+        "description": "Crypto symbols must match the venue quote currency. Changing a Kraken instrument validates its market; unchanged historical instruments remain editable. Acquisition edits commit the BUY and recomputed parcel results together. Bought units cannot be reduced below already-sold units. Account moves lock both accounts in stable order and recheck the demo/real boundary. Inactive draft cash is not spent or activated. An edit or move that would leave open holdings in a closed account returns 409; reopen the account first. Corrections and moves of fully closed history remain allowed. Imported acquisition values and source identities cannot be changed here. Financial edits, instrument/account changes and deletion of cash-linked trades require coordinated correction and return 409 here, including for reversed cash operations. The opening reconciliation workflow supports manual acquisition and sale corrections, not deletion or moves. Notes and metadata remain editable; resubmitting unchanged financial values is allowed.\n",
         "parameters": [
           {
             "in": "path",
