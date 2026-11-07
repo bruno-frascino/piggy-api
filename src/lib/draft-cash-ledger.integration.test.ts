@@ -2218,6 +2218,494 @@ describe.skipIf(!enabled)(
       }
     }
 
+    async function liveImportedExecutionFixture(openingCash = '100') {
+      if (!exchangeId) throw new Error('Missing fixture exchange')
+      const { beginLiveImportPosting } = await import('./draft-cash-ledger.js')
+      const f = await fixture(openingCash)
+      await confirmCashLedger(f.accountId, f.statementId)
+      const asset = await prisma.asset.create({
+        data: {
+          symbol: `LIVE-IMPORT-${randomUUID()}`,
+          name: 'Live imported execution fixture',
+          exchangeId,
+        },
+      })
+      const externalId = `KRAKEN:order:${randomUUID()}`
+      const occurredAt = new Date('2026-10-02T00:00:00.000Z')
+      const batch = await prisma.importBatch.create({
+        data: {
+          userId: f.userId,
+          accountId: f.accountId,
+          source: 'KRAKEN',
+          method: 'CSV',
+          status: 'PENDING_REVIEW',
+          fileNames: ['live-cash-fixture.csv'],
+        },
+      })
+      const event = await prisma.importedEvent.create({
+        data: {
+          batchId: batch.id,
+          userId: f.userId,
+          source: 'KRAKEN',
+          externalId,
+          kind: 'BUY',
+          status: 'PENDING',
+          occurredAt,
+          baseAsset: 'FIXTURE',
+          quoteCurrency: 'AUD',
+          exchangeCode: 'KRAKEN:AUD',
+          quantity: '1',
+          price: '60',
+          grossValue: '60',
+          fee: '1',
+          feeCurrency: 'AUD',
+          appliedPositionIds: [],
+          raw: {},
+        },
+      })
+      let positionId = ''
+      let transactionId = ''
+      await prisma.$transaction(async (db) => {
+        const complete = await beginLiveImportPosting(
+          db,
+          f.userId,
+          f.accountId,
+          batch.id,
+          [{ id: event.id, occurredAt }]
+        )
+        if (!complete) throw new Error('Missing live import posting callback')
+        const position = await db.position.create({
+          data: {
+            userId: f.userId,
+            accountId: f.accountId,
+            assetId: asset.id,
+            openDate: occurredAt,
+            entryPrice: '60',
+            quantity: 1,
+            totalBuyValue: '60',
+            buyFees: '1',
+            capitalAllocated: '61',
+            origin: 'IMPORT_TRADE',
+            externalRef: externalId,
+            transactions: {
+              create: {
+                type: 'BUY',
+                date: occurredAt,
+                quantity: 1,
+                price: '60',
+                totalValue: '60',
+                fees: '1',
+                brokerRef: externalId,
+              },
+            },
+          },
+          include: { transactions: true },
+        })
+        positionId = position.id
+        transactionId = position.transactions[0].id
+        await db.importedEvent.update({
+          where: { id: event.id },
+          data: { status: 'APPLIED', appliedPositionIds: [position.id] },
+        })
+        await db.importBatch.update({
+          where: { id: batch.id },
+          data: { status: 'COMMITTED', committedAt: new Date() },
+        })
+        await complete([event.id])
+      })
+      const operation = await prisma.accountCashOperation.findFirstOrThrow({
+        where: { accountId: f.accountId, importedEventId: event.id },
+      })
+      const ledger = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      return {
+        ...f,
+        eventId: event.id,
+        externalId,
+        occurredAt,
+        positionId,
+        transactionId,
+        operationId: operation.id,
+        expectedSourceFingerprint: ledger.acceptedSourceFingerprint,
+      }
+    }
+
+    it('audits imported execution corrections atomically and replays immutable retries', async () => {
+      const { correctLiveImportedExecution } =
+        await import('./draft-cash-ledger.js')
+      const f = await liveImportedExecutionFixture()
+      const originalEvent = await prisma.importedEvent.findUniqueOrThrow({
+        where: { id: f.eventId },
+      })
+      const correctionInput = {
+        idempotencyKey: randomUUID(),
+        expectedRevisionId: f.operationId,
+        expectedSourceFingerprint: f.expectedSourceFingerprint,
+        reason: 'Corrected from the Kraken statement',
+        effectiveDate: '2026-10-03',
+        sequence: 2,
+        price: '50',
+        fees: '2',
+      }
+      const first = await correctLiveImportedExecution(
+        f.userId,
+        f.accountId,
+        f.eventId,
+        correctionInput
+      )
+      expect(first.replay.balances[0].endingAmount).toBe('48')
+      const firstTransaction = await prisma.transaction.findUniqueOrThrow({
+        where: { id: f.transactionId },
+      })
+      expect(firstTransaction.price.toFixed()).toBe('50')
+      expect(firstTransaction.totalValue.toFixed()).toBe('50')
+      expect(firstTransaction.fees.toFixed()).toBe('2')
+      expect(firstTransaction.quantity).toBe(1)
+      expect(firstTransaction.date.toISOString()).toBe(
+        '2026-10-03T01:00:00.000Z'
+      )
+      const firstPosition = await prisma.position.findUniqueOrThrow({
+        where: { id: f.positionId },
+      })
+      expect(firstPosition.quantity).toBe(1)
+      expect(firstPosition.buyFees.toFixed()).toBe('2')
+      expect(firstPosition.openDate.toISOString()).toBe(
+        '2026-10-03T01:00:00.000Z'
+      )
+      const firstRevision =
+        await prisma.accountCashOperationRevision.findUniqueOrThrow({
+          where: { id: first.revisionId },
+        })
+      expect(firstRevision.request).toMatchObject({
+        importedExecutionAudit: {
+          eventId: f.eventId,
+          number: expect.any(Number),
+          before: [{ transactionId: f.transactionId, price: '60' }],
+          after: [{ transactionId: f.transactionId, price: '50' }],
+        },
+      })
+      expect(
+        await prisma.importedEvent.findUniqueOrThrow({
+          where: { id: f.eventId },
+        })
+      ).toEqual(originalEvent)
+
+      const retry = await correctLiveImportedExecution(
+        f.userId,
+        f.accountId,
+        f.eventId,
+        correctionInput
+      )
+      expect(retry).toMatchObject({
+        created: false,
+        revisionId: first.revisionId,
+      })
+
+      const ledgerAfterFirst = await prisma.accountCashLedger.findUniqueOrThrow(
+        {
+          where: { accountId: f.accountId },
+        }
+      )
+      await expect(
+        correctLiveImportedExecution(f.userId, f.accountId, f.eventId, {
+          ...correctionInput,
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: first.revisionId,
+          expectedSourceFingerprint: ledgerAfterFirst.acceptedSourceFingerprint,
+          price: '120',
+        })
+      ).rejects.toMatchObject({ status: 422 })
+      const afterRejectedCorrection =
+        await prisma.transaction.findUniqueOrThrow({
+          where: { id: f.transactionId },
+        })
+      expect(afterRejectedCorrection.price.toFixed()).toBe('50')
+      expect(afterRejectedCorrection.fees.toFixed()).toBe('2')
+      expect(
+        await prisma.accountCashOperationRevision.count({
+          where: { operationId: f.operationId },
+        })
+      ).toBe(1)
+
+      const secondInput = {
+        ...correctionInput,
+        idempotencyKey: randomUUID(),
+        expectedRevisionId: first.revisionId,
+        expectedSourceFingerprint: ledgerAfterFirst.acceptedSourceFingerprint,
+        price: '55',
+        fees: '1',
+      }
+      const second = await correctLiveImportedExecution(
+        f.userId,
+        f.accountId,
+        f.eventId,
+        secondInput
+      )
+      expect(second.replay.balances[0].endingAmount).toBe('44')
+      const oldRetry = await correctLiveImportedExecution(
+        f.userId,
+        f.accountId,
+        f.eventId,
+        correctionInput
+      )
+      expect(oldRetry).toMatchObject({
+        created: false,
+        revisionId: first.revisionId,
+      })
+      expect(oldRetry.replay.balances[0].endingAmount).toBe('44')
+      expect(
+        await prisma.importedEvent.findUniqueOrThrow({
+          where: { id: f.eventId },
+        })
+      ).toEqual(originalEvent)
+
+      const ledgerAfterSecond =
+        await prisma.accountCashLedger.findUniqueOrThrow({
+          where: { accountId: f.accountId },
+        })
+      const competing = await Promise.allSettled([
+        correctLiveImportedExecution(f.userId, f.accountId, f.eventId, {
+          ...secondInput,
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: second.revisionId,
+          expectedSourceFingerprint:
+            ledgerAfterSecond.acceptedSourceFingerprint,
+          price: '56',
+        }),
+        correctLiveImportedExecution(f.userId, f.accountId, f.eventId, {
+          ...secondInput,
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: second.revisionId,
+          expectedSourceFingerprint:
+            ledgerAfterSecond.acceptedSourceFingerprint,
+          price: '57',
+        }),
+      ])
+      expect(
+        competing.filter((result) => result.status === 'fulfilled')
+      ).toHaveLength(1)
+      expect(
+        competing.filter((result) => result.status === 'rejected')
+      ).toHaveLength(1)
+    })
+
+    it('reprices an imported multi-parcel sale without changing allocations', async () => {
+      const { beginLiveImportPosting, correctLiveImportedExecution } =
+        await import('./draft-cash-ledger.js')
+      const { readLiveImportedExecutionCorrections } =
+        await import('./live-import-corrections.js')
+      const { recomputePositionFromTransactions } =
+        await import('./position-service.js')
+      const f = await liveImportedExecutionFixture('1000')
+      if (!exchangeId) throw new Error('Missing fixture exchange')
+      const secondAsset = await prisma.asset.create({
+        data: {
+          symbol: `LIVE-IMPORT-SECOND-${randomUUID()}`,
+          name: 'Second live imported execution fixture',
+          exchangeId,
+        },
+      })
+      const batch = await prisma.importBatch.create({
+        data: {
+          userId: f.userId,
+          accountId: f.accountId,
+          source: 'KRAKEN',
+          method: 'CSV',
+          status: 'PENDING_REVIEW',
+          fileNames: ['live-multiparcel-fixture.csv'],
+        },
+      })
+      const buyOccurredAt = new Date('2026-10-03T00:00:00.000Z')
+      const sellOccurredAt = new Date('2026-10-04T00:00:00.000Z')
+      const buyExternalId = `KRAKEN:order:${randomUUID()}`
+      const sellExternalId = `KRAKEN:order:${randomUUID()}`
+      const buyEvent = await prisma.importedEvent.create({
+        data: {
+          batchId: batch.id,
+          userId: f.userId,
+          source: 'KRAKEN',
+          externalId: buyExternalId,
+          kind: 'BUY',
+          status: 'PENDING',
+          occurredAt: buyOccurredAt,
+          baseAsset: 'FIXTURE2',
+          quoteCurrency: 'AUD',
+          exchangeCode: 'KRAKEN:AUD',
+          quantity: '1',
+          price: '40',
+          grossValue: '40',
+          fee: '1',
+          feeCurrency: 'AUD',
+          appliedPositionIds: [],
+          raw: {},
+        },
+      })
+      const sellEvent = await prisma.importedEvent.create({
+        data: {
+          batchId: batch.id,
+          userId: f.userId,
+          source: 'KRAKEN',
+          externalId: sellExternalId,
+          kind: 'SELL',
+          status: 'PENDING',
+          occurredAt: sellOccurredAt,
+          baseAsset: 'FIXTURE',
+          quoteCurrency: 'AUD',
+          exchangeCode: 'KRAKEN:AUD',
+          quantity: '1.5',
+          price: '100',
+          grossValue: '150',
+          fee: '1',
+          feeCurrency: 'AUD',
+          appliedPositionIds: [],
+          raw: {},
+        },
+      })
+      let secondPositionId = ''
+      await prisma.$transaction(async (db) => {
+        const complete = await beginLiveImportPosting(
+          db,
+          f.userId,
+          f.accountId,
+          batch.id,
+          [
+            { id: buyEvent.id, occurredAt: buyOccurredAt },
+            { id: sellEvent.id, occurredAt: sellOccurredAt },
+          ]
+        )
+        if (!complete) throw new Error('Missing live import posting callback')
+        const secondPosition = await db.position.create({
+          data: {
+            userId: f.userId,
+            accountId: f.accountId,
+            assetId: secondAsset.id,
+            openDate: buyOccurredAt,
+            entryPrice: '40',
+            quantity: 1,
+            totalBuyValue: '40',
+            buyFees: '1',
+            capitalAllocated: '41',
+            origin: 'IMPORT_TRADE',
+            externalRef: buyExternalId,
+            transactions: {
+              create: {
+                type: 'BUY',
+                date: buyOccurredAt,
+                quantity: 1,
+                price: '40',
+                totalValue: '40',
+                fees: '1',
+                brokerRef: buyExternalId,
+              },
+            },
+          },
+          include: { transactions: true },
+        })
+        secondPositionId = secondPosition.id
+        const allocations = [
+          { positionId: f.positionId, quantity: 0.75 },
+          { positionId: secondPosition.id, quantity: 0.75 },
+        ]
+        for (const allocation of allocations) {
+          await db.transaction.create({
+            data: {
+              positionId: allocation.positionId,
+              type: 'SELL',
+              date: sellOccurredAt,
+              quantity: allocation.quantity,
+              price: '100',
+              totalValue: '75',
+              fees: '0.5',
+              brokerRef: sellExternalId,
+            },
+          })
+          if (
+            !(await recomputePositionFromTransactions(
+              allocation.positionId,
+              db
+            ))
+          )
+            throw new Error('Missing imported sell allocation parcel')
+        }
+        await db.importedEvent.update({
+          where: { id: buyEvent.id },
+          data: {
+            status: 'APPLIED',
+            appliedPositionIds: [secondPosition.id],
+          },
+        })
+        await db.importedEvent.update({
+          where: { id: sellEvent.id },
+          data: {
+            status: 'APPLIED',
+            appliedPositionIds: allocations.map(
+              (allocation) => allocation.positionId
+            ),
+          },
+        })
+        await db.importBatch.update({
+          where: { id: batch.id },
+          data: { status: 'COMMITTED', committedAt: new Date() },
+        })
+        await complete([buyEvent.id, sellEvent.id])
+      })
+      const operation = await prisma.accountCashOperation.findFirstOrThrow({
+        where: { accountId: f.accountId, importedEventId: sellEvent.id },
+      })
+      const ledger = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      const originalEvent = await prisma.importedEvent.findUniqueOrThrow({
+        where: { id: sellEvent.id },
+      })
+      const correction = await correctLiveImportedExecution(
+        f.userId,
+        f.accountId,
+        sellEvent.id,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: operation.id,
+          expectedSourceFingerprint: ledger.acceptedSourceFingerprint,
+          reason: 'Corrected multi-parcel sale from the Kraken statement',
+          effectiveDate: '2026-10-04',
+          sequence: 1,
+          price: '90',
+          fees: '2',
+        }
+      )
+
+      expect(correction.replay.balances[0].endingAmount).toBe('1031')
+      const sales = await prisma.transaction.findMany({
+        where: { brokerRef: sellExternalId },
+        orderBy: { id: 'asc' },
+      })
+      expect(sales).toHaveLength(2)
+      expect(sales.map((sale) => sale.quantity)).toEqual([0.75, 0.75])
+      expect(sales.map((sale) => sale.totalValue.toFixed())).toEqual([
+        '67.5',
+        '67.5',
+      ])
+      expect(sales.map((sale) => sale.fees.toFixed())).toEqual(['1', '1'])
+      const correctionMetadata = await readLiveImportedExecutionCorrections(
+        f.userId,
+        sales.map((sale) => sale.id)
+      )
+      expect(
+        sales.map((sale) => correctionMetadata.get(sale.id)?.fees)
+      ).toEqual(['2', '2'])
+      for (const positionId of [f.positionId, secondPositionId]) {
+        expect(
+          await prisma.position.findUniqueOrThrow({ where: { id: positionId } })
+        ).toMatchObject({ quantity: 0.25, status: 'PARTIAL' })
+      }
+      expect(
+        await prisma.importedEvent.findUniqueOrThrow({
+          where: { id: sellEvent.id },
+        })
+      ).toEqual(originalEvent)
+    })
+
     it('audits live acquisition corrections, closes/reopens sold parcels, preserves sales and replays a mixed BUY/SELL chain', async () => {
       const {
         correctLiveManualAcquisition,

@@ -1,18 +1,15 @@
 # Portfolio accounting foundation
 
-Status: increment 1 specification delivered; increment 2 has opening previews, persistent
-inactive drafts, the cash-command/replay core, locked draft operation/posting persistence
-and immutable inactive capital corrections. It now also has proposed manual BUY/SELL trades,
-opening-parcel sales, read-only reconciliation, user-attested statement cash evidence,
-exact variance review, separately dated manual deposit/withdrawal staging, and
-source-linked cash staging for already-applied Kraken executions.
-The review also supports audited correction/reversal of staged manual deposits and withdrawals.
-An isolated proposed BUY/SELL workflow and its corrections now atomically store draft
-parcels and cash; they do not change real holdings. A new live BUY/SELL writer now posts
-manual trades and cash atomically, but only behind an explicitly confirmed statement and
-active account cash ledger. Audited correction of live manual BUYs and SELLs is now supported for
-ledger-backed accounts, but no activation endpoint or account provisioning flow exists, so
-legacy accounts remain on their existing behavior.
+Status: increment 1 specification delivered; increment 2 is partially implemented. It includes
+opening previews, persistent inactive drafts, cash replay, audited draft operations, proposed
+manual BUY/SELL trades, reconciliation, and source-linked cash staging for supported Kraken
+executions. A gated live writer atomically posts manual BUY/SELL trades and complete supported
+Kraken BUY/SELL batches. Audited live manual BUY/SELL and supported imported Kraken
+execution corrections are available for ledger-backed accounts. Imported corrections
+preserve source events and parcel allocations; quantity/allocation changes and
+multi-currency or fee-currency conversions remain blocked. Real accounts are not yet
+activated: imported execution reversals, safe moves/deletion, and reviewed account
+confirmation/cutover remain outstanding. Legacy accounts retain their existing behavior.
 Date: 7 November 2026.
 Scope: piggy-api and sibling piggy-fe.
 
@@ -299,7 +296,12 @@ Amounts below are synthetic test data, not existing user balances.
 - Regenerate backend context, then pull the frontend contract, update the manual type
   mirror, regenerate frontend context and review contract drift.
 
-## Immediate next step
+## Implementation progress
+
+The following records delivered implementation slices; the opening preview and inactive-draft
+work below is already implemented, not the current next task. Some earlier progress notes describe
+work that was outstanding at that point; the current remaining work is listed at the end of this
+section.
 
 Use the dashboard's "Opening-balance preview" for a selected real account to review a
 chosen end-of-day date and explicit currency balances. Preview is read-only and cannot confirm
@@ -514,9 +516,10 @@ imports need no separate activation switch; future read-only API connections wil
 per-user connection and disconnection controls. Binance and Coinbase enum entries do not imply
 implemented adapters.
 
-Next address atomic live trade/posting integration and the
-remaining supported financial paths. Do not enable confirmed accounts until every financial
-edit/delete/import path maintains the ledger and concurrency tests pass.
+At this point in delivery, atomic live trade/posting integration and the remaining supported
+financial paths were still outstanding. The gated live writer and manual BUY/SELL correction
+workflows described below have since landed; the remaining coordinated financial paths and
+activation gate are listed at the end of this section.
 
 Recorded manual long BUY/SELL transactions can now be staged from the same review, using only
 their transaction identity and an explicitly entered intraday sequence. Money, fees, currency and
@@ -524,8 +527,9 @@ date are sourced from the persisted trade and checked again under the account lo
 allocations use the import workflow instead; imported parcels and short positions are excluded.
 The report explains unavailable entries, including already-reserved transaction identities.
 Concurrent identical submissions have one cash effect; funding/source failures roll back without
-changing trades. This closes the missing manual execution-linking workflow, not financial
-execution correction or automatic live posting. Those remain the next accounting milestones.
+changing trades. This closes the missing manual execution-linking workflow. The later implementation notes below
+describe the subsequent live posting and manual correction work; those capabilities remain gated
+until an account is explicitly provisioned through a reviewed cutover.
 
 Financial correction policy is manual-first: imported execution values remain source records;
 future import corrections need separate audited, source-aware adjustments rather than overrides.
@@ -617,11 +621,57 @@ holdings, requires an audit reason and explicit financial/tax-impact acknowledge
 offline and stale writes. Controls are available from holdings and closed-trade history so fully
 sold parcels remain correctable. No account is activated.
 
-Next deliver the remaining supported financial paths and a reviewed activation/cutover workflow
-before enabling any real account. Imported financial adjustments, execution reversals, moves,
-and deletion remain unsupported coordinated workflows. Live trades
-remain unavailable to ordinary legacy accounts, and accounting-backed balances/performance are
-not exposed or substituted for legacy portfolio results.
+### Audited corrections for live imported executions
+
+Ledger-backed imported Kraken BUY/SELL executions can be corrected through
+`POST /api/accounts/{id}/imported-executions/{eventId}/corrections`. The immutable
+revision records the original event identity, audit reason, expected revision/source
+head, transaction snapshots and exact reversal/replacement cash legs. Date, stable
+sequence, price and fees may change; quantity, parcel allocations, currency and source
+identity remain fixed. The original `ImportedEvent` is never rewritten.
+
+The correction locks the owned account and affected parcels, revalidates the applied
+source event and all linked transactions, checks opening/observation date bounds and
+same-day BUY/SELL order, then replays the full cash timeline. Insufficient funding,
+changed allocations, unsupported short parcels, multiple currencies, and fees in a
+different currency are rejected. Transaction/parcel projections, revision postings,
+audit chain and accepted source fingerprint commit atomically. Holdings expose imported
+BUY controls, and history exposes imported BUY and SELL controls, including closed
+parcels. Inputs require an audit reason; offline and stale submissions are rejected.
+
+### Current next step: close the cutover blockers
+
+Do not activate a real account until the following work is complete:
+
+1. **Complete coordinated financial mutations.** Define and implement any supported
+   live/imported execution reversals not covered by the existing manual and imported BUY/SELL
+   corrections, and provide safe move/deletion handling for ledger-backed accounts. Imported
+   corrections are currently limited to fixed quantities and allocations in a single currency.
+   Each supported path must preserve source identity and immutable revisions, replay dated cash
+   and parcel inventory, validate funding, and update the accepted source fingerprint in the
+   same transaction. Where a path cannot safely be supported, keep it explicitly blocked and
+   surface the reconciliation requirement rather than allowing a legacy writer to bypass the
+   ledger.
+2. **Implement reviewed, per-account confirmation and activation.** Let the user review the
+   end-of-day Sydney opening statement, holdings, actual cash by currency, evidence, and
+   unresolved-operation/funding blockers. Under the account lock, revalidate the preview and
+   atomically persist the confirmed statement and provision its active ledger/fingerprint.
+   Record the user's confirmation and make retries safe. Do not bulk-migrate or reinterpret
+   existing accounts.
+3. **Make an activated account operable and reviewable.** Route ordinary manual trade entry
+   through the gated writer only for activated accounts; retain legacy behavior for all others.
+   Provide a balance/activity and reconciliation view that makes actual cash, unsupported
+   events, and incomplete data visible. Do not present accounting-backed performance until
+   sourced valuations and return methodology are implemented.
+4. **Prove the gate with regression and concurrency tests.** Cover each supported mutation
+   racing with trades, imports, corrections, activation, account closure/deletion and retries.
+   Failed validation or writes must leave the opening statement, ledger, source trades, postings
+   and audit chain unchanged.
+
+After these gates, deliver income/transfers/adjustments, sourced valuations, cash-flow-adjusted
+returns and risk metrics, then broader ingestion and tax readiness as described in increments
+3–6. Ledger-backed demo accounts remain a separate proving-ground decision, not a shortcut to
+real-account activation.
 
 Ledger-backed demo accounts are a subsequent controlled proving ground, not enabled by this
 increment. They should share the accounting engine and audit/funding rules with real accounts,

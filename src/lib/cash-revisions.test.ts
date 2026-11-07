@@ -334,6 +334,97 @@ describe('cash revision contract', () => {
   ])('rejects invalid or unhashed fields %#', (raw) => {
     expect(() => prepareCashRevision(raw, now)).toThrow()
   })
+  it('requires imported correction snapshots, fees and source head to match the cash revision', () => {
+    const previousFingerprint = 'a'.repeat(64)
+    const nextFingerprint = 'b'.repeat(64)
+    const input = {
+      idempotencyKey: 'import-fix',
+      expectedRevisionId: 'operation-1',
+      expectedSourceFingerprint: previousFingerprint,
+      reason: 'Corrected from broker statement',
+      effectiveDate: '2026-10-03',
+      sequence: 2,
+      price: '50',
+      fees: '2',
+    }
+    const replacement = prepareCashCommand(
+      {
+        accountId: 'a1',
+        kind: 'BUY',
+        idempotencyKey: input.idempotencyKey,
+        source: { origin: 'IMPORT', reference: 'KRAKEN:order:1' },
+        effectiveDate: input.effectiveDate,
+        sequence: input.sequence,
+        consideration: { currency: 'AUD', amount: '50' },
+        fees: [{ currency: 'AUD', amount: '2' }],
+        transactionIds: ['tx1'],
+      },
+      now
+    ).command
+    const before = {
+      transactionId: 'tx1',
+      positionId: 'p1',
+      date: '2026-10-02T01:00:00.000Z',
+      quantity: '1',
+      price: '60',
+      totalValue: '60',
+      fees: '1',
+      currency: 'AUD',
+    }
+    const after = {
+      ...before,
+      date: '2026-10-03T01:00:00.000Z',
+      price: '50',
+      totalValue: '50',
+      fees: '2',
+    }
+    const revision = {
+      idempotencyKey: input.idempotencyKey,
+      expectedRevisionId: input.expectedRevisionId,
+      reason: input.reason,
+      replacement,
+      importedExecutionAudit: {
+        eventId: 'event-1',
+        number: 1,
+        previousFingerprint,
+        nextFingerprint,
+        input,
+        before: [before],
+        after: [after],
+      },
+    }
+
+    expect(prepareCashRevision(revision, now).request).toMatchObject({
+      importedExecutionAudit: { eventId: 'event-1', input },
+    })
+    expect(() =>
+      prepareCashRevision(
+        {
+          ...revision,
+          importedExecutionAudit: {
+            ...revision.importedExecutionAudit,
+            input: {
+              ...input,
+              expectedSourceFingerprint: 'c'.repeat(64),
+            },
+          },
+        },
+        now
+      )
+    ).toThrow('Imported execution audit must exactly match')
+    expect(() =>
+      prepareCashRevision(
+        {
+          ...revision,
+          importedExecutionAudit: {
+            ...revision.importedExecutionAudit,
+            input: { ...input, fees: '3' },
+          },
+        },
+        now
+      )
+    ).toThrow('Imported execution audit must exactly match')
+  })
   it.each([
     { ...replacement, accountId: 'other' },
     { ...replacement, kind: 'WITHDRAWAL' },

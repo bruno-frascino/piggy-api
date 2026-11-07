@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { body, param, query } from 'express-validator'
 import { prisma } from '../lib/prisma.js'
 import { readLiveAcquisitionCorrections } from '../lib/live-acquisition-corrections.js'
+import { readLiveImportedExecutionCorrections } from '../lib/live-import-corrections.js'
 import { lockActiveUser } from '../lib/user-lock.js'
 import {
   savePositionHistory,
@@ -133,8 +134,11 @@ const CLOSE_REASONS = ['STOP_LOSS', 'TARGET', 'MANUAL', 'OTHER']
  *           Paginated list of positions. Eligible live manual acquisitions include
  *           acquisitionCorrection metadata with transactionId, operationId, expectedRevisionId,
  *           expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string
- *           quantity (total bought units), price and fees. Imported, demo and legacy
- *           acquisitions do not receive these controls.
+ *           quantity (total bought units), price and fees. Eligible live imported Kraken
+ *           BUY executions also include importedExecutionCorrection metadata containing
+ *           eventId, transactionId, operationId, expectedRevisionId, expectedSourceFingerprint,
+ *           effectiveDate, sequence, price, fees and currency. Demo and legacy executions
+ *           do not receive correction controls.
  *       401:
  *         description: Unauthorized
  */
@@ -206,12 +210,31 @@ router.get(
       req.user!.userId,
       positions.map((position) => position.id)
     )
-    const data = positions.map((position) => ({
-      ...position,
-      ...(corrections.has(position.id)
-        ? { acquisitionCorrection: corrections.get(position.id) }
-        : {}),
-    }))
+    const importedCorrections = await readLiveImportedExecutionCorrections(
+      req.user!.userId,
+      positions.flatMap((position) =>
+        position.transactions.map((transaction) => transaction.id)
+      )
+    )
+    const data = positions.map((position) => {
+      const importedBuy = position.transactions.find(
+        (transaction) =>
+          transaction.type === 'BUY' && importedCorrections.has(transaction.id)
+      )
+      return {
+        ...position,
+        ...(corrections.has(position.id)
+          ? { acquisitionCorrection: corrections.get(position.id) }
+          : {}),
+        ...(importedBuy
+          ? {
+              importedExecutionCorrection: importedCorrections.get(
+                importedBuy.id
+              ),
+            }
+          : {}),
+      }
+    })
     res.json({ success: true, data, meta: { total, limit, offset } })
   })
 )
@@ -507,12 +530,15 @@ router.post(
  *         description: >
  *           Paginated SELL transactions with position and asset context. Each event
  *           carries `closeReason` (STOP_LOSS | TARGET | MANUAL | OTHER, or null when unknown).
- *           Eligible live manual sales also include `cashCorrection` metadata for the
- *           audited correction endpoint; imported and legacy sales do not.
- *           Eligible live manual BUYs include `acquisitionCorrection`, also for fully
- *           closed parcels: transactionId, operationId, expectedRevisionId,
- *           expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string
- *           quantity (total bought units), price and fees.
+ *           Eligible live manual sales include `cashCorrection` metadata for the
+ *           audited correction endpoint. Eligible live imported Kraken SELLs include
+ *           `importedExecutionCorrection` with eventId, transactionId, operationId,
+ *           expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence,
+ *           price, fees and currency. Eligible live manual BUYs include
+ *           `acquisitionCorrection`, also for fully closed parcels. Eligible live
+ *           imported Kraken BUYs include `importedAcquisitionCorrection` with the same
+ *           imported-execution metadata, also for fully closed parcels. Demo and legacy
+ *           executions do not receive correction controls.
  *         content:
  *           application/json:
  *             schema:
@@ -638,7 +664,7 @@ router.get(
               // total bought units to prorate buy fees across partial sells.
               transactions: {
                 where: { type: 'BUY' },
-                select: { type: true, quantity: true },
+                select: { id: true, type: true, quantity: true },
               },
             },
           },
@@ -653,6 +679,13 @@ router.get(
     const acquisitionCorrections = await readLiveAcquisitionCorrections(
       req.user!.userId,
       [...new Set(events.map((event) => event.position.id))]
+    )
+    const importedCorrections = await readLiveImportedExecutionCorrections(
+      req.user!.userId,
+      events.flatMap((event) => [
+        event.id,
+        ...event.position.transactions.map((transaction) => transaction.id),
+      ])
     )
     const data = events.map((event) => {
       const { cashOperation, brokerRef, ...publicEvent } = event
@@ -693,6 +726,18 @@ router.get(
                 event.position.id
               ),
             }
+          : {}),
+        ...(event.position.transactions
+          .map((transaction) => importedCorrections.get(transaction.id))
+          .find((correction) => correction?.transactionId)
+          ? {
+              importedAcquisitionCorrection: event.position.transactions
+                .map((transaction) => importedCorrections.get(transaction.id))
+                .find((correction) => correction?.transactionId),
+            }
+          : {}),
+        ...(importedCorrections.has(event.id)
+          ? { importedExecutionCorrection: importedCorrections.get(event.id) }
           : {}),
         ...(eligible
           ? {

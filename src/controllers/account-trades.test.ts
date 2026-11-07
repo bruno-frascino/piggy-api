@@ -3,15 +3,17 @@ import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { post, correct, correctBuy } = vi.hoisted(() => ({
+const { post, correct, correctBuy, correctImported } = vi.hoisted(() => ({
   post: vi.fn(),
   correct: vi.fn(),
   correctBuy: vi.fn(),
+  correctImported: vi.fn(),
 }))
 vi.mock('../lib/draft-cash-ledger.js', () => ({
   postAccountTrade: post,
   correctLiveManualSale: correct,
   correctLiveManualAcquisition: correctBuy,
+  correctLiveImportedExecution: correctImported,
 }))
 vi.mock('../middleware/auth.js', () => ({
   authenticateToken: (req: Request, res: Response, next: NextFunction) => {
@@ -59,6 +61,11 @@ beforeEach(() => {
     created: true,
   })
   correctBuy.mockResolvedValue({
+    operationId: 'op1',
+    revisionId: 'revision1',
+    created: true,
+  })
+  correctImported.mockResolvedValue({
     operationId: 'op1',
     revisionId: 'revision1',
     created: true,
@@ -179,5 +186,53 @@ describe('account trade endpoint', () => {
       .send(correction)
       .expect(409)
     expect(correct).not.toHaveBeenCalled()
+  })
+
+  it('authenticates, validates and forwards imported execution corrections', async () => {
+    const correction = {
+      idempotencyKey: 'import-fix',
+      expectedRevisionId: 'op1',
+      expectedSourceFingerprint: 'a'.repeat(64),
+      reason: 'Corrected from broker statement',
+      effectiveDate: '2026-10-03',
+      sequence: 2,
+      price: '12.345678901234',
+      fees: '0.12345678',
+    }
+    const path = '/api/accounts/a1/imported-executions/event1/corrections'
+    await request(app()).post(path).send(correction).expect(401)
+    for (const invalid of [
+      { ...correction, sequence: 0 },
+      { ...correction, expectedSourceFingerprint: 'invalid' },
+      { ...correction, fees: 1 },
+    ]) {
+      await request(app())
+        .post(path)
+        .set('Authorization', '******')
+        .send(invalid)
+        .expect(400)
+    }
+    expect(correctImported).not.toHaveBeenCalled()
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(correction)
+      .expect(201)
+    expect(correctImported).toHaveBeenCalledWith(
+      'u1',
+      'a1',
+      'event1',
+      correction
+    )
+    correctImported.mockResolvedValueOnce({
+      operationId: 'op1',
+      revisionId: 'revision1',
+      created: false,
+    })
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(correction)
+      .expect(200)
   })
 })

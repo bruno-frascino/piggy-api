@@ -44,6 +44,12 @@ import {
   prepareDraftTradeRevision,
 } from './cash-revisions.js'
 import {
+  correctImportedExecutionSnapshots,
+  importedExecutionCorrectionHash,
+  parseImportedExecutionCorrectionInput,
+  type ImportedExecutionTradeSnapshot,
+} from './import-execution-correction.js'
+import {
   prepareDraftTradeRequest,
   prepareDraftTradeCash,
   replayDraftTradeParcels,
@@ -154,7 +160,8 @@ function validateImportedExecution(
   accountId: string,
   command: CashCommand,
   event: ImportedCashEvent | null,
-  transactions: readonly ImportedCashTransaction[]
+  transactions: readonly ImportedCashTransaction[],
+  allowAuditedCorrection = false
 ): void {
   if (
     (command.kind !== 'BUY' && command.kind !== 'SELL') ||
@@ -202,7 +209,8 @@ function validateImportedExecution(
           transaction.position.origin !== 'IMPORT_TRADE') ||
         !Number.isFinite(transaction.quantity) ||
         transaction.quantity <= 0 ||
-        sydneyCalendarDate(transaction.date) !== command.effectiveDate
+        (!allowAuditedCorrection &&
+          sydneyCalendarDate(transaction.date) !== command.effectiveDate)
     )
   )
     conflict(
@@ -2410,6 +2418,75 @@ function importedExecutionSnapshot(
   ]
 }
 
+function parseImportedExecutionSourceSnapshot(
+  value: unknown,
+  event: ImportedCashEvent
+): ImportedExecutionTradeSnapshot[] {
+  if (!Array.isArray(value) || value.length < 2)
+    conflict('Stored imported execution snapshot is invalid')
+  const [eventRow, ...tradeRows] = value
+  const expectedEvent = importedExecutionSnapshot(event, [])[0]
+  if (eventRow !== expectedEvent || tradeRows.length > 5000)
+    conflict('Stored imported execution no longer matches its source event')
+  const snapshots = tradeRows.map((raw) => {
+    if (typeof raw !== 'string')
+      conflict('Stored imported trade snapshot is invalid')
+    let row: unknown
+    try {
+      row = JSON.parse(raw)
+    } catch {
+      conflict('Stored imported trade snapshot is invalid')
+    }
+    if (!Array.isArray(row) || row.length !== 12)
+      conflict('Stored imported trade snapshot is invalid')
+    const [
+      transactionId,
+      positionId,
+      brokerRef,
+      type,
+      date,
+      quantity,
+      price,
+      totalValue,
+      fees,
+      origin,
+      positionType,
+      currency,
+    ] = row
+    if (
+      typeof transactionId !== 'string' ||
+      typeof positionId !== 'string' ||
+      brokerRef !== event.externalId ||
+      type !== event.kind ||
+      typeof date !== 'string' ||
+      typeof quantity !== 'string' ||
+      typeof price !== 'string' ||
+      typeof totalValue !== 'string' ||
+      typeof fees !== 'string' ||
+      (origin !== 'MANUAL' && origin !== 'IMPORT_TRADE') ||
+      positionType !== 'LONG' ||
+      typeof currency !== 'string'
+    )
+      conflict('Stored imported trade snapshot is invalid')
+    return {
+      transactionId,
+      positionId,
+      date,
+      quantity,
+      price,
+      totalValue,
+      fees,
+      currency,
+    }
+  })
+  if (
+    new Set(snapshots.map((snapshot) => snapshot.transactionId)).size !==
+    snapshots.length
+  )
+    conflict('Stored imported trade identities are duplicated')
+  return snapshots
+}
+
 function sameImportedExecutionSnapshot(
   value: unknown,
   expected: readonly string[]
@@ -2420,6 +2497,32 @@ function sameImportedExecutionSnapshot(
     value.every(
       (row, index) => typeof row === 'string' && row === expected[index]
     )
+  )
+}
+
+function sameImportedExecutionTradeSnapshots(
+  value: unknown,
+  expected: readonly ImportedExecutionTradeSnapshot[]
+): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length === expected.length &&
+    value.every((raw, index) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
+      const actual = raw as Record<string, unknown>
+      const snapshot = expected[index]
+      return (
+        snapshot !== undefined &&
+        actual.transactionId === snapshot.transactionId &&
+        actual.positionId === snapshot.positionId &&
+        actual.date === snapshot.date &&
+        actual.quantity === snapshot.quantity &&
+        actual.price === snapshot.price &&
+        actual.totalValue === snapshot.totalValue &&
+        actual.fees === snapshot.fees &&
+        actual.currency === snapshot.currency
+      )
+    })
   )
 }
 
@@ -2641,8 +2744,24 @@ async function readLiveCashState(
           },
         },
       })
-      validateImportedExecution(userId, accountId, command, event, transactions)
+      validateImportedExecution(
+        userId,
+        accountId,
+        command,
+        event,
+        transactions,
+        operation.revisions.length > 0
+      )
       const snapshot = importedExecutionSnapshot(event, transactions)
+      const baseSnapshots = parseImportedExecutionSourceSnapshot(
+        operation.transactionSnapshot,
+        event
+      )
+      const currentSnapshots = transactions
+        .map(executionSnapshot)
+        .sort((left, right) =>
+          left.transactionId.localeCompare(right.transactionId)
+        )
       if (
         commonInvalid ||
         operation.importedEvent?.id !== event.id ||
@@ -2651,14 +2770,111 @@ async function readLiveCashState(
         command.idempotencyKey !== `import-event:${event.id}` ||
         operation.payloadHash !== prepared.payloadHash ||
         operation.transactionId !== command.transactionIds[0] ||
-        !sameImportedExecutionSnapshot(operation.transactionSnapshot, snapshot)
+        baseSnapshots.length !== command.transactionIds.length ||
+        JSON.stringify(baseSnapshots.map((row) => row.transactionId)) !==
+          JSON.stringify([...command.transactionIds].sort()) ||
+        baseSnapshots.some(
+          (row, index) =>
+            row.currency !== command.consideration.currency ||
+            row.quantity !== currentSnapshots[index]?.quantity ||
+            row.positionId !== currentSnapshots[index]?.positionId
+        ) ||
+        (!operation.revisions.length &&
+          !sameImportedExecutionSnapshot(
+            operation.transactionSnapshot,
+            snapshot
+          ))
       )
         conflict(
           'Stored imported execution, source audit or cash postings are inconsistent'
         )
-      if (operation.revisions.length)
-        conflict('Imported executions cannot have live manual corrections')
-      liveCommandByOperation.set(operation.id, command)
+      let priorCommand = command
+      let priorSnapshots = baseSnapshots
+      let previousRevisionId: string | null = null
+      let expectedRevisionId = operation.id
+      for (const [revisionIndex, revision] of operation.revisions.entries()) {
+        const revisionPrepared = prepareCashRevision(revision.request, now)
+        const audit = revisionPrepared.request.importedExecutionAudit
+        const replacement = revisionPrepared.request.replacement
+        const legs = prepareRevisionLegs(priorCommand, replacement, now)
+        const revisionSnapshots = audit?.after
+        if (
+          !audit ||
+          !replacement ||
+          revisionPrepared.request.executionAudit ||
+          audit.eventId !== event.id ||
+          revision.accountId !== accountId ||
+          revision.operationId !== operation.id ||
+          revision.revisionNumber !== revisionIndex + 1 ||
+          revision.previousRevisionId !== previousRevisionId ||
+          revisionPrepared.request.expectedRevisionId !== expectedRevisionId ||
+          revision.payloadHash !== revisionPrepared.payloadHash ||
+          revision.idempotencyKey !== revisionPrepared.request.idempotencyKey ||
+          revision.reason !== revisionPrepared.request.reason ||
+          revision.auditNumber < 1 ||
+          !isFingerprint(revision.previousFingerprint) ||
+          !isFingerprint(revision.nextFingerprint) ||
+          audit.number !== revision.auditNumber ||
+          audit.previousFingerprint !== revision.previousFingerprint ||
+          audit.nextFingerprint !== revision.nextFingerprint ||
+          audit.input.expectedRevisionId !== expectedRevisionId ||
+          !isFingerprint(audit.input.expectedSourceFingerprint) ||
+          JSON.stringify(audit.before) !== JSON.stringify(priorSnapshots) ||
+          !revisionSnapshots ||
+          !sameImportedExecutionTradeSnapshots(
+            revision.transactionSnapshot,
+            revisionSnapshots
+          ) ||
+          replacement.source.origin !== 'IMPORT' ||
+          replacement.source.reference !== event.externalId ||
+          replacement.kind !== command.kind ||
+          replacement.transactionIds.length !== command.transactionIds.length ||
+          JSON.stringify([...replacement.transactionIds].sort()) !==
+            JSON.stringify([...command.transactionIds].sort()) ||
+          replacement.effectiveDate !== audit.input.effectiveDate ||
+          replacement.sequence !== audit.input.sequence ||
+          revisionSnapshots.some(
+            (row, index) =>
+              row.transactionId !== priorSnapshots[index]?.transactionId ||
+              row.positionId !== priorSnapshots[index]?.positionId ||
+              row.quantity !== priorSnapshots[index]?.quantity ||
+              row.currency !== priorSnapshots[index]?.currency ||
+              row.date.slice(0, 10) !== audit.input.effectiveDate ||
+              row.price !== audit.input.price
+          ) ||
+          legs.length !== revision.postings.length ||
+          revision.postings.some(
+            (posting, legIndex) =>
+              posting.legIndex !== legIndex ||
+              posting.phase !== legs[legIndex].phase ||
+              posting.currency !== legs[legIndex].currency ||
+              posting.role !== legs[legIndex].role ||
+              posting.amount.toFixed() !== legs[legIndex].amount
+          )
+        )
+          conflict(
+            'Stored imported execution correction, source audit or postings are inconsistent'
+          )
+        liveEvents.push({
+          auditNumber: revision.auditNumber,
+          operation,
+          revision,
+          prepared: revisionPrepared,
+        })
+        liveReservedSlots.push({
+          effectiveDate: new Date(`${replacement.effectiveDate}T00:00:00Z`),
+          sequence: BigInt(replacement.sequence),
+        })
+        priorCommand = replacement
+        priorSnapshots = revisionSnapshots
+        previousRevisionId = revision.id
+        expectedRevisionId = revision.id
+      }
+      if (JSON.stringify(priorSnapshots) !== JSON.stringify(currentSnapshots))
+        conflict(
+          'Current imported trades do not match their latest immutable correction snapshot'
+        )
+      liveCommandByOperation.set(operation.id, priorCommand)
     } else {
       const storedInput = parseAccountTradeInput(stored.request)
       const baseSnapshot = parseLiveTradeSnapshot(operation.transactionSnapshot)
@@ -2808,11 +3024,15 @@ async function readLiveCashState(
     if (event.revision) {
       const revision = event.revision
       const audit = event.prepared?.request.executionAudit
+      const importedAudit = event.prepared?.request.importedExecutionAudit
       const replacement = event.prepared?.request.replacement
       if (
-        !audit ||
+        (!audit && !importedAudit) ||
         !replacement ||
-        revision.previousFingerprint !== acceptedFingerprint
+        revision.previousFingerprint !== acceptedFingerprint ||
+        (audit && audit.previousFingerprint !== acceptedFingerprint) ||
+        (importedAudit &&
+          importedAudit.previousFingerprint !== acceptedFingerprint)
       )
         conflict('Live cash correction fingerprint chain is inconsistent')
       acceptedFingerprint = revision.nextFingerprint
@@ -3909,6 +4129,415 @@ async function applyExecutionCorrection(
   }
   if (!(await recomputePositionFromTransactions(after.positionId, db)))
     conflict('Position not found during manual execution correction', 404)
+}
+
+async function applyImportedExecutionCorrection(
+  db: DraftCashTransaction,
+  before: readonly ImportedExecutionTradeSnapshot[],
+  after: readonly ImportedExecutionTradeSnapshot[],
+  kind: 'BUY' | 'SELL'
+) {
+  const affectedPositions = new Set<string>()
+  for (const snapshot of after) {
+    await db.transaction.update({
+      where: { id: snapshot.transactionId },
+      data: {
+        date: new Date(snapshot.date),
+        price: snapshot.price,
+        totalValue: snapshot.totalValue,
+        fees: snapshot.fees,
+      },
+    })
+    affectedPositions.add(snapshot.positionId)
+  }
+  if (kind === 'BUY') {
+    const original = before[0]
+    const replacement = after.find(
+      (snapshot) => snapshot.transactionId === original?.transactionId
+    )
+    if (!replacement)
+      conflict('Imported acquisition correction lost its transaction')
+    await db.position.update({
+      where: { id: replacement.positionId },
+      data: {
+        openDate: new Date(replacement.date),
+        entryPrice: replacement.price,
+        totalBuyValue: replacement.totalValue,
+        buyFees: replacement.fees,
+        capitalAllocated: new AccountingDecimal(replacement.totalValue)
+          .plus(replacement.fees)
+          .toDecimalPlaces(8, AccountingDecimal.ROUND_HALF_UP)
+          .toFixed(),
+        maxDrawdownPercent: null,
+        maxRunUpPercent: null,
+        unrealizedPnL: null,
+      },
+    })
+  }
+  for (const positionId of [...affectedPositions].sort()) {
+    if (!(await recomputePositionFromTransactions(positionId, db)))
+      conflict('Imported execution correction could not recompute its parcel')
+  }
+}
+
+export async function correctLiveImportedExecution(
+  userId: string,
+  accountId: string,
+  eventId: string,
+  raw: unknown
+) {
+  const input = parseImportedExecutionCorrectionInput(raw)
+  const now = new Date()
+  return prisma.$transaction(
+    async (db) => {
+      await lockOwnedTradingAccount(db, userId, accountId)
+      const state = await readLiveCashState(db, userId, accountId, now)
+      const operation = state.cashLedgerOps.find(
+        (row) => row.importedEventId === eventId
+      )
+      if (!operation || (operation.kind !== 'BUY' && operation.kind !== 'SELL'))
+        conflict('Live imported execution operation not found', 404)
+      const priorRevision = operation.revisions.find(
+        (revision) => revision.idempotencyKey === input.idempotencyKey
+      )
+      if (priorRevision) {
+        const prepared = prepareCashRevision(priorRevision.request, now)
+        const audit = prepared.request.importedExecutionAudit
+        if (
+          prepared.payloadHash !== priorRevision.payloadHash ||
+          !audit ||
+          audit.eventId !== eventId ||
+          importedExecutionCorrectionHash(audit.input) !==
+            importedExecutionCorrectionHash(input)
+        )
+          conflict(
+            'Idempotency key is already associated with different imported correction content'
+          )
+        const replay = replayCashLedger(
+          accountId,
+          state.opening,
+          [
+            ...[...state.history.effective.values()].filter(
+              (command): command is CashCommand => command !== null
+            ),
+            ...state.liveCommands,
+          ],
+          now
+        )
+        requireFundedCashLedger(replay)
+        return {
+          operationId: operation.id,
+          revisionId: priorRevision.id,
+          created: false,
+          replay,
+        }
+      }
+      if (
+        state.history.keys.has(input.idempotencyKey) ||
+        state.cashLedgerOps.some(
+          (row) =>
+            row.idempotencyKey === input.idempotencyKey ||
+            row.revisions.some(
+              (revision) => revision.idempotencyKey === input.idempotencyKey
+            )
+        )
+      )
+        conflict('Idempotency key is already associated with a cash operation')
+      if (state.liveAuditEventCount >= 50000)
+        conflict('Live cash history exceeds the supported replay limit', 422)
+      const latestRevision = operation.revisions.at(-1)
+      const expectedRevisionId = latestRevision?.id ?? operation.id
+      if (input.expectedRevisionId !== expectedRevisionId)
+        conflict(
+          'Cash operation was corrected concurrently. Review the current revision.'
+        )
+      if (input.expectedSourceFingerprint !== state.acceptedFingerprint)
+        conflict(
+          'Source revision changed. Refresh account history before correcting this execution.'
+        )
+
+      const event = await db.importedEvent.findFirst({
+        where: {
+          id: eventId,
+          userId,
+          source: 'KRAKEN',
+          status: 'APPLIED',
+          kind: operation.kind,
+          batch: { userId, accountId },
+        },
+        select: {
+          id: true,
+          userId: true,
+          source: true,
+          externalId: true,
+          kind: true,
+          status: true,
+          occurredAt: true,
+          quoteCurrency: true,
+          grossValue: true,
+          fee: true,
+          feeCurrency: true,
+          appliedPositionIds: true,
+          batch: { select: { accountId: true, userId: true } },
+        },
+      })
+      if (!event)
+        conflict('Applied imported execution not found in this account', 404)
+      const current = state.liveCommands.find(
+        (command) =>
+          command.source.origin === 'IMPORT' &&
+          command.source.reference === event.externalId
+      )
+      if (
+        !current ||
+        current.kind !== operation.kind ||
+        current.transactionIds.length === 0 ||
+        !current.transactionIds.includes(operation.transactionId)
+      )
+        conflict('Imported cash operation has inconsistent source links')
+      if (
+        !event.quoteCurrency ||
+        !isAccountingCurrency(event.quoteCurrency) ||
+        (event.fee.toFixed() !== '0' &&
+          event.feeCurrency !== event.quoteCurrency)
+      )
+        conflict(
+          'Imported execution correction requires consideration and fees in the same currency'
+        )
+      if (
+        input.effectiveDate <= state.openingDate ||
+        input.effectiveDate > state.sourceObservationDate
+      )
+        conflict(
+          'Imported execution correction must stay after opening and within the reviewed observation date',
+          400
+        )
+
+      const transactions = await db.transaction.findMany({
+        where: {
+          brokerRef: event.externalId,
+          position: { accountId, userId },
+        },
+        include: {
+          position: {
+            include: {
+              asset: { include: { exchange: true } },
+              transactions: { orderBy: [{ date: 'asc' }, { id: 'asc' }] },
+            },
+          },
+        },
+        orderBy: { id: 'asc' },
+      })
+      if (
+        transactions.length !== current.transactionIds.length ||
+        JSON.stringify(transactions.map((transaction) => transaction.id)) !==
+          JSON.stringify([...current.transactionIds].sort()) ||
+        transactions.some(
+          (transaction) =>
+            transaction.type !== operation.kind ||
+            transaction.position.positionType !== 'LONG' ||
+            transaction.position.asset.exchange.currency !== event.quoteCurrency
+        )
+      )
+        conflict(
+          'Imported execution has changed parcel links or unsupported currency allocations'
+        )
+      for (const positionId of [
+        ...new Set(transactions.map((transaction) => transaction.positionId)),
+      ].sort()) {
+        await lockOwnedPosition(db, userId, positionId)
+      }
+      const before = transactions
+        .map(executionSnapshot)
+        .sort((left, right) =>
+          left.transactionId.localeCompare(right.transactionId)
+        )
+      const after = correctImportedExecutionSnapshots(
+        before,
+        input.price,
+        input.fees,
+        input.effectiveDate
+      )
+      if (
+        before.every(
+          (snapshot, index) =>
+            JSON.stringify(snapshot) === JSON.stringify(after[index])
+        ) &&
+        current.effectiveDate === input.effectiveDate &&
+        current.sequence === input.sequence
+      )
+        conflict(
+          'Correction must change the imported execution or its stable sequence',
+          400
+        )
+
+      for (const transaction of transactions) {
+        const positionTransactions = transaction.position.transactions
+        const acquired = positionTransactions.filter(
+          (row) => row.type === 'BUY'
+        )
+        if (
+          acquired.length !== 1 ||
+          (operation.kind === 'BUY' && acquired[0]?.id !== transaction.id)
+        )
+          conflict(
+            'Imported correction requires one reconciled acquisition per parcel'
+          )
+        const sameDayTrades = positionTransactions.filter(
+          (row) => row.id !== transaction.id && row.type !== transaction.type
+        )
+        for (const related of sameDayTrades) {
+          const relatedCommand = state.liveCommands.find(
+            (command) =>
+              'transactionIds' in command &&
+              command.transactionIds.includes(related.id)
+          )
+          const relatedDate = sydneyCalendarDate(related.date)
+          if (operation.kind === 'BUY') {
+            if (relatedDate < input.effectiveDate)
+              conflict(
+                'Imported acquisition cannot move after an existing disposal',
+                400
+              )
+            if (
+              relatedDate === input.effectiveDate &&
+              (!relatedCommand || relatedCommand.sequence <= input.sequence)
+            )
+              conflict(
+                'Same-day imported acquisitions must precede their disposals in cash sequence',
+                400
+              )
+          } else {
+            if (relatedDate > input.effectiveDate)
+              conflict('Imported disposal cannot precede its acquisition', 400)
+            if (
+              relatedDate === input.effectiveDate &&
+              (!relatedCommand || relatedCommand.sequence >= input.sequence)
+            )
+              conflict(
+                'Same-day imported disposals must follow their acquisitions in cash sequence',
+                400
+              )
+          }
+        }
+      }
+
+      const replacementGross = after.reduce(
+        (sum, snapshot) => sum.plus(snapshot.totalValue),
+        new AccountingDecimal(0)
+      )
+      const replacementFees = after.reduce(
+        (sum, snapshot) => sum.plus(snapshot.fees),
+        new AccountingDecimal(0)
+      )
+      const replacement = prepareCashCommand(
+        {
+          ...current,
+          idempotencyKey: input.idempotencyKey,
+          effectiveDate: input.effectiveDate,
+          sequence: input.sequence,
+          consideration: {
+            currency: event.quoteCurrency,
+            amount: replacementGross.toFixed(),
+          },
+          fees: replacementFees.gt(0)
+            ? [
+                {
+                  currency: event.quoteCurrency,
+                  amount: replacementFees.toFixed(),
+                },
+              ]
+            : [],
+        },
+        now
+      ).command
+      const currentSlotIs = (slot: { effectiveDate: Date; sequence: bigint }) =>
+        slot.effectiveDate.toISOString().slice(0, 10) ===
+          current.effectiveDate && slot.sequence === BigInt(current.sequence)
+      requireNewOperationSlot(
+        [
+          ...state.history.rows,
+          ...state.liveReservedSlots.filter((slot) => !currentSlotIs(slot)),
+        ],
+        replacement.effectiveDate,
+        replacement.sequence
+      )
+      const legs = prepareRevisionLegs(current, replacement, now)
+      const commands = [
+        ...[...state.history.effective.values()].filter(
+          (command): command is CashCommand => command !== null
+        ),
+        ...state.liveCommands.map((command) =>
+          command.source.origin === 'IMPORT' &&
+          command.source.reference === event.externalId
+            ? replacement
+            : command
+        ),
+      ]
+      const replay = replayCashLedger(accountId, state.opening, commands, now)
+      requireFundedCashLedger(replay)
+
+      await applyImportedExecutionCorrection(db, before, after, operation.kind)
+      const next = await readAccountOpeningPreview(
+        db,
+        userId,
+        accountId,
+        state.opening,
+        new Date(`${state.sourceObservationDate}T01:00:00Z`)
+      )
+      const auditNumber =
+        state.history.executionAudits.length + state.liveAuditEventCount + 1
+      const request = prepareCashRevision(
+        {
+          idempotencyKey: input.idempotencyKey,
+          expectedRevisionId: input.expectedRevisionId,
+          reason: input.reason,
+          replacement,
+          importedExecutionAudit: {
+            eventId,
+            number: auditNumber,
+            previousFingerprint: state.acceptedFingerprint,
+            nextFingerprint: next.sourceFingerprint,
+            input,
+            before,
+            after,
+          },
+        },
+        now
+      )
+      const revision = await db.accountCashOperationRevision.create({
+        data: {
+          accountId,
+          operationId: operation.id,
+          revisionNumber: operation.revisions.length + 1,
+          previousRevisionId: latestRevision?.id ?? null,
+          idempotencyKey: input.idempotencyKey,
+          payloadHash: request.payloadHash,
+          reason: input.reason,
+          request: { ...request.request },
+          auditNumber,
+          previousFingerprint: state.acceptedFingerprint,
+          nextFingerprint: next.sourceFingerprint,
+          transactionSnapshot: after,
+          postings: {
+            create: legs.map((leg, legIndex) => ({ ...leg, legIndex })),
+          },
+        },
+        select: { id: true },
+      })
+      await db.accountCashLedger.update({
+        where: { accountId },
+        data: { acceptedSourceFingerprint: next.sourceFingerprint },
+      })
+      return {
+        operationId: operation.id,
+        revisionId: revision.id,
+        created: true,
+        replay,
+      }
+    },
+    { isolationLevel: 'ReadCommitted', timeout: 20000, maxWait: 5000 }
+  )
 }
 
 export async function correctDraftRecordedSale(

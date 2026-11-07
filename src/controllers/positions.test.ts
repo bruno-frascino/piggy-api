@@ -7,6 +7,10 @@ const acquisitionCorrections = vi.hoisted(() => ({ read: vi.fn() }))
 vi.mock('../lib/live-acquisition-corrections.js', () => ({
   readLiveAcquisitionCorrections: acquisitionCorrections.read,
 }))
+const importedCorrections = vi.hoisted(() => ({ read: vi.fn() }))
+vi.mock('../lib/live-import-corrections.js', () => ({
+  readLiveImportedExecutionCorrections: importedCorrections.read,
+}))
 const derived = vi.hoisted(() => ({ history: vi.fn(), stop: vi.fn() }))
 vi.mock('../lib/position-derived-values.js', () => ({
   savePositionHistory: derived.history,
@@ -140,6 +144,7 @@ describe('positions controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     acquisitionCorrections.read.mockResolvedValue(new Map())
+    importedCorrections.read.mockResolvedValue(new Map())
     tradeLinkFindFirstMock.mockResolvedValue(null)
     liveTradeLinkFindFirstMock.mockResolvedValue(null)
     cashLedgerFindUniqueMock.mockResolvedValue(null)
@@ -157,7 +162,7 @@ describe('positions controller', () => {
 
   describe('GET /api/positions', () => {
     it('lists positions for the authenticated user', async () => {
-      positionFindManyMock.mockResolvedValue([{ id: 'p_1' }])
+      positionFindManyMock.mockResolvedValue([{ id: 'p_1', transactions: [] }])
       positionCountMock.mockResolvedValue(1)
 
       const response = await request(createApp()).get('/api/positions')
@@ -203,7 +208,7 @@ describe('positions controller', () => {
         price: '0.123456789012',
         fees: '0.12345678',
       }
-      positionFindManyMock.mockResolvedValue([{ id: 'p_1' }])
+      positionFindManyMock.mockResolvedValue([{ id: 'p_1', transactions: [] }])
       positionCountMock.mockResolvedValue(1)
       acquisitionCorrections.read.mockResolvedValue(
         new Map([['p_1', metadata]])
@@ -211,9 +216,30 @@ describe('positions controller', () => {
       const response = await request(createApp()).get('/api/positions')
       expect(response.body.data[0]).toEqual({
         id: 'p_1',
+        transactions: [],
         acquisitionCorrection: metadata,
       })
       expect(acquisitionCorrections.read).toHaveBeenCalledWith('u_1', ['p_1'])
+    })
+
+    it('exposes imported BUY correction metadata on the owning position', async () => {
+      const metadata = { eventId: 'event_1', transactionId: 'tx_1' }
+      positionFindManyMock.mockResolvedValue([
+        {
+          id: 'p_1',
+          transactions: [{ id: 'tx_1', type: 'BUY' }],
+        },
+      ])
+      positionCountMock.mockResolvedValue(1)
+      importedCorrections.read.mockResolvedValue(new Map([['tx_1', metadata]]))
+
+      const response = await request(createApp()).get('/api/positions')
+
+      expect(response.status).toBe(200)
+      expect(response.body.data[0].importedExecutionCorrection).toEqual(
+        metadata
+      )
+      expect(importedCorrections.read).toHaveBeenCalledWith('u_1', ['tx_1'])
     })
   })
 
@@ -383,6 +409,7 @@ describe('positions controller', () => {
           position: {
             id: 'p_1',
             origin: 'MANUAL',
+            transactions: [],
             account: {
               id: 'acc_1',
               name: 'Main',
@@ -428,6 +455,7 @@ describe('positions controller', () => {
           position: {
             id: 'p_1',
             origin: 'MANUAL',
+            transactions: [],
             account: { status: 'ACTIVE', isDemo: false },
           },
         },
@@ -442,6 +470,48 @@ describe('positions controller', () => {
       expect(response.status).toBe(200)
       expect(response.body.data[0].acquisitionCorrection).toEqual(metadata)
       expect(acquisitionCorrections.read).toHaveBeenCalledWith('u_1', ['p_1'])
+    })
+
+    it('exposes imported BUY and SELL correction controls on closed parcels', async () => {
+      const buyCorrection = { eventId: 'buy_event', transactionId: 'buy_tx' }
+      const sellCorrection = { eventId: 'sell_event', transactionId: 'tx_1' }
+      transactionFindManyMock.mockResolvedValue([
+        {
+          id: 'tx_1',
+          type: 'SELL',
+          brokerRef: 'sell_event',
+          cashOperation: null,
+          position: {
+            id: 'p_1',
+            origin: 'IMPORT_TRADE',
+            account: { status: 'ACTIVE', isDemo: false },
+            transactions: [{ id: 'buy_tx', type: 'BUY', quantity: '5' }],
+          },
+        },
+      ])
+      transactionCountMock.mockResolvedValue(1)
+      importedCorrections.read.mockResolvedValue(
+        new Map([
+          ['buy_tx', buyCorrection],
+          ['tx_1', sellCorrection],
+        ])
+      )
+
+      const response = await request(createApp()).get(
+        '/api/positions/close-events'
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.body.data[0].importedAcquisitionCorrection).toEqual(
+        buyCorrection
+      )
+      expect(response.body.data[0].importedExecutionCorrection).toEqual(
+        sellCorrection
+      )
+      expect(importedCorrections.read).toHaveBeenCalledWith('u_1', [
+        'tx_1',
+        'buy_tx',
+      ])
     })
 
     it('applies inclusive date bounds and pagination', async () => {

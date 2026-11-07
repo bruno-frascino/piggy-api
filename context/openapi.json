@@ -495,6 +495,124 @@
         ]
       }
     },
+    "/api/accounts/{id}/imported-executions/{eventId}/corrections": {
+      "post": {
+        "description": "Appends an immutable correction overlay while preserving the original Kraken event, execution quantity and existing parcel allocations. Effective date, stable cash sequence, price and fees may change. The correction is supported only when consideration, fees and all allocated parcel transactions use one currency. Cash replay, parcel recomputation, postings and the source fingerprint update commit atomically. Reversal and quantity/allocation changes are not supported.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "effectiveDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "expectedRevisionId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedSourceFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "fees": {
+                    "description": "Exact non-negative total fees in the existing fee currency.",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "price": {
+                    "description": "Exact positive execution price in the existing quote currency.",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "expectedRevisionId",
+                  "expectedSourceFingerprint",
+                  "reason",
+                  "effectiveDate",
+                  "sequence",
+                  "price",
+                  "fees"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Idempotent retry of an already committed correction."
+          },
+          "201": {
+            "audit revision and cash postings committed atomically.": null,
+            "description": "Imported execution",
+            "parcel results": null
+          },
+          "400": {
+            "description": "Invalid correction or a date outside the confirmed review period."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Applied imported execution not found."
+          },
+          "409": {
+            "description": "Stale revision/source",
+            "or reserved cash sequence.": null,
+            "unsupported currency allocation": null
+          },
+          "422": {
+            "description": "Correction would leave an unsupported or insufficiently funded ledger."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Correct an audited live imported Kraken execution",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/accounts/{id}/opening-preview": {
       "post": {
         "description": "Read-only end-of-day Australia/Sydney reconciliation. It cannot confirm or enable accounting. Missing funding is never invented. Limited to 5000 parcels, 500 import batches, 50000 transactions and 10000 relevant import events; exceeding any limit returns 422.",
@@ -3569,7 +3687,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Paginated list of positions. Eligible live manual acquisitions include acquisitionCorrection metadata with transactionId, operationId, expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string quantity (total bought units), price and fees. Imported, demo and legacy acquisitions do not receive these controls.\n"
+            "description": "Paginated list of positions. Eligible live manual acquisitions include acquisitionCorrection metadata with transactionId, operationId, expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string quantity (total bought units), price and fees. Eligible live imported Kraken BUY executions also include importedExecutionCorrection metadata containing eventId, transactionId, operationId, expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence, price, fees and currency. Demo and legacy executions do not receive correction controls.\n"
           },
           "401": {
             "description": "Unauthorized"
@@ -3806,7 +3924,7 @@
                 }
               }
             },
-            "description": "Paginated SELL transactions with position and asset context. Each event carries `closeReason` (STOP_LOSS | TARGET | MANUAL | OTHER, or null when unknown). Eligible live manual sales also include `cashCorrection` metadata for the audited correction endpoint; imported and legacy sales do not. Eligible live manual BUYs include `acquisitionCorrection`, also for fully closed parcels: transactionId, operationId, expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string quantity (total bought units), price and fees.\n"
+            "description": "Paginated SELL transactions with position and asset context. Each event carries `closeReason` (STOP_LOSS | TARGET | MANUAL | OTHER, or null when unknown). Eligible live manual sales include `cashCorrection` metadata for the audited correction endpoint. Eligible live imported Kraken SELLs include `importedExecutionCorrection` with eventId, transactionId, operationId, expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence, price, fees and currency. Eligible live manual BUYs include `acquisitionCorrection`, also for fully closed parcels. Eligible live imported Kraken BUYs include `importedAcquisitionCorrection` with the same imported-execution metadata, also for fully closed parcels. Demo and legacy executions do not receive correction controls.\n"
           },
           "400": {
             "description": "Validation error"

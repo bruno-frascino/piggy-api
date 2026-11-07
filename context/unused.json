@@ -92,9 +92,9 @@
       "types": [
         {
           "col": 18,
-          "line": 19,
+          "line": 23,
           "name": "CashRevisionRequest",
-          "pos": 484
+          "pos": 597
         }
       ],
       "unlisted": [],

@@ -1,10 +1,16 @@
 # 0016. Confirmed opening statements and source-linked portfolio accounting
 
-- **Status**: Proposed; gated live trade posting and audited manual BUY/SELL corrections are implemented, but no account is activated
+- **Status**: Proposed; gated live manual and supported Kraken BUY/SELL posting, plus audited
+  live manual and imported Kraken execution corrections, are implemented. Imported corrections
+  keep quantities/allocations fixed and reject unsupported currency cases. No account is
+  activated; imported execution reversals, moves/deletion, and the reviewed confirmation/cutover
+  workflow remain outstanding.
 - **Date**: 2026-10-31
 - **Implementation**: executable reference specification, read-only opening preview, persistent
-  inactive drafts, and an atomic manual trade/cash writer requiring an explicitly provisioned
-  confirmed opening statement and active cash ledger; no activation workflow
+  inactive drafts, a gated atomic trade/cash writer, and audited manual/imported BUY/SELL
+  corrections. The writer requires an explicitly provisioned confirmed opening statement and
+  active cash ledger; there is no user-facing confirmation, account provisioning, or activation
+  workflow.
 
 ## Context
 
@@ -625,17 +631,18 @@ rejects intraday funding deficits and occupied effective slots. Identical retrie
 revision and return current projections, including after another correction; original staging
 retries likewise cannot duplicate the effect. The UI shows only sequence and audit inputs,
 refreshes conflicts without retrying mutations and disables stale/offline editors.
-Cash-only reversals and financial execution changes remain unsupported until source trades and
-cash can change atomically.
+For imported executions, cash-only reversals and financial corrections beyond the supported
+sequence-only adjustment remain unsupported until source trades and cash can change atomically.
 
 No legacy writer spends draft cash or maintains its postings. Draft operations must never be
 counted as spendable cash or portfolio value. The Kraken path reconciles persisted import records
 only; it does not verify them with the broker or enable live posting. Kraken remains the only
 supported adapter while accounting is completed. Binance/Coinbase and other demand-driven
 integrations are deferred, not cutover prerequisites; a CSV upload needs no activation switch,
-while future read-only API connections must be explicitly enabled by each user. Next connect
-financial execution corrections, atomic live trade/posting integration and remaining financial
-paths before confirmation. Existing preview ordering stays deliberately unverified; it cannot be
+while future read-only API connections must be explicitly enabled by each user. Subsequent
+implementation added gated atomic live trade/posting and audited manual BUY/SELL corrections.
+Imported financial adjustments, execution reversals, and coordinated move/deletion workflows
+remain cutover blockers. Existing preview ordering stays deliberately unverified; it cannot be
 promoted into stable ledger order automatically.
 
 Persisted user-facing opening confirmation, account activation, cutover invalidation, production
@@ -846,9 +853,45 @@ and blocks offline or stale review submissions. Legacy financial editors cannot 
 ledger. Account activation, demo ledger provisioning, moves, deletion, reversals and imported
 financial adjustments remain separate work.
 
+### Audited corrections for live imported executions
+
+Eligible applied Kraken BUY/SELL executions in active real ledger-backed accounts use
+`POST /api/accounts/{id}/imported-executions/{eventId}/corrections`. The immutable operation
+revision stores the source event identity, audit reason, expected revision/source head,
+before/after linked transaction snapshots and exact reversal/replacement cash postings. It
+allows only effective date, stable sequence, exact price and fees to change. Transaction
+quantity, parcel allocation, currency and source identity are fixed, and the original
+`ImportedEvent` remains unchanged.
+
+The writer locks the account and all affected parcels, revalidates the applied event and exact
+transaction links, enforces the opening/observation boundary and same-day BUY/SELL ordering,
+and replays the full effective-dated cash ledger before writing. Funding failure, changed
+allocation links, short parcels, multiple currencies and fee-currency conversion are rejected.
+Transaction and parcel projections, revision postings, audit chain and accepted source
+fingerprint commit atomically. History provides controls for imported BUYs (including closed
+parcels) and SELLs; holdings provide controls for imported BUYs. The UI requires an audit reason
+and acknowledgement and rejects offline/stale writes. This does not activate accounts or enable
+execution reversals, arbitrary import adjustments, moves or deletion.
+
 ## Consequences
 
 Accurate performance begins at a known boundary rather than a fabricated inception history.
 Users must supply real funding and resolve gaps. Existing tools remain usable while new
 accounting is enabled gradually. Integration breadth and complex tax treatment follow only
 after the supported ledger reconciles.
+
+### Current delivery boundary and next work
+
+The live writer and audited manual/imported BUY/SELL correction paths are gated behind manually
+provisioned confirmed-ledger state. Imported correction is limited to fixed quantities and parcel
+allocations in one currency; it does not activate accounts, and ordinary legacy accounts continue
+using legacy trade behavior. Before any real account is enabled, implement any supported
+execution reversals and ledger-safe move/deletion handling, then provide a reviewed per-account
+confirmation/cutover flow that revalidates the opening preview and atomically provisions the
+confirmed statement and active ledger. Connect ordinary trade entry and a balance/activity/
+reconciliation view for activated accounts, with regression and concurrency tests proving that
+activation cannot race or partially apply. Income, transfers, sourced valuations, production
+XIRR, corporate-action tax treatment, and scheduled valuation remain subsequent work;
+accounting-backed performance must not be presented before its data and methodology are
+available. See the [delivery plan](../portfolio-foundation-plan.md) for sequence and acceptance
+gates.

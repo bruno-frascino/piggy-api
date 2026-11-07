@@ -15,6 +15,10 @@ import {
   prepareDraftTradeCash,
   type DraftTradeRequest,
 } from './draft-trade-command.js'
+import {
+  parseImportedExecutionAudit,
+  type ImportedExecutionAudit,
+} from './import-execution-correction.js'
 
 export interface CashRevisionRequest {
   idempotencyKey: string
@@ -23,6 +27,7 @@ export interface CashRevisionRequest {
   replacement: CashCommand | null
   proposedTrade?: DraftTradeRequest | null
   executionAudit?: ExecutionAudit
+  importedExecutionAudit?: ImportedExecutionAudit
 }
 
 export interface PreparedCashRevision {
@@ -72,6 +77,7 @@ export function prepareCashRevision(
           'replacement',
           'proposedTrade',
           'executionAudit',
+          'importedExecutionAudit',
         ].includes(key)
     )
   )
@@ -97,6 +103,13 @@ export function prepareCashRevision(
       : {}),
     ...('executionAudit' in row
       ? { executionAudit: parseExecutionAudit(row.executionAudit) }
+      : {}),
+    ...('importedExecutionAudit' in row
+      ? {
+          importedExecutionAudit: parseImportedExecutionAudit(
+            row.importedExecutionAudit
+          ),
+        }
       : {}),
   }
   if (
@@ -151,6 +164,70 @@ export function prepareCashRevision(
     )
       cashRevisionConflict(
         'Source audit must exactly match the manual execution cash revision',
+        400
+      )
+  }
+  if (request.importedExecutionAudit) {
+    const audit = request.importedExecutionAudit
+    const cash = request.replacement
+    const snapshots = audit.after
+    const currency = snapshots[0]?.currency
+    const gross = snapshots.reduce(
+      (sum, snapshot) => sum.plus(snapshot.totalValue),
+      new AccountingDecimal(0)
+    )
+    const fees = snapshots.reduce(
+      (sum, snapshot) => sum.plus(snapshot.fees),
+      new AccountingDecimal(0)
+    )
+    const transactionIds = snapshots
+      .map((snapshot) => snapshot.transactionId)
+      .sort()
+    if (
+      request.executionAudit ||
+      request.proposedTrade !== undefined ||
+      !cash ||
+      cash.source.origin !== 'IMPORT' ||
+      (cash.kind !== 'BUY' && cash.kind !== 'SELL') ||
+      cash.transactionIds.length !== transactionIds.length ||
+      JSON.stringify([...cash.transactionIds].sort()) !==
+        JSON.stringify(transactionIds) ||
+      audit.before.length !== audit.after.length ||
+      audit.before.some((before, index) => {
+        const after = audit.after[index]
+        return (
+          !after ||
+          before.transactionId !== after.transactionId ||
+          before.positionId !== after.positionId ||
+          before.quantity !== after.quantity ||
+          before.currency !== after.currency
+        )
+      }) ||
+      snapshots.some(
+        (snapshot) =>
+          snapshot.currency !== currency ||
+          snapshot.date.slice(0, 10) !== audit.input.effectiveDate ||
+          snapshot.price !== audit.input.price ||
+          snapshot.totalValue !==
+            new AccountingDecimal(snapshot.quantity)
+              .mul(snapshot.price)
+              .toDecimalPlaces(8, AccountingDecimal.ROUND_HALF_UP)
+              .toFixed()
+      ) ||
+      fees.toFixed() !== audit.input.fees ||
+      audit.input.expectedSourceFingerprint !== audit.previousFingerprint ||
+      cash.consideration.currency !== currency ||
+      cash.consideration.amount !== gross.toFixed() ||
+      (cash.fees[0]?.amount ?? '0') !== fees.toFixed() ||
+      cash.fees.some((fee) => fee.currency !== currency) ||
+      cash.effectiveDate !== audit.input.effectiveDate ||
+      cash.sequence !== audit.input.sequence ||
+      request.idempotencyKey !== audit.input.idempotencyKey ||
+      request.expectedRevisionId !== audit.input.expectedRevisionId ||
+      request.reason !== audit.input.reason
+    )
+      cashRevisionConflict(
+        'Imported execution audit must exactly match its cash correction',
         400
       )
   }
