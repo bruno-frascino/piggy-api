@@ -50,12 +50,22 @@ identification) parcel-matching step would need to be added to
 
 ## Per-disposal calculation
 
-For each SELL transaction within the target financial year:
+Only effective SELLs in the explicit eligible account selection are disposals. Voided
+transactions and voided acquisitions are excluded from newly computed reports. Audited
+execution corrections use the current corrected parcel/transaction projection; imported
+source events remain retained. A manual BUY void is not a disposal and creates no capital
+gain/loss. A SELL void removes that disposal's economic effect and restores inventory.
+
+Previously generated PDF revisions remain unchanged. Position/transaction update timestamps
+flag affected report usage as stale; regenerate explicitly to obtain a new current revision.
+Voiding a trade does not silently update a lodged report or certify its tax treatment.
+
+For each effective SELL transaction within the target financial year:
 
 - `quantity` = the transaction's quantity.
 - `proceeds` = `totalValue − fees` (sell value net of selling costs).
-- `originalBuyQty` = `position.totalBuyValue / position.entryPrice` (the
-  position's original acquired quantity).
+- `originalBuyQty` = the retained effective BUY transaction's quantity (fallback:
+  `position.totalBuyValue / position.entryPrice` for legacy records without that quantity).
 - `proratedBuyFee` = `position.buyFees × (quantity / originalBuyQty)`.
 - `costBase` = `position.entryPrice × quantity + proratedBuyFee`.
 - Foreign-currency amounts are converted to AUD using the historical FX rate

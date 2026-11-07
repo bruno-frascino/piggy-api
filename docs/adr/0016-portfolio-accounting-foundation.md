@@ -1,14 +1,14 @@
 # 0016. Confirmed opening statements and source-linked portfolio accounting
 
-- **Status**: Proposed; gated live manual and supported Kraken BUY/SELL posting, plus audited
-  live manual and imported Kraken execution corrections, are implemented. Imported corrections
-  keep quantities/allocations fixed and reject unsupported currency cases. No account is
-  activated; imported execution reversals, moves/deletion, and the reviewed confirmation/cutover
-  workflow remain outstanding.
+- **Status**: Proposed overall architecture; implemented slices include gated manual/supported
+  Kraken posting, audited manual/imported execution corrections and terminal manual trade voids.
+  No user-facing account activation exists. Imported voids, financial moves/deletion and
+  unsupported currencies remain blocked. The delivery plan owns remaining-step status.
 - **Date**: 2026-10-31
+- **Last reviewed**: 2026-11-07
 - **Implementation**: executable reference specification, read-only opening preview, persistent
   inactive drafts, a gated atomic trade/cash writer, and audited manual/imported BUY/SELL
-  corrections. The writer requires an explicitly provisioned confirmed opening statement and
+  corrections and manual voids with retained audit access. The writer requires an explicitly provisioned confirmed opening statement and
   active cash ledger; there is no user-facing confirmation, account provisioning, or activation
   workflow.
 
@@ -25,8 +25,22 @@ shorts, crypto transfers and staking income require later policies.
 
 See the [delivery plan](../portfolio-foundation-plan.md) and
 [executable reference cases](../../src/lib/portfolio-accounting-contract.test.ts).
+The plan's [step status register](../portfolio-foundation-plan.md#step-status-register)
+is the canonical implementation handoff: update status, prerequisites, remaining work and
+verification evidence with each milestone. Read it before resuming to avoid repeating
+delivered work or skipping unfinished gates. This ADR records policy, not a separate task queue.
 
 ## Decisions
+
+These sections describe the target accounting contract unless an implementation section
+explicitly states otherwise. `LEGACY`, `CONFIRMED` and `RECONCILIATION_REQUIRED` below are
+product readiness concepts, not a claim that all are persisted account states or exposed
+in a provisioning API. Existing draft funding is inactive; live funding, live review and
+controlled confirmation remain planned. See delivery steps 2A-2F in the
+[plan](../portfolio-foundation-plan.md#remaining-increment-2-steps-implement-in-this-order).
+Implementation notes record successive milestones; older statements about unavailable
+corrections/reversals are historical. The final delivery-boundary section and current plan
+take precedence when determining what is now implemented.
 
 ### Opening boundary and account readiness
 
@@ -105,6 +119,9 @@ Ownership/authentication checks cover every account, parcel, source and transfer
 Only supported active accounts accept new spending; closed accounts retain balances and
 history, and cannot close with undisposed holdings or unexplained residual cash. Existing
 deletion guards, demo exclusions and soft-delete/purge rules continue to apply.
+The current closure writer checks effective open/partial inventory and retains ledger records;
+it does not check residual cash or statement variance. The launch closure/reopening policy must
+be confirmed and enforced before cutover; archived audit access is already implemented.
 
 ### Decimal precision and reporting
 
@@ -850,8 +867,8 @@ The UI exposes corrections in holdings and closed-trade history, including fully
 using full exact acquisition metadata rather than prorated fees/remaining holdings. It requires
 explicit acknowledgement of live cash/cost-basis/tax-report impacts, preserves retry identity,
 and blocks offline or stale review submissions. Legacy financial editors cannot bypass the
-ledger. Account activation, demo ledger provisioning, moves, deletion, reversals and imported
-financial adjustments remain separate work.
+ledger. This slice did not include activation, demo provisioning, moves/deletion or reversals.
+Restricted imported corrections and terminal manual voids are described in the later sections.
 
 ### Audited corrections for live imported executions
 
@@ -916,9 +933,9 @@ using legacy trade behavior. Manual voids are now supported; imported reversals 
 moves/deletion remain explicitly blocked. Before any real account is enabled, deliver audited
 live deposits/withdrawals and cash balance/activity/reconciliation views, then provide a reviewed per-account
 confirmation/cutover flow that revalidates the opening preview and atomically provisions the
-confirmed statement and active ledger. Connect ordinary trade entry and a balance/activity/
-reconciliation view for activated accounts, with regression and concurrency tests proving that
-activation cannot race or partially apply. Income, transfers, sourced valuations, production
+confirmed statement and active ledger. Ordinary trade-entry routing and balance/activity/
+reconciliation must be ready before activation, with regression and concurrency tests proving
+that activation cannot race or partially apply. Income, transfers, sourced valuations, production
 XIRR, corporate-action tax treatment, and scheduled valuation remain subsequent work;
 accounting-backed performance must not be presented before its data and methodology are
 available. See the [delivery plan](../portfolio-foundation-plan.md) for sequence and acceptance

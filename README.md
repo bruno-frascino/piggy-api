@@ -6,10 +6,37 @@ A stock/ETF/crypto portfolio tracking REST API built with Express, Prisma, and T
 
 - **Authentication**: Email/password signup & login with JWT access + refresh tokens (rotation), password reset flow
 - **Trading Accounts**: Create, rename, close/reopen, and delete trading accounts
-- **Position Tracking**: Open, update, close (fully or partially), and delete positions, with drawdown recalculation from historical prices
-- **Portfolio Snapshots**: Daily portfolio snapshots and historical equity-curve data
+- **Position Tracking**: One acquisition parcel per BUY, partial/full sales, metadata and historical drawdown; financial editing/deletion is restricted for imported or cash-linked records
+- **Portfolio Snapshots**: Legacy invested-capital/gain snapshots and historical curves, not yet cash-inclusive sourced portfolio valuations or TWR/XIRR
+- **Kraken Imports**: Supported CSV review and parcel allocation; enum entries for other providers do not imply implemented adapters
+- **Accounting Foundation (gated)**: Read-only opening previews, immutable inactive drafts, exact cash replay/evidence review, coordinated live trades, audited execution corrections and terminal manual voids
+- **CGT Reports**: Explicit real-account selection, append-only PDF revisions and source-staleness indicators
 - **Stock Search & Quotes**: Symbol search and live quotes powered by Yahoo Finance (no API key required)
 - **API Documentation**: Interactive Swagger UI
+
+## Accounting delivery boundary
+
+See the [step-by-step foundation plan](./docs/portfolio-foundation-plan.md) for current status,
+remaining increments, acceptance gates and commit order, and [ADR 0016](./docs/adr/0016-portfolio-accounting-foundation.md)
+for accounting policy. The plan is the resume point for ongoing foundation work.
+
+Opening preview/save/reconciliation does not activate an account or create spendable cash.
+Live posting/corrections/voids require an already provisioned, matching confirmed opening
+statement and active real cash ledger. There is no user-facing provisioning flow; do not
+manually provision production accounts to bypass the release gate.
+
+Manual SELL voids restore inventory and remove proceeds. Manual BUY voids require no effective
+sales and exclude the acquisition from current holdings without treating it as a disposal.
+Original trades/postings and terminal revision audits remain retained. Current holdings,
+disposals and CGT/statistics exclude voided economic effects; saved PDF revisions do not change.
+Imported corrections retain source events and fixed quantity/parcel allocations; imported
+voids, financial moves and deletion are blocked. Retained void audits remain readable on archived
+ledger-backed accounts, but are not a source-freshness or reconciliation assertion.
+
+Next milestones: live funding, funding revisions, balances/activity/evidence review, ordinary
+ledger trade-entry routing, then reviewed per-account confirmation. Income/transfers, sourced
+valuations and cash-flow-adjusted returns follow later. Existing demos remain legacy practice
+accounts, excluded from real aggregates and tax.
 
 ## Tech Stack
 
@@ -93,14 +120,31 @@ The API will be available at `http://localhost:4000` (configurable via the `PORT
 - `POST /api/accounts/:id/reopen` - Reopen a closed trading account
 - `DELETE /api/accounts/:id` - Delete a trading account (refused if it still has positions or is used by a tax report; derived snapshots cascade)
 
+### Accounting (`/api/accounts/:id`) — requires auth
+
+- `POST /api/accounts/:id/opening-preview` - Read-only opening holdings/cash preview
+- `POST /api/accounts/:id/opening-statements` - Save a reviewed inactive opening draft
+- `GET /api/accounts/:id/opening-statements` - List retained opening drafts
+- `GET /api/accounts/:id/opening-statements/:statementId/reconciliation` - Inactive cash/inventory/evidence review; never activation-ready
+- `POST /api/accounts/:id/trades` - Gated atomic manual BUY/SELL and cash posting
+- `POST /api/accounts/:id/trades/:transactionId/corrections` - Audited live manual SELL date/sequence/price/fee correction
+- `POST /api/accounts/:id/trades/:transactionId/acquisition-corrections` - Audited live manual BUY date/sequence/quantity/price/fee correction
+- `POST /api/accounts/:id/imported-executions/:eventId/corrections` - Restricted source-preserving live Kraken execution correction
+- `POST /api/accounts/:id/trades/:transactionId/voids` - Terminal audited live manual trade void
+- `GET /api/accounts/:id/trades/voids` - Paginated retained void audits, including archived accounts
+
+This is a selected route summary. See [generated API surface](./context/api-surface.md) and
+Swagger at `/api/docs` for complete draft cash/evidence/staging routes, request shapes,
+eligibility and error responses. Draft deposits/withdrawals are not a live funding API.
+
 ### Positions (`/api/positions`) — requires auth
 
-- `GET /api/positions` - List positions (filterable by `status`, `assetType`, `exchangeCode`, `accountId`; paginated)
+- `GET /api/positions` - List effective positions (filterable by `status`, `assetType`, `exchangeCode`, `accountId`; paginated); voided acquisitions/transactions excluded
 - `POST /api/positions` - Open a new position
 - `PATCH /api/positions/:id` - Update position metadata
 - `POST /api/positions/:id/close` - Close or partially close a position
-- `DELETE /api/positions/:id` - Delete a position and its transactions
-- `GET /api/positions/close-events` - List close events (sell transactions) with context
+- `DELETE /api/positions/:id` - Delete an eligible legacy manual position; imported/cash-linked/voided records are protected
+- `GET /api/positions/close-events` - List effective close events (sell transactions) with context; excludes voided economic effects
 - `PATCH /api/positions/close-events/:id` - Edit a recorded close event
 - `POST /api/positions/:id/recalculate-drawdown` - Recalculate max drawdown from historical prices
 
@@ -163,6 +207,13 @@ Defined in `prisma/schema.prisma`:
 - **FxRateCache**: cached foreign-currency-to-AUD daily rates (RBA, Yahoo fallback), unique per `{currency, date}`
 - **Watchlist** / **WatchlistItem**: named per-user watchlists and the assets in them
 - **SavedScreen**: a user's saved screener filter sets
+- **AccountOpeningStatement** and child cash/parcel records: immutable opening revisions and source snapshots
+- **DraftCashOperation** / revisions, postings and evidence: inactive scenarios and user-attested reconciliation history
+- **AccountCashLedger** / **AccountCashOperation** / **AccountCashOperationRevision**: gated live source-linked cash history and immutable correction/void postings
+
+`Position.voidedAt` and `Transaction.voidedAt` are economic-inactivity markers validated
+against terminal manual void audits, not user deletion markers. See the
+[generated data model](./context/data-model.md) for all persisted fields and relationships.
 
 ## Development
 

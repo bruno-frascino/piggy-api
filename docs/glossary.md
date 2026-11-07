@@ -12,7 +12,7 @@ there's no separate "Parcel" entity in the schema.
 
 **Disposal** — A SELL `Transaction` against a `Position` (partial or full). Because each
 `Position` is already a single parcel, every disposal unambiguously reduces/closes that one
-parcel — no FIFO/lot-matching is needed.
+parcel — no FIFO/lot-matching is needed. A retained voided SELL is not an effective disposal.
 
 **Close event** — The record created when a `Position` transitions to `PARTIAL` or `CLOSED`
 via a SELL transaction; surfaced to the frontend via `GET /positions/close-events` and shown
@@ -62,6 +62,42 @@ organized around ("account-first" UX). A user can have several (e.g. personal vs
 spouse's), each with its own set of positions and its own eligibility for tax report
 account-selection.
 
+**Opening boundary** — End-of-day on a chosen calendar date in `Australia/Sydney`.
+Same-day trades are included in opening inventory/cash, not posted again. Opening holdings
+reference existing parcels rather than creating new acquisitions. See ADR 0016.
+
+**Inactive opening draft** — An immutable saved opening statement and scenario cash history.
+Preview, evidence matching and funded draft replay do not activate a ledger or certify broker
+verification. Speculative proposed trades are not real holdings.
+
+**Ledger-backed account** — A real account with an active `AccountCashLedger` tied to its
+matching confirmed opening statement. Live writers validate source/audit history and dated
+funding under account locks. User-facing provisioning remains planned; ordinary legacy
+accounts are not ledger-backed merely because an opening draft exists.
+
+**Effective trade/operation** — The currently applicable economic effect after audited
+corrections, excluding terminal reversals/voids. Retained original records and reversal legs
+are audit evidence, not additional cash flows, holdings or disposals to count.
+
+**Execution correction** — An immutable revision replacing supported execution economics
+and its cash effects atomically. Manual BUY corrections may change quantity; manual SELL
+quantity is fixed. Supported imported Kraken corrections preserve the event, quantity and
+parcel allocations. Direct legacy financial edits cannot bypass these writers.
+
+**Manual trade void** — A terminal audited reversal, not physical deletion. A manual SELL
+void restores inventory; a BUY void requires no effective sales and removes its parcel from
+effective holdings. `voidedAt` markers must match the retained revision audit. A voided BUY
+is not a genuine CLOSED disposal. Original/corrected cash sequence slots remain reserved.
+
+**Source fingerprint** — A deterministic digest of reviewed account source records.
+Audited continuation chains accepted source changes from the immutable opening fingerprint.
+Unexpected drift blocks new live writes; retained void audit access is not a current
+source-freshness assertion.
+
+**Cash evidence** — User-attested, dated currency balances with source/reference and variance
+decisions. Evidence is immutable; variances are recalculated against effective replay.
+A matching balance is neither an adjustment that creates cash nor independent broker verification.
+
 **Demo account** — A `TradingAccount` with `isDemo = true`, chosen at creation and immutable.
 Used for practice: positions open and close normally, but the account is never eligible for
 tax reports and is excluded from "All accounts" aggregates (History, Statistics); its data
@@ -73,7 +109,8 @@ keeps a single currency. See `docs/adr/0014-crypto-venues-split-by-quote-currenc
 
 **Position origin** — `Position.origin`: `MANUAL` (entered by the user), `IMPORT_TRADE`
 (created from an exchange import of one order) or `STAKING_REWARD` (monthly staking parcel).
-`Position.externalRef` holds the source order/month key for imported parcels (`""` for manual)
+`Position.externalRef` holds the source order/month key for imported parcels, a coordinated
+live-trade identity for live manual parcels, or `""` for legacy manual parcels,
 and is part of the Position unique key.
 
 **Allocation** — The user-confirmed mapping of an imported SELL to the parcels it disposes of

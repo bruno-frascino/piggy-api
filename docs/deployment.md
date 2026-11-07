@@ -2,6 +2,25 @@
 
 Production topology: `piggy-api` on a DigitalOcean VPS, `piggy-fe` on Vercel.
 
+## Accounting foundation release gate
+
+Deploying additive accounting migrations and UI code does **not** activate real accounts.
+Opening drafts remain inactive; gated live writers require a matching confirmed statement
+and active ledger, and there is no user-facing provisioning flow yet. Do not manually seed
+production ledger state to bypass the [foundation plan's cutover gates](./portfolio-foundation-plan.md#remaining-increment-2-steps-implement-in-this-order).
+
+Manual trade voids retain source trades/operations and append terminal reversal audits;
+the additive `voidedAt` columns do not delete data or change old PDF revisions. Deploy backend
+migrations/code before dependent frontend changes, through the existing pipelines only.
+Pull the frontend contract from the committed backend and include generated context in both
+milestone commits. Rehearse migrations/backup restoration before controlled cutover.
+
+Before enablement, implement live funding/revisions, cash review, ordinary ledger-entry routing,
+and explicit retry-safe account confirmation. Keep imported voids, financial moves and protected
+record deletion blocked. Future rollback/disable procedures must retain postings and prevent
+legacy financial writers from creating a divergent history; no production cutover/rollback
+procedure is delivered merely by this documentation.
+
 ## piggy-api (VPS)
 
 - Ubuntu droplet, deploy user `skinny` (sudoer, not root; root SSH + password auth disabled).
