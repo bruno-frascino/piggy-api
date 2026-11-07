@@ -3,17 +3,22 @@ import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { post, correct, correctBuy, correctImported } = vi.hoisted(() => ({
-  post: vi.fn(),
-  correct: vi.fn(),
-  correctBuy: vi.fn(),
-  correctImported: vi.fn(),
-}))
+const { post, correct, correctBuy, correctImported, voidTrade, readVoids } =
+  vi.hoisted(() => ({
+    post: vi.fn(),
+    correct: vi.fn(),
+    correctBuy: vi.fn(),
+    correctImported: vi.fn(),
+    voidTrade: vi.fn(),
+    readVoids: vi.fn(),
+  }))
 vi.mock('../lib/draft-cash-ledger.js', () => ({
   postAccountTrade: post,
   correctLiveManualSale: correct,
   correctLiveManualAcquisition: correctBuy,
   correctLiveImportedExecution: correctImported,
+  voidLiveManualTrade: voidTrade,
+  readLiveManualTradeVoids: readVoids,
 }))
 vi.mock('../middleware/auth.js', () => ({
   authenticateToken: (req: Request, res: Response, next: NextFunction) => {
@@ -73,6 +78,80 @@ beforeEach(() => {
 })
 
 describe('account trade endpoint', () => {
+  it('authenticates, validates and forwards manual voids, retries and errors', async () => {
+    const input = {
+      idempotencyKey: 'void-1',
+      expectedRevisionId: 'op1',
+      expectedSourceFingerprint: 'a'.repeat(64),
+      reason: 'Duplicate trade',
+    }
+    const path = '/api/accounts/a1/trades/tx1/voids'
+    await request(app()).post(path).send(input).expect(401)
+    for (const invalid of [
+      { ...input, reason: '' },
+      { ...input, expectedRevisionId: '' },
+      { ...input, expectedSourceFingerprint: 'bad' },
+    ])
+      await request(app())
+        .post(path)
+        .set('Authorization', '******')
+        .send(invalid)
+        .expect(400)
+    expect(voidTrade).not.toHaveBeenCalled()
+    voidTrade.mockResolvedValueOnce({
+      operationId: 'op1',
+      revisionId: 'rev1',
+      created: true,
+    })
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(input)
+      .expect(201)
+    expect(voidTrade).toHaveBeenCalledWith('u1', 'a1', 'tx1', input)
+    voidTrade.mockResolvedValueOnce({
+      operationId: 'op1',
+      revisionId: 'rev1',
+      created: false,
+    })
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(input)
+      .expect(200)
+    voidTrade.mockRejectedValueOnce(
+      Object.assign(new Error('Insufficient cash'), { status: 422 })
+    )
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(input)
+      .expect(422)
+  })
+
+  it('reads owned paginated retained void audits and rejects invalid pagination', async () => {
+    const path = '/api/accounts/a1/trades/voids'
+    await request(app()).get(path).expect(401)
+    await request(app())
+      .get(`${path}?limit=101`)
+      .set('Authorization', '******')
+      .expect(400)
+    await request(app())
+      .get(`${path}?offset=-1`)
+      .set('Authorization', '******')
+      .expect(400)
+    expect(readVoids).not.toHaveBeenCalled()
+    readVoids.mockResolvedValue({ items: [], total: 0, limit: 10, offset: 2 })
+    const result = await request(app())
+      .get(`${path}?limit=10&offset=2`)
+      .set('Authorization', '******')
+      .expect(200)
+    expect(result.body.data.items).toEqual([])
+    expect(readVoids).toHaveBeenCalledWith('u1', 'a1', 10, 2)
+    await request(app()).get(path).set('Authorization', '******').expect(200)
+    expect(readVoids).toHaveBeenLastCalledWith('u1', 'a1', 100, 0)
+  })
+
   it('authenticates, validates and forwards the exact account command', async () => {
     const path = '/api/accounts/a1/trades'
     await request(app()).post(path).send(buy).expect(401)

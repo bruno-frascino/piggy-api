@@ -1,12 +1,12 @@
 [
   {
-    "endLine": 15,
+    "endLine": 17,
     "file": "src/controllers/account-trades.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 15
+    "startLine": 17
   },
   {
     "endLine": 18,
@@ -441,76 +441,76 @@
     "startLine": 421
   },
   {
-    "endLine": 31,
+    "endLine": 36,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "InterfaceDeclaration",
     "name": "CashRevisionRequest",
     "signature": "export interface CashRevisionRequest",
-    "startLine": 23
+    "startLine": 27
   },
   {
-    "endLine": 36,
+    "endLine": 41,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "InterfaceDeclaration",
     "name": "PreparedCashRevision",
     "signature": "export interface PreparedCashRevision",
-    "startLine": 33
+    "startLine": 38
   },
   {
-    "endLine": 245,
+    "endLine": 270,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "prepareCashRevision",
     "signature": "export function prepareCashRevision( raw: unknown, now = new Date() ): PreparedCashRevision",
-    "startLine": 63
+    "startLine": 68
   },
   {
-    "endLine": 283,
+    "endLine": 308,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "prepareDraftTradeRevision",
     "signature": "export function prepareDraftTradeRevision( raw: unknown, tradeId: string, now = new Date() )",
-    "startLine": 247
+    "startLine": 272
   },
   {
-    "endLine": 353,
+    "endLine": 378,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "prepareCapitalCashRevision",
     "signature": "export function prepareCapitalCashRevision( raw: unknown, original: CashCommand, now = new Date() ): PreparedCashRevision",
-    "startLine": 285
+    "startLine": 310
   },
   {
-    "endLine": 357,
+    "endLine": 382,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "InterfaceDeclaration",
     "name": "RevisionLeg",
     "signature": "export interface RevisionLeg extends CashLeg",
-    "startLine": 355
+    "startLine": 380
   },
   {
-    "endLine": 402,
+    "endLine": 427,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "prepareImportedCashRevision",
     "signature": "export function prepareImportedCashRevision( raw: unknown, original: CashCommand, now = new Date() ): PreparedCashRevision",
-    "startLine": 359
+    "startLine": 384
   },
   {
-    "endLine": 440,
+    "endLine": 465,
     "file": "src/lib/cash-revisions.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "prepareRevisionLegs",
     "signature": "export function prepareRevisionLegs( original: CashCommand, replacement: CashCommand | null, now = new Date() ): RevisionLeg[]",
-    "startLine": 404
+    "startLine": 429
   },
   {
     "endLine": 32,
@@ -549,7 +549,7 @@
     "startLine": 56
   },
   {
-    "endLine": 264,
+    "endLine": 266,
     "file": "src/lib/cgt-engine.ts",
     "jsdoc": "Computes an ATO-style capital gains report for a user, financial year, and an explicit set of Trading Accounts (a \"declaration\" — e.g. the user's own accounts vs a spouse's accounts tracked under the same login). Each `Position` is created with exactly one BUY transaction and is never appended to (see positions.ts `POST /`), so every Position IS already a discrete CGT parcel — no FIFO lot reconstruction is required. Every SELL transaction against it (full or partial close) is an unambiguous disposal of that specific parcel.",
     "kind": "FunctionDeclaration",
@@ -756,175 +756,193 @@
     "startLine": 220
   },
   {
-    "endLine": 908,
+    "endLine": 916,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "Internal staging only: never posts spendable cash or mutates a live trade.",
     "kind": "FunctionDeclaration",
     "name": "saveDraftCashOperation",
     "signature": "export function saveDraftCashOperation( userId: string, statementId: string, raw: unknown )",
-    "startLine": 902
+    "startLine": 910
   },
   {
-    "endLine": 946,
+    "endLine": 954,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "saveDraftManualExecutionCash",
     "signature": "export async function saveDraftManualExecutionCash( userId: string, accountId: string, statementId: string, transactionId: string, sequence: number )",
-    "startLine": 910
+    "startLine": 918
   },
   {
-    "endLine": 1012,
+    "endLine": 1020,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "saveDraftImportedExecutionCash",
     "signature": "export async function saveDraftImportedExecutionCash( userId: string, accountId: string, statementId: string, eventId: string, sequence: number )",
-    "startLine": 948
+    "startLine": 956
   },
   {
-    "endLine": 1813,
+    "endLine": 1821,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "Read-only reconciliation; a funded draft is not a confirmed live ledger.",
     "kind": "FunctionDeclaration",
     "name": "reconcileDraftOpening",
     "signature": "export async function reconcileDraftOpening( userId: string, statementId: string, accountId?: string )",
-    "startLine": 1252
+    "startLine": 1260
   },
   {
-    "endLine": 1929,
+    "endLine": 1937,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "recordDraftCashEvidence",
     "signature": "export async function recordDraftCashEvidence( userId: string, statementId: string, raw: unknown, accountId?: string )",
-    "startLine": 1815
+    "startLine": 1823
   },
   {
-    "endLine": 1983,
+    "endLine": 1991,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "previewDraftCashEvidence",
     "signature": "export async function previewDraftCashEvidence( userId: string, statementId: string, raw: unknown, accountId?: string )",
-    "startLine": 1931
+    "startLine": 1939
   },
   {
-    "endLine": 1993,
+    "endLine": 2001,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "saveDraftReconciliationCashOperation",
     "signature": "export async function saveDraftReconciliationCashOperation( userId: string, statementId: string, raw: unknown, accountId: string )",
-    "startLine": 1985
+    "startLine": 1993
   },
   {
-    "endLine": 2212,
+    "endLine": 2220,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "Isolated proposed parcels only; never creates or edits a live Position/Transaction.",
     "kind": "FunctionDeclaration",
     "name": "saveDraftManualTrade",
     "signature": "export async function saveDraftManualTrade( userId: string, statementId: string, raw: unknown )",
-    "startLine": 1996
+    "startLine": 2004
   },
   {
-    "endLine": 2227,
+    "endLine": 2235,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "Cash-only corrections cannot independently change an isolated trade.",
     "kind": "FunctionDeclaration",
     "name": "correctDraftCashOperation",
     "signature": "export async function correctDraftCashOperation( userId: string, statementId: string, operationId: string, raw: unknown )",
-    "startLine": 2215
+    "startLine": 2223
   },
   {
-    "endLine": 2236,
+    "endLine": 2244,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctDraftManualTrade",
     "signature": "export async function correctDraftManualTrade( userId: string, statementId: string, operationId: string, raw: unknown )",
-    "startLine": 2229
+    "startLine": 2237
   },
   {
-    "endLine": 2249,
+    "endLine": 2257,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctDraftReconciliationCashOperation",
     "signature": "export async function correctDraftReconciliationCashOperation( userId: string, accountId: string, statementId: string, operationId: string, raw: unknown )",
-    "startLine": 2238
+    "startLine": 2246
   },
   {
-    "endLine": 3378,
+    "endLine": 3412,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "beginLiveImportPosting",
     "signature": "export async function beginLiveImportPosting( db: DraftCashTransaction, userId: string, accountId: string, batchId: string, events: readonly",
-    "startLine": 3108
+    "startLine": 3142
   },
   {
-    "endLine": 3651,
+    "endLine": 3688,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "Posts one new manual trade only after an explicit confirmed ledger exists.",
     "kind": "FunctionDeclaration",
     "name": "postAccountTrade",
     "signature": "export async function postAccountTrade( userId: string, accountId: string, raw: unknown )",
-    "startLine": 3381
+    "startLine": 3415
   },
   {
-    "endLine": 3666,
+    "endLine": 3703,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctLiveManualSale",
     "signature": "export async function correctLiveManualSale( userId: string, accountId: string, transactionId: string, raw: unknown )",
-    "startLine": 3653
+    "startLine": 3690
   },
   {
-    "endLine": 3681,
+    "endLine": 3906,
+    "file": "src/lib/draft-cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "voidLiveManualTrade",
+    "signature": "export async function voidLiveManualTrade( userId: string, accountId: string, transactionId: string, raw: unknown )",
+    "startLine": 3705
+  },
+  {
+    "endLine": 3960,
+    "file": "src/lib/draft-cash-ledger.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "readLiveManualTradeVoids",
+    "signature": "export async function readLiveManualTradeVoids( userId: string, accountId: string, limit = 100, offset = 0 )",
+    "startLine": 3908
+  },
+  {
+    "endLine": 3975,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctLiveManualAcquisition",
     "signature": "export async function correctLiveManualAcquisition( userId: string, accountId: string, transactionId: string, raw: unknown )",
-    "startLine": 3668
+    "startLine": 3962
   },
   {
-    "endLine": 4071,
+    "endLine": 4368,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctDraftImportedExecutionCash",
     "signature": "export async function correctDraftImportedExecutionCash( userId: string, accountId: string, statementId: string, operationId: string, raw: unknown )",
-    "startLine": 4060
+    "startLine": 4357
   },
   {
-    "endLine": 4541,
+    "endLine": 4841,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctLiveImportedExecution",
     "signature": "export async function correctLiveImportedExecution( userId: string, accountId: string, eventId: string, raw: unknown )",
-    "startLine": 4183
+    "startLine": 4480
   },
   {
-    "endLine": 4558,
+    "endLine": 4858,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctDraftRecordedSale",
     "signature": "export async function correctDraftRecordedSale( userId: string, accountId: string, statementId: string, operationId: string, raw: unknown )",
-    "startLine": 4543
+    "startLine": 4843
   },
   {
-    "endLine": 4575,
+    "endLine": 4875,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctDraftRecordedAcquisition",
     "signature": "export async function correctDraftRecordedAcquisition( userId: string, accountId: string, statementId: string, operationId: string, raw: unknown )",
-    "startLine": 4560
+    "startLine": 4860
   },
   {
     "endLine": 14,
@@ -1060,6 +1078,15 @@
     "name": "parseAcquisitionCorrection",
     "signature": "export function parseAcquisitionCorrection( raw: unknown ): AcquisitionCorrectionInput",
     "startLine": 137
+  },
+  {
+    "endLine": 192,
+    "file": "src/lib/execution-correction.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "parseExecutionSnapshot",
+    "signature": "export function parseExecutionSnapshot(raw: unknown): ExecutionSnapshot",
+    "startLine": 162
   },
   {
     "endLine": 239,
@@ -1449,40 +1476,40 @@
     "startLine": 120
   },
   {
-    "endLine": 439,
+    "endLine": 440,
     "file": "src/lib/imports/service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "planBatch",
     "signature": "export async function planBatch(batchId: string, userId: string)",
-    "startLine": 433
+    "startLine": 434
   },
   {
-    "endLine": 483,
+    "endLine": 484,
     "file": "src/lib/imports/service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "saveResolution",
     "signature": "export async function saveResolution( batchId: string, eventId: string, userId: string, resolution: EventResolution )",
-    "startLine": 441
+    "startLine": 442
   },
   {
-    "endLine": 498,
+    "endLine": 499,
     "file": "src/lib/imports/service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "discardBatch",
     "signature": "export async function discardBatch(batchId: string, userId: string)",
-    "startLine": 485
+    "startLine": 486
   },
   {
-    "endLine": 851,
+    "endLine": 852,
     "file": "src/lib/imports/service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "commitBatch",
     "signature": "export async function commitBatch( batchId: string, userId: string, eventIds?: string[] )",
-    "startLine": 583
+    "startLine": 584
   },
   {
     "endLine": 1,
@@ -1710,7 +1737,7 @@
     "startLine": 43
   },
   {
-    "endLine": 107,
+    "endLine": 109,
     "file": "src/lib/live-acquisition-corrections.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
@@ -1762,6 +1789,51 @@
     "name": "sendPasswordResetEmail",
     "signature": "export async function sendPasswordResetEmail( to: string, resetUrl: string ): Promise<void>",
     "startLine": 97
+  },
+  {
+    "endLine": 13,
+    "file": "src/lib/manual-trade-void.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "ManualTradeVoidInput",
+    "signature": "export type ManualTradeVoidInput =",
+    "startLine": 8
+  },
+  {
+    "endLine": 23,
+    "file": "src/lib/manual-trade-void.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "ManualTradeVoidAudit",
+    "signature": "export type ManualTradeVoidAudit =",
+    "startLine": 15
+  },
+  {
+    "endLine": 68,
+    "file": "src/lib/manual-trade-void.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "parseManualTradeVoidInput",
+    "signature": "export function parseManualTradeVoidInput(raw: unknown): ManualTradeVoidInput",
+    "startLine": 32
+  },
+  {
+    "endLine": 117,
+    "file": "src/lib/manual-trade-void.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "parseManualTradeVoidAudit",
+    "signature": "export function parseManualTradeVoidAudit(raw: unknown): ManualTradeVoidAudit",
+    "startLine": 70
+  },
+  {
+    "endLine": 123,
+    "file": "src/lib/manual-trade-void.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "manualTradeVoidHash",
+    "signature": "export function manualTradeVoidHash(input: ManualTradeVoidInput): string",
+    "startLine": 119
   },
   {
     "endLine": 213,
@@ -1845,7 +1917,7 @@
     "startLine": 18
   },
   {
-    "endLine": 55,
+    "endLine": 62,
     "file": "src/lib/portfolio-snapshot.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
@@ -1854,7 +1926,7 @@
     "startLine": 5
   },
   {
-    "endLine": 73,
+    "endLine": 74,
     "file": "src/lib/position-derived-values.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
@@ -1863,13 +1935,13 @@
     "startLine": 46
   },
   {
-    "endLine": 98,
+    "endLine": 100,
     "file": "src/lib/position-derived-values.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "savePositionStopLossHit",
     "signature": "export async function savePositionStopLossHit( source: StopSource, hitAt: Date ): Promise<void>",
-    "startLine": 75
+    "startLine": 76
   },
   {
     "endLine": 100,
@@ -1881,7 +1953,7 @@
     "startLine": 93
   },
   {
-    "endLine": 170,
+    "endLine": 172,
     "file": "src/lib/position-mutations.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
@@ -1890,58 +1962,58 @@
     "startLine": 102
   },
   {
-    "endLine": 178,
+    "endLine": 180,
     "file": "src/lib/position-mutations.ts",
     "jsdoc": "",
     "kind": "InterfaceDeclaration",
     "name": "UpdateCloseEventInput",
     "signature": "export interface UpdateCloseEventInput",
-    "startLine": 172
+    "startLine": 174
   },
   {
-    "endLine": 260,
+    "endLine": 263,
     "file": "src/lib/position-mutations.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "updateCloseEvent",
     "signature": "export async function updateCloseEvent( userId: string, transactionId: string, input: UpdateCloseEventInput )",
-    "startLine": 180
+    "startLine": 182
   },
   {
-    "endLine": 286,
+    "endLine": 291,
     "file": "src/lib/position-mutations.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "deletePosition",
     "signature": "export async function deletePosition( userId: string, positionId: string ): Promise<void>",
-    "startLine": 262
+    "startLine": 265
   },
   {
-    "endLine": 324,
+    "endLine": 329,
     "file": "src/lib/position-mutations.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "createPosition",
     "signature": "export async function createPosition( userId: string, account:",
-    "startLine": 290
+    "startLine": 295
   },
   {
-    "endLine": 331,
+    "endLine": 336,
     "file": "src/lib/position-mutations.ts",
     "jsdoc": "",
     "kind": "InterfaceDeclaration",
     "name": "UpdateAcquisitionInput",
     "signature": "export interface UpdateAcquisitionInput",
-    "startLine": 326
+    "startLine": 331
   },
   {
-    "endLine": 467,
+    "endLine": 474,
     "file": "src/lib/position-mutations.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "updatePositionAcquisition",
     "signature": "export async function updatePositionAcquisition( userId: string, positionId: string, input: UpdateAcquisitionInput, metadata: Record<string, unknown>, destinationAccountId?: string )",
-    "startLine": 333
+    "startLine": 338
   },
   {
     "endLine": 82,
@@ -1980,7 +2052,7 @@
     "startLine": 127
   },
   {
-    "endLine": 180,
+    "endLine": 184,
     "file": "src/lib/position-service.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
@@ -2124,7 +2196,7 @@
     "startLine": 150
   },
   {
-    "endLine": 45,
+    "endLine": 50,
     "file": "src/lib/trading-account-mutations.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
@@ -2133,31 +2205,31 @@
     "startLine": 28
   },
   {
-    "endLine": 56,
+    "endLine": 61,
     "file": "src/lib/trading-account-mutations.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "reopenTradingAccount",
     "signature": "export async function reopenTradingAccount(userId: string, id: string)",
-    "startLine": 47
+    "startLine": 52
   },
   {
-    "endLine": 73,
+    "endLine": 78,
     "file": "src/lib/trading-account-mutations.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "renameTradingAccount",
     "signature": "export async function renameTradingAccount( userId: string, id: string, name: string )",
-    "startLine": 58
+    "startLine": 63
   },
   {
-    "endLine": 117,
+    "endLine": 122,
     "file": "src/lib/trading-account-mutations.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "deleteTradingAccount",
     "signature": "export async function deleteTradingAccount(userId: string, id: string)",
-    "startLine": 75
+    "startLine": 80
   },
   {
     "endLine": 18,

@@ -2265,6 +2265,186 @@
         ]
       }
     },
+    "/api/accounts/{id}/trades/voids": {
+      "get": {
+        "description": "Read-only audit access remains available on archived accounts. The stored operation, revision, posting and void-marker chain is validated; this is not a current cash reconciliation or source-freshness assertion.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "properties": {
+                              "before": {
+                                "properties": {
+                                  "currency": {
+                                    "type": "string"
+                                  },
+                                  "date": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "fees": {
+                                    "type": "string"
+                                  },
+                                  "positionId": {
+                                    "type": "string"
+                                  },
+                                  "price": {
+                                    "type": "string"
+                                  },
+                                  "quantity": {
+                                    "type": "string"
+                                  },
+                                  "totalValue": {
+                                    "type": "string"
+                                  },
+                                  "transactionId": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "transactionId",
+                                  "positionId",
+                                  "date",
+                                  "quantity",
+                                  "price",
+                                  "totalValue",
+                                  "fees",
+                                  "currency"
+                                ],
+                                "type": "object"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "BUY",
+                                  "SELL"
+                                ],
+                                "type": "string"
+                              },
+                              "operationId": {
+                                "type": "string"
+                              },
+                              "positionId": {
+                                "type": "string"
+                              },
+                              "reason": {
+                                "type": "string"
+                              },
+                              "revisionId": {
+                                "type": "string"
+                              },
+                              "transactionId": {
+                                "type": "string"
+                              },
+                              "voidedAt": {
+                                "format": "date-time",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "operationId",
+                              "revisionId",
+                              "transactionId",
+                              "positionId",
+                              "kind",
+                              "voidedAt",
+                              "reason",
+                              "before"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "offset": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "total",
+                        "limit",
+                        "offset"
+                      ],
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Retained voids sorted by void timestamp descending."
+          },
+          "400": {
+            "description": "Invalid pagination."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned account not found."
+          },
+          "409": {
+            "description": "Account is not ledger-enabled or retained audit history is inconsistent."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Read retained manual trade void audits for a confirmed real ledger",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/accounts/{id}/trades/{transactionId}/acquisition-corrections": {
       "post": {
         "description": "Appends an immutable BUY revision and reversal/replacement cash postings. Date, stable cash sequence, exact bought quantity, price and fees may change. All existing sales are preserved; the corrected acquisition must cover them and precede their dates and cash ordering. Imported executions, moves and reversal remain unsupported. No account is activated.\n",
@@ -2504,6 +2684,114 @@
           }
         ],
         "summary": "Correct an audited live manual sale",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/trades/{transactionId}/voids": {
+      "post": {
+        "description": "SELL voids restore parcel inventory and remove proceeds from cash replay. BUY voids require no effective sales. Only active real ledgers and manual parcels are supported. The terminal revision retains original trades, postings and date/sequence reservations. No account is activated.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "transactionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedRevisionId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedSourceFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "expectedRevisionId",
+                  "expectedSourceFingerprint",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveExecutionCorrectionResponse"
+                }
+              }
+            },
+            "description": "Idempotent retry of an already committed void."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveExecutionCorrectionResponse"
+                }
+              }
+            },
+            "description": "Trade void, parcel update and cash reversal committed atomically."
+          },
+          "400": {
+            "description": "Invalid void request."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned live manual trade not found."
+          },
+          "409": {
+            "description": "Stale source/revision",
+            "terminal trade or unsupported parcel.": null
+          },
+          "422": {
+            "description": "Removing the trade would leave insufficient cash or unsupported history."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Void an audited live manual trade without deleting its records",
         "tags": [
           "Accounts"
         ]
@@ -3624,6 +3912,7 @@
     },
     "/api/positions": {
       "get": {
+        "description": "Voided acquisitions and voided transactions are excluded. Original records remain available in retained manual trade void audits.",
         "parameters": [
           {
             "in": "query",
@@ -3698,7 +3987,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "List all positions for the authenticated user",
+        "summary": "List effective positions for the authenticated user",
         "tags": [
           "Positions"
         ]
@@ -3842,7 +4131,7 @@
     },
     "/api/positions/close-events": {
       "get": {
-        "description": "Without `accountId`, close events from demo accounts are excluded. Pass a demo account's ID to list its history explicitly.\n",
+        "description": "Without `accountId`, close events from demo accounts are excluded. Pass a demo account's ID to list its history explicitly. Voided sales and acquisitions are excluded; retained void audits are available separately on the account.\n",
         "parameters": [
           {
             "description": "Only include close events for this trading account (demo accounts allowed)",

@@ -68,7 +68,10 @@ const buildPositionScope = (req: Request) => {
   const exchangeCodes = parseCsv(req.query.exchangeCodes, true)
   const assetTypes = parseCsv(req.query.assetTypes, true)
 
-  const where: Record<string, unknown> = { userId: req.user!.userId }
+  const where: Record<string, unknown> = {
+    userId: req.user!.userId,
+    voidedAt: null,
+  }
 
   if (status.length === 1) where.status = status[0]
   else if (status.length > 1) where.status = { in: status }
@@ -193,6 +196,7 @@ router.get(
       prisma.transaction.findMany({
         where: {
           type: 'SELL',
+          voidedAt: null,
           ...(dateBounds ? { date: dateBounds } : {}),
           position: positionScope,
         },
@@ -322,6 +326,7 @@ router.get(
       const events = await prisma.transaction.findMany({
         where: {
           type: 'SELL',
+          voidedAt: null,
           ...(dateBounds ? { date: dateBounds } : {}),
           position: positionScope,
         },
@@ -459,6 +464,7 @@ router.get(
     const events = await prisma.transaction.findMany({
       where: {
         type: 'SELL',
+        voidedAt: null,
         ...(dateBounds ? { date: dateBounds } : {}),
         position: positionScope,
       },
@@ -842,6 +848,7 @@ router.get(
         prisma.transaction.findMany({
           where: {
             type: 'SELL',
+            voidedAt: null,
             ...(dateBounds ? { date: dateBounds } : {}),
             position: positionScope,
           },
@@ -875,6 +882,7 @@ router.get(
         prisma.transaction.count({
           where: {
             type: 'SELL',
+            voidedAt: null,
             ...(dateBounds ? { date: dateBounds } : {}),
             position: positionScope,
           },
@@ -892,6 +900,7 @@ router.get(
     const events = await prisma.transaction.findMany({
       where: {
         type: 'SELL',
+        voidedAt: null,
         ...(dateBounds ? { date: dateBounds } : {}),
         position: positionScope,
       },

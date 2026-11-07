@@ -298,6 +298,7 @@ async function loadExistingParcels(
       userId,
       accountId,
       status: { in: ['OPEN', 'PARTIAL'] },
+      voidedAt: null,
       asset: { assetType: 'CRYPTO' },
     },
     include: { asset: { include: { exchange: true } } },

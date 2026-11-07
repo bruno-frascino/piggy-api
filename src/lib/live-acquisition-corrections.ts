@@ -27,6 +27,7 @@ export async function readLiveAcquisitionCorrections(
       importedEventId: null,
       ledger: { state: 'ACTIVE', openingStatement: { state: 'CONFIRMED' } },
       transaction: {
+        voidedAt: null,
         type: 'BUY',
         brokerRef: null,
         position: {
@@ -34,6 +35,7 @@ export async function readLiveAcquisitionCorrections(
           userId,
           origin: 'MANUAL',
           positionType: 'LONG',
+          voidedAt: null,
           account: { userId, status: 'ACTIVE', isDemo: false },
           transactions: { none: { brokerRef: { not: null } } },
         },

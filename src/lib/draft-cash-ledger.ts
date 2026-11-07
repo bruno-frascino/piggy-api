@@ -1,4 +1,8 @@
 import { prisma } from './prisma.js'
+import {
+  parseManualTradeVoidInput,
+  manualTradeVoidHash,
+} from './manual-trade-void.js'
 import { lockOwnedTradingAccount, lockOwnedPosition } from './account-lock.js'
 import {
   quantityTolerance,
@@ -455,6 +459,10 @@ async function readCashHistory(
       if (!current)
         conflict('A reversed operation cannot have further corrections')
       const prepared = prepareCashRevision(revision.request, now)
+      if (prepared.request.voidAudit)
+        conflict(
+          'Manual trade void audits are supported only by live operation revisions'
+        )
       const audit = prepared.request.executionAudit
       if (audit) {
         if (
@@ -2546,14 +2554,15 @@ async function readLiveCashState(
   userId: string,
   accountId: string,
   now: Date,
-  excludedImportBatchId?: string
+  excludedImportBatchId?: string,
+  readOnly = false
 ) {
   const account = await db.tradingAccount.findFirst({
     where: { id: accountId, userId, user: { deletedAt: null } },
     select: { id: true, status: true, isDemo: true },
   })
   if (!account) conflict('Trading account not found', 404)
-  if (account.status !== 'ACTIVE' || account.isDemo)
+  if ((!readOnly && account.status !== 'ACTIVE') || account.isDemo)
     conflict('Live cash posting requires an active real trading account')
   const ledger = await db.accountCashLedger.findUnique({
     where: { accountId },
@@ -2633,7 +2642,7 @@ async function readLiveCashState(
     statement.sourceFingerprint,
     history.executionAudits
   )
-  const liveCommandByOperation = new Map<string, CashCommand>()
+  const liveCommandByOperation = new Map<string, CashCommand | null>()
   const liveReservedSlots: { effectiveDate: Date; sequence: bigint }[] = []
   const liveEvents: {
     auditNumber: number
@@ -2933,23 +2942,32 @@ async function readLiveCashState(
         conflict(
           'Stored live trade, source audit or cash postings are inconsistent'
         )
-      let priorCommand = command
+      let priorCommand: CashCommand | null = command
       let priorSnapshot = baseSnapshot
+      let voidedAt: string | null = null
       let previousRevisionId: string | null = null
       let expectedRevisionId = operation.id
       for (const [revisionIndex, revision] of operation.revisions.entries()) {
         const revisionPrepared = prepareCashRevision(revision.request, now)
         const audit = revisionPrepared.request.executionAudit
+        const voidAudit = revisionPrepared.request.voidAudit
+        const sourceAudit = audit ?? voidAudit
+        if (!sourceAudit)
+          conflict('A manual revision requires its immutable source audit')
         const replacement = revisionPrepared.request.replacement
+        if (!priorCommand)
+          conflict('A voided manual trade cannot have further revisions')
         const legs = prepareRevisionLegs(priorCommand, replacement, now)
         const revisionSnapshot = parseLiveTradeSnapshot(
           revision.transactionSnapshot
         )
         if (
-          !audit ||
-          (audit.kind ?? 'SELL') !== storedInput.kind ||
+          (audit ? (audit.kind ?? 'SELL') : voidAudit?.kind) !==
+            storedInput.kind ||
           priorCommand.kind !== storedInput.kind ||
-          replacement?.kind !== storedInput.kind ||
+          (voidAudit
+            ? replacement !== null
+            : replacement?.kind !== storedInput.kind) ||
           operation.importedEventId ||
           revision.accountId !== accountId ||
           revision.operationId !== operation.id ||
@@ -2962,11 +2980,13 @@ async function readLiveCashState(
           revision.auditNumber < 1 ||
           !isFingerprint(revision.previousFingerprint) ||
           !isFingerprint(revision.nextFingerprint) ||
-          audit.number !== revision.auditNumber ||
-          audit.previousFingerprint !== revision.previousFingerprint ||
-          audit.nextFingerprint !== revision.nextFingerprint ||
-          !snapshotMatchesExecution(priorSnapshot, audit.before) ||
-          !snapshotMatchesExecution(revisionSnapshot, audit.after) ||
+          sourceAudit.number !== revision.auditNumber ||
+          sourceAudit.previousFingerprint !== revision.previousFingerprint ||
+          sourceAudit.nextFingerprint !== revision.nextFingerprint ||
+          !snapshotMatchesExecution(priorSnapshot, sourceAudit.before) ||
+          (audit
+            ? !snapshotMatchesExecution(revisionSnapshot, audit.after)
+            : !sameLiveTradeSnapshot(priorSnapshot, revisionSnapshot)) ||
           revisionSnapshot.kind !== storedInput.kind ||
           revisionSnapshot.assetId !== baseSnapshot.assetId ||
           revisionSnapshot.positionId !== baseSnapshot.positionId ||
@@ -2989,14 +3009,12 @@ async function readLiveCashState(
           revision,
           prepared: revisionPrepared,
         })
-        if (!replacement)
-          conflict(
-            'Live manual execution corrections cannot reverse an operation'
-          )
-        liveReservedSlots.push({
-          effectiveDate: new Date(`${replacement.effectiveDate}T00:00:00Z`),
-          sequence: BigInt(replacement.sequence),
-        })
+        if (replacement)
+          liveReservedSlots.push({
+            effectiveDate: new Date(`${replacement.effectiveDate}T00:00:00Z`),
+            sequence: BigInt(replacement.sequence),
+          })
+        voidedAt = voidAudit?.voidedAt ?? null
         priorCommand = replacement
         priorSnapshot = revisionSnapshot
         previousRevisionId = revision.id
@@ -3006,6 +3024,15 @@ async function readLiveCashState(
         conflict(
           'Current manual execution does not match its latest immutable correction snapshot'
         )
+      if (
+        (operation.transaction.voidedAt?.toISOString() ?? null) !== voidedAt ||
+        (voidedAt &&
+          storedInput.kind === 'BUY' &&
+          operation.transaction.position.voidedAt?.toISOString() !==
+            voidedAt) ||
+        (!voidedAt && operation.transaction.position.voidedAt)
+      )
+        conflict('Manual trade void marker does not match its immutable audit')
       liveCommandByOperation.set(operation.id, priorCommand)
     }
     liveEvents.push({ auditNumber: operation.auditNumber, operation })
@@ -3025,18 +3052,20 @@ async function readLiveCashState(
       const revision = event.revision
       const audit = event.prepared?.request.executionAudit
       const importedAudit = event.prepared?.request.importedExecutionAudit
+      const voidAudit = event.prepared?.request.voidAudit
       const replacement = event.prepared?.request.replacement
       if (
-        (!audit && !importedAudit) ||
-        !replacement ||
+        (!audit && !importedAudit && !voidAudit) ||
+        (!replacement && !voidAudit) ||
         revision.previousFingerprint !== acceptedFingerprint ||
         (audit && audit.previousFingerprint !== acceptedFingerprint) ||
         (importedAudit &&
-          importedAudit.previousFingerprint !== acceptedFingerprint)
+          importedAudit.previousFingerprint !== acceptedFingerprint) ||
+        (voidAudit && voidAudit.previousFingerprint !== acceptedFingerprint)
       )
         conflict('Live cash correction fingerprint chain is inconsistent')
       acceptedFingerprint = revision.nextFingerprint
-      liveCommandByOperation.set(operation.id, replacement)
+      liveCommandByOperation.set(operation.id, replacement ?? null)
     } else {
       if (
         operation.auditNumber !== expectedAuditNumber ||
@@ -3047,7 +3076,9 @@ async function readLiveCashState(
     }
     expectedAuditNumber += 1
   }
-  const liveCommands = [...liveCommandByOperation.values()]
+  const liveCommands = [...liveCommandByOperation.values()].filter(
+    (command): command is CashCommand => command !== null
+  )
   for (const command of liveCommands)
     if ('transactionIds' in command)
       for (const transactionId of command.transactionIds)
@@ -3074,20 +3105,23 @@ async function readLiveCashState(
     conflict(
       'Post-opening account trades must be staged in the cash ledger before live posting'
     )
-  const beforePreview = await readAccountOpeningPreview(
-    db,
-    userId,
-    accountId,
-    opening,
-    new Date(`${sourceObservationDate}T01:00:00Z`),
-    excludedImportBatchId
-      ? { excludeImportBatchId: excludedImportBatchId }
-      : undefined
-  )
-  if (beforePreview.sourceFingerprint !== acceptedFingerprint)
-    conflict(
-      'Confirmed account source changed outside its audited live cash history'
+  // Archived accounts retain audit access even if their current preview has changed.
+  if (!readOnly) {
+    const beforePreview = await readAccountOpeningPreview(
+      db,
+      userId,
+      accountId,
+      opening,
+      new Date(`${sourceObservationDate}T01:00:00Z`),
+      excludedImportBatchId
+        ? { excludeImportBatchId: excludedImportBatchId }
+        : undefined
     )
+    if (beforePreview.sourceFingerprint !== acceptedFingerprint)
+      conflict(
+        'Confirmed account source changed outside its audited live cash history'
+      )
+  }
   return {
     ledger,
     statement,
@@ -3459,10 +3493,13 @@ export async function postAccountTrade(
       } else {
         await lockOwnedPosition(db, userId, input.positionId)
         const currentPosition = await db.position.findFirst({
-          where: { id: input.positionId, userId, accountId },
+          where: { id: input.positionId, userId, accountId, voidedAt: null },
           include: {
             asset: { include: { exchange: true } },
-            transactions: { orderBy: { date: 'asc' } },
+            transactions: {
+              where: { voidedAt: null },
+              orderBy: { date: 'asc' },
+            },
           },
         })
         if (
@@ -3665,6 +3702,263 @@ export async function correctLiveManualSale(
   )
 }
 
+export async function voidLiveManualTrade(
+  userId: string,
+  accountId: string,
+  transactionId: string,
+  raw: unknown
+) {
+  const input = parseManualTradeVoidInput(raw)
+  const now = new Date()
+  return prisma.$transaction(
+    async (db) => {
+      await lockOwnedTradingAccount(db, userId, accountId)
+      const state = await readLiveCashState(db, userId, accountId, now)
+      const operation = state.cashLedgerOps.find(
+        (row) => row.transactionId === transactionId && !row.importedEventId
+      )
+      if (!operation || (operation.kind !== 'BUY' && operation.kind !== 'SELL'))
+        conflict('Live manual trade not found', 404)
+      const prior = operation.revisions.find(
+        (row) => row.idempotencyKey === input.idempotencyKey
+      )
+      const commands = [
+        ...[...state.history.effective.values()].filter(
+          (c): c is CashCommand => c !== null
+        ),
+        ...state.liveCommands,
+      ]
+      if (prior) {
+        const audit = prepareCashRevision(prior.request, now).request.voidAudit
+        if (
+          !audit ||
+          manualTradeVoidHash(audit.input) !== manualTradeVoidHash(input)
+        )
+          conflict(
+            'Idempotency key is already associated with different void content'
+          )
+        const replay = replayCashLedger(accountId, state.opening, commands, now)
+        requireFundedCashLedger(replay)
+        return {
+          operationId: operation.id,
+          revisionId: prior.id,
+          created: false,
+          replay,
+        }
+      }
+      if (
+        state.history.keys.has(input.idempotencyKey) ||
+        state.cashLedgerOps.some(
+          (row) =>
+            row.idempotencyKey === input.idempotencyKey ||
+            row.revisions.some(
+              (revision) => revision.idempotencyKey === input.idempotencyKey
+            )
+        )
+      )
+        conflict('Idempotency key is already associated with a cash operation')
+      const latest = operation.revisions.at(-1)
+      if (
+        (latest?.id ?? operation.id) !== input.expectedRevisionId ||
+        state.acceptedFingerprint !== input.expectedSourceFingerprint
+      )
+        conflict(
+          'Account history changed. Refresh and review the current trade before voiding it.'
+        )
+      if (state.liveAuditEventCount >= 50000)
+        conflict('Live cash history exceeds the supported replay limit', 422)
+      const current = state.liveCommands.find(
+        (command) =>
+          (command.kind === 'BUY' || command.kind === 'SELL') &&
+          command.transactionIds.includes(transactionId)
+      )
+      if (
+        !current ||
+        (current.kind !== 'BUY' && current.kind !== 'SELL') ||
+        current.source.origin !== 'MANUAL' ||
+        current.transactionIds.length !== 1
+      )
+        conflict('Only an effective single manual trade can be voided')
+      await lockOwnedPosition(db, userId, operation.transaction.positionId)
+      const trade = await db.transaction.findFirst({
+        where: {
+          id: transactionId,
+          voidedAt: null,
+          brokerRef: null,
+          position: {
+            userId,
+            accountId,
+            origin: 'MANUAL',
+            positionType: 'LONG',
+            voidedAt: null,
+          },
+        },
+        include: {
+          position: {
+            include: {
+              asset: { include: { exchange: true } },
+              transactions: true,
+            },
+          },
+        },
+      })
+      if (!trade || trade.type !== operation.kind)
+        conflict('Owned manual trade not found', 404)
+      const effective = trade.position.transactions.filter(
+        (row) => row.voidedAt === null
+      )
+      if (
+        effective.filter((row) => row.type === 'BUY').length !== 1 ||
+        effective.some((row) => row.type !== 'BUY' && row.type !== 'SELL') ||
+        trade.position.transactions.some((row) => row.brokerRef !== null)
+      )
+        conflict(
+          'Voiding requires a reconciled manual parcel without imported allocations'
+        )
+      if (trade.type === 'BUY' && effective.some((row) => row.type === 'SELL'))
+        conflict('Void the effective sales before voiding their acquisition')
+      const replay = replayCashLedger(
+        accountId,
+        state.opening,
+        commands.filter(
+          (command) =>
+            !('transactionIds' in command) ||
+            !command.transactionIds.includes(transactionId)
+        ),
+        now
+      )
+      requireFundedCashLedger(replay)
+      const before = executionSnapshot(trade)
+      await db.transaction.update({
+        where: { id: transactionId },
+        data: { voidedAt: now },
+      })
+      await db.position.update({
+        where: { id: trade.positionId },
+        data: {
+          ...(trade.type === 'BUY' ? { voidedAt: now, quantity: 0 } : {}),
+          unrealizedPnL: null,
+        },
+      })
+      if (!(await recomputePositionFromTransactions(trade.positionId, db)))
+        conflict('Parcel not found during trade void', 404)
+      const next = await readAccountOpeningPreview(
+        db,
+        userId,
+        accountId,
+        state.opening,
+        new Date(`${state.sourceObservationDate}T01:00:00Z`)
+      )
+      const auditNumber =
+        state.history.executionAudits.length + state.liveAuditEventCount + 1
+      const prepared = prepareCashRevision(
+        {
+          idempotencyKey: input.idempotencyKey,
+          expectedRevisionId: input.expectedRevisionId,
+          reason: input.reason,
+          replacement: null,
+          voidAudit: {
+            kind: trade.type,
+            number: auditNumber,
+            previousFingerprint: state.acceptedFingerprint,
+            nextFingerprint: next.sourceFingerprint,
+            input,
+            before,
+            voidedAt: now.toISOString(),
+          },
+        },
+        now
+      )
+      const legs = prepareRevisionLegs(current, null, now)
+      const revision = await db.accountCashOperationRevision.create({
+        data: {
+          accountId,
+          operationId: operation.id,
+          revisionNumber: operation.revisions.length + 1,
+          previousRevisionId: latest?.id ?? null,
+          idempotencyKey: input.idempotencyKey,
+          payloadHash: prepared.payloadHash,
+          reason: input.reason,
+          request: { ...prepared.request },
+          auditNumber,
+          previousFingerprint: state.acceptedFingerprint,
+          nextFingerprint: next.sourceFingerprint,
+          transactionSnapshot: liveTradeSnapshot(trade),
+          postings: {
+            create: legs.map((leg, legIndex) => ({ ...leg, legIndex })),
+          },
+        },
+        select: { id: true },
+      })
+      await db.accountCashLedger.update({
+        where: { accountId },
+        data: { acceptedSourceFingerprint: next.sourceFingerprint },
+      })
+      return {
+        operationId: operation.id,
+        revisionId: revision.id,
+        created: true,
+        replay,
+      }
+    },
+    { isolationLevel: 'ReadCommitted', timeout: 20000, maxWait: 5000 }
+  )
+}
+
+export async function readLiveManualTradeVoids(
+  userId: string,
+  accountId: string,
+  limit = 100,
+  offset = 0
+) {
+  return prisma.$transaction(
+    async (db) => {
+      await lockOwnedTradingAccount(db, userId, accountId)
+      const state = await readLiveCashState(
+        db,
+        userId,
+        accountId,
+        new Date(),
+        undefined,
+        true
+      )
+      const items = state.cashLedgerOps
+        .flatMap((operation) =>
+          operation.revisions.flatMap((revision) => {
+            const audit = prepareCashRevision(revision.request, new Date())
+              .request.voidAudit
+            return audit
+              ? [
+                  {
+                    operationId: operation.id,
+                    revisionId: revision.id,
+                    transactionId: audit.before.transactionId,
+                    positionId: audit.before.positionId,
+                    kind: audit.kind,
+                    voidedAt: audit.voidedAt,
+                    reason: audit.input.reason,
+                    before: audit.before,
+                  },
+                ]
+              : []
+          })
+        )
+        .sort(
+          (a, b) =>
+            b.voidedAt.localeCompare(a.voidedAt) ||
+            b.revisionId.localeCompare(a.revisionId)
+        )
+      return {
+        items: items.slice(offset, offset + limit),
+        total: items.length,
+        limit,
+        offset,
+      }
+    },
+    { isolationLevel: 'ReadCommitted', timeout: 20000, maxWait: 5000 }
+  )
+}
+
 export async function correctLiveManualAcquisition(
   userId: string,
   accountId: string,
@@ -3807,7 +4101,10 @@ async function correctLiveManualExecution(
           position: {
             include: {
               asset: { include: { exchange: true } },
-              transactions: { orderBy: [{ date: 'asc' }, { id: 'asc' }] },
+              transactions: {
+                where: { voidedAt: null },
+                orderBy: [{ date: 'asc' }, { id: 'asc' }],
+              },
             },
           },
         },
@@ -4322,7 +4619,10 @@ export async function correctLiveImportedExecution(
           position: {
             include: {
               asset: { include: { exchange: true } },
-              transactions: { orderBy: [{ date: 'asc' }, { id: 'asc' }] },
+              transactions: {
+                where: { voidedAt: null },
+                orderBy: [{ date: 'asc' }, { id: 'asc' }],
+              },
             },
           },
         },
@@ -4695,7 +4995,7 @@ async function correctDraftRecordedExecution(
           position: {
             include: {
               asset: { include: { exchange: true } },
-              transactions: true,
+              transactions: { where: { voidedAt: null } },
             },
           },
         },
@@ -4979,6 +5279,11 @@ async function correctDraftOperation(
         : tradeCorrection && operation.proposedTrade
           ? prepareDraftTradeRevision(raw, operation.proposedTrade.id, now)
           : prepareCashRevision(raw, now)
+      if (prepared.request.voidAudit)
+        conflict(
+          'Manual trade voids require the dedicated live trade void writer',
+          400
+        )
       const prior = history.rows
         .flatMap((row) => row.revisions)
         .find(

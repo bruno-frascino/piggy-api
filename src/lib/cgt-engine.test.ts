@@ -138,8 +138,10 @@ describe('computeCapitalGainsReport', () => {
     expect(transactionFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
+          voidedAt: null,
           position: {
             userId: 'u1',
+            voidedAt: null,
             accountId: { in: ['acc1'] },
             account: { isDemo: false },
           },

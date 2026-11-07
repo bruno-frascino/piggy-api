@@ -138,8 +138,12 @@ export async function recomputePositionFromTransactions(
   })
   if (!position) return null
 
-  const buyTxs = position.transactions.filter((tx) => tx.type === 'BUY')
-  const sellTxs = position.transactions.filter((tx) => tx.type === 'SELL')
+  const buyTxs = position.transactions.filter(
+    (tx) => tx.type === 'BUY' && !tx.voidedAt
+  )
+  const sellTxs = position.transactions.filter(
+    (tx) => tx.type === 'SELL' && !tx.voidedAt
+  )
 
   const buyQty = buyTxs.reduce((sum, tx) => sum + Number(tx.quantity), 0)
   const sellQty = sellTxs.reduce((sum, tx) => sum + Number(tx.quantity), 0)

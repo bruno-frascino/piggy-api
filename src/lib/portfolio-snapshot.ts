@@ -15,13 +15,20 @@ export async function savePortfolioSnapshot(
           where: {
             userId,
             accountId,
+            voidedAt: null,
             status: { in: ['OPEN', 'PARTIAL'] },
             asset: { exchangeId },
           },
           select: { capitalAllocated: true, unrealizedPnL: true },
         }),
         db.position.findMany({
-          where: { userId, accountId, status: 'CLOSED', asset: { exchangeId } },
+          where: {
+            userId,
+            accountId,
+            status: 'CLOSED',
+            voidedAt: null,
+            asset: { exchangeId },
+          },
           select: { realizedPnL: true },
         }),
       ])

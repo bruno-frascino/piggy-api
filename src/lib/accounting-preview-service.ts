@@ -44,7 +44,7 @@ export async function readAccountOpeningPreview(
       name: 'Not Found',
     })
   const positions = await db.position.findMany({
-    where: { accountId, userId },
+    where: { accountId, userId, voidedAt: null },
     orderBy: { id: 'asc' },
     take: 5001,
     select: {
@@ -82,7 +82,7 @@ export async function readAccountOpeningPreview(
       { status: 422, name: 'Preview Limit' }
     )
   const trades = await db.transaction.findMany({
-    where: { position: { accountId, userId } },
+    where: { voidedAt: null, position: { accountId, userId, voidedAt: null } },
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
     take: 50001,
     select: {

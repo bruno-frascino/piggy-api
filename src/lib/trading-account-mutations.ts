@@ -30,7 +30,12 @@ export async function closeTradingAccount(userId: string, id: string) {
     await lockOwnedTradingAccount(db, userId, id)
     const account = await loadAccount(db, userId, id)
     const count = await db.position.count({
-      where: { accountId: id, userId, status: { in: ['OPEN', 'PARTIAL'] } },
+      where: {
+        accountId: id,
+        userId,
+        voidedAt: null,
+        status: { in: ['OPEN', 'PARTIAL'] },
+      },
     })
     if (count > 0)
       conflict(

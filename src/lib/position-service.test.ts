@@ -46,6 +46,68 @@ import {
   recomputePositionFromTransactions,
 } from './position-service.js'
 
+describe('effective parcel recomputation after voids', () => {
+  beforeEach(() => vi.clearAllMocks())
+  it.each([
+    {
+      voidBuy: false,
+      voidSell: true,
+      quantity: 10,
+      status: 'OPEN',
+      realizedPnL: null,
+    },
+    {
+      voidBuy: true,
+      voidSell: true,
+      quantity: 0,
+      status: 'OPEN',
+      realizedPnL: null,
+    },
+    {
+      voidBuy: false,
+      voidSell: false,
+      quantity: 6,
+      status: 'PARTIAL',
+      realizedPnL: 18,
+    },
+  ])('excludes retained voided economic effects %j', async (row) => {
+    positionFindUniqueMock.mockResolvedValue({
+      id: 'p1',
+      entryPrice: 10,
+      buyFees: 0,
+      transactions: [
+        {
+          type: 'BUY',
+          quantity: 10,
+          totalValue: 100,
+          fees: 0,
+          price: 10,
+          date: new Date('2026-01-01'),
+          voidedAt: row.voidBuy ? new Date() : null,
+        },
+        {
+          type: 'SELL',
+          quantity: 4,
+          totalValue: 60,
+          fees: 2,
+          price: 15,
+          date: new Date('2026-02-01'),
+          voidedAt: row.voidSell ? new Date() : null,
+        },
+      ],
+    })
+    await recomputePositionFromTransactions('p1')
+    expect(positionUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: expect.objectContaining({
+        quantity: row.quantity,
+        status: row.status,
+        realizedPnL: row.realizedPnL,
+      }),
+    })
+  })
+})
+
 describe('findOrCreateAsset', () => {
   beforeEach(() => vi.clearAllMocks())
 

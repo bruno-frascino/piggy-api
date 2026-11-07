@@ -873,6 +873,33 @@ parcels) and SELLs; holdings provide controls for imported BUYs. The UI requires
 and acknowledgement and rejects offline/stale writes. This does not activate accounts or enable
 execution reversals, arbitrary import adjustments, moves or deletion.
 
+### Terminal audited manual trade voids
+
+`POST /api/accounts/{id}/trades/{transactionId}/voids` appends a terminal manual
+BUY/SELL operation revision with reversal-only cash postings, reason, expected source/
+revision identity, original execution snapshot and exact void timestamp. Original trades
+and operations are retained. Nullable `Transaction.voidedAt` and `Position.voidedAt`
+markers represent economic inactivity, not disposal or physical deletion; replay validates
+them against the immutable terminal audit. An unsold voided BUY remains an archival parcel
+with zero quantity, not a genuinely CLOSED sale. A SELL void restores its remaining units.
+
+Only reconciled manual long parcels without imported allocations or non-trade adjustments
+are supported. BUY voids require no effective sales. All participating writes lock the owned
+account and parcel; the complete dated cash replay must remain funded. Markers, derived
+inventory, revision postings and fingerprint advancement commit together. Terminal trades
+cannot be changed, sold, deleted or voided again; identical prior requests remain retryable,
+including after intervening revisions. Original/previously corrected sequence slots stay reserved.
+
+Effective holdings, disposals, CGT/statistics, import inventory and opening previews exclude
+voided records. Tax PDFs retain their original content; source timestamps invalidate affected
+report usage. `GET /api/accounts/{id}/trades/voids` exposes paginated retained audits; the
+account-filtered history UI keeps these separate from effective disposal history. Confirmation
+requires a reason and acknowledgement, and is never queued offline. Imported voids, moves,
+deletion and real/demo account provisioning remain unsupported.
+Read-only audit access remains available after account closure. It validates retained source
+snapshots, markers and revision/posting chains but does not claim that a current cash/source
+reconciliation is fresh.
+
 ## Consequences
 
 Accurate performance begins at a known boundary rather than a fabricated inception history.
@@ -885,8 +912,9 @@ after the supported ledger reconciles.
 The live writer and audited manual/imported BUY/SELL correction paths are gated behind manually
 provisioned confirmed-ledger state. Imported correction is limited to fixed quantities and parcel
 allocations in one currency; it does not activate accounts, and ordinary legacy accounts continue
-using legacy trade behavior. Before any real account is enabled, implement any supported
-execution reversals and ledger-safe move/deletion handling, then provide a reviewed per-account
+using legacy trade behavior. Manual voids are now supported; imported reversals and financial
+moves/deletion remain explicitly blocked. Before any real account is enabled, deliver audited
+live deposits/withdrawals and cash balance/activity/reconciliation views, then provide a reviewed per-account
 confirmation/cutover flow that revalidates the opening preview and atomically provisions the
 confirmed statement and active ledger. Connect ordinary trade entry and a balance/activity/
 reconciliation view for activated accounts, with regression and concurrency tests proving that

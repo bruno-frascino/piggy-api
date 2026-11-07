@@ -639,30 +639,59 @@ audit chain and accepted source fingerprint commit atomically. Holdings expose i
 BUY controls, and history exposes imported BUY and SELL controls, including closed
 parcels. Inputs require an audit reason; offline and stale submissions are rejected.
 
-### Current next step: close the cutover blockers
+### Delivered: terminal audited manual trade voids
+
+Active real ledger-backed accounts can void manual SELLs and unsold manual BUYs via
+`POST /api/accounts/{id}/trades/{transactionId}/voids`. A SELL void restores inventory;
+a BUY void requires no effective sales and removes its parcel from effective holdings.
+Voided acquisitions are not treated as disposals or genuinely closed positions.
+Transactions retain their original economic fields; nullable `voidedAt` markers are
+validated against an immutable terminal operation revision. Original operations,
+postings and corrected snapshots remain intact, with reversal-only revision postings.
+Original and corrected date/sequence slots remain reserved.
+
+The owned account/parcel locks serialize voids with participating trade writers.
+Revision/source checks and full dated cash replay reject stale requests, inconsistent
+audits and downstream funding deficits. Trade markers, parcel recomputation, reversal
+postings and the accepted fingerprint commit atomically. Imported allocations and
+non-trade parcel adjustments are deliberately unsupported, as are subsequent corrections
+or new voids against a terminal trade. Identical prior retries remain safe.
+
+Holdings, close events, current CGT/statistics, import inventory and opening previews
+exclude voided economic effects. Previously generated tax PDFs remain immutable and
+their source-usage timestamps mark affected reports stale. UI actions require an audit
+reason and financial acknowledgement, block offline/privacy/stale submissions, and retain
+retry identity. The account-filtered history view exposes paginated retained void audits
+via `GET /api/accounts/{id}/trades/voids`, independently of current disposals.
+
+No real or demo account is activated by this milestone.
+
+### Current next step: live funding and review views, then controlled cutover
 
 Do not activate a real account until the following work is complete:
 
 1. **Complete coordinated financial mutations.** Define and implement any supported
-   live/imported execution reversals not covered by the existing manual and imported BUY/SELL
-   corrections, and provide safe move/deletion handling for ledger-backed accounts. Imported
+   live/imported lifecycle operations not covered by manual voids and existing BUY/SELL
+   corrections. Imported reversals, financial moves and deletion remain explicitly blocked
+   for ledger-backed accounts. Imported
    corrections are currently limited to fixed quantities and allocations in a single currency.
    Each supported path must preserve source identity and immutable revisions, replay dated cash
    and parcel inventory, validate funding, and update the accepted source fingerprint in the
    same transaction. Where a path cannot safely be supported, keep it explicitly blocked and
    surface the reconciliation requirement rather than allowing a legacy writer to bypass the
    ledger.
-2. **Implement reviewed, per-account confirmation and activation.** Let the user review the
+2. **Deliver live funding and cash review before activation.** Implement audited deposits/
+   withdrawals, actual balances, effective cash activity and retained revisions, with dated
+   funding checks, retry/source safety and explicit evidence/reconciliation status. Route
+   ordinary manual trade entry through the gated writer only for activated accounts.
+3. **Implement reviewed, per-account confirmation and activation.** Let the user review the
    end-of-day Sydney opening statement, holdings, actual cash by currency, evidence, and
    unresolved-operation/funding blockers. Under the account lock, revalidate the preview and
    atomically persist the confirmed statement and provision its active ledger/fingerprint.
    Record the user's confirmation and make retries safe. Do not bulk-migrate or reinterpret
    existing accounts.
-3. **Make an activated account operable and reviewable.** Route ordinary manual trade entry
-   through the gated writer only for activated accounts; retain legacy behavior for all others.
-   Provide a balance/activity and reconciliation view that makes actual cash, unsupported
-   events, and incomplete data visible. Do not present accounting-backed performance until
-   sourced valuations and return methodology are implemented.
+   Keep legacy behavior for accounts without a ledger. Do not present accounting-backed
+   performance until sourced valuations and return methodology are implemented.
 4. **Prove the gate with regression and concurrency tests.** Cover each supported mutation
    racing with trades, imports, corrections, activation, account closure/deletion and retries.
    Failed validation or writes must leave the opening statement, ledger, source trades, postings

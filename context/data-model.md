@@ -519,6 +519,7 @@ Constraints: `@@unique([assetId, date])`
 | externalRef | `String` | @default("") |
 | createdAt | `DateTime` | @default(now()) |
 | updatedAt | `DateTime` | @updatedAt |
+| voidedAt | `DateTime?` | — |
 | user | `User` | @relation(fields: [userId], references: [id], onDelete: Cascade) |
 | asset | `Asset` | @relation(fields: [assetId], references: [id]) |
 | account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
@@ -545,6 +546,7 @@ Constraints: `@@unique([userId, assetId, openDate, entryPrice, accountId, extern
 | notes | `String?` | — |
 | createdAt | `DateTime` | @default(now()) |
 | updatedAt | `DateTime` | @updatedAt |
+| voidedAt | `DateTime?` | — |
 | position | `Position` | @relation(fields: [positionId], references: [id], onDelete: Cascade) |
 | cashOperation | `AccountCashOperation?` | — |
 
@@ -748,3 +750,4 @@ Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, s
 - `20261106195301_add_gated_live_cash_ledger`
 - `20261106212113_add_imported_cash_operation_source`
 - `20261107002207_audited_live_manual_sale_corrections`
+- `20261107104751_audited_manual_trade_voids`

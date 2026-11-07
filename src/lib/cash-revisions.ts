@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto'
+import {
+  parseManualTradeVoidAudit,
+  type ManualTradeVoidAudit,
+} from './manual-trade-void.js'
 import { AccountingDecimal } from './accounting-values.js'
 import {
   parseExecutionAudit,
@@ -28,6 +32,7 @@ export interface CashRevisionRequest {
   proposedTrade?: DraftTradeRequest | null
   executionAudit?: ExecutionAudit
   importedExecutionAudit?: ImportedExecutionAudit
+  voidAudit?: ManualTradeVoidAudit
 }
 
 export interface PreparedCashRevision {
@@ -78,6 +83,7 @@ export function prepareCashRevision(
           'proposedTrade',
           'executionAudit',
           'importedExecutionAudit',
+          'voidAudit',
         ].includes(key)
     )
   )
@@ -110,6 +116,9 @@ export function prepareCashRevision(
             row.importedExecutionAudit
           ),
         }
+      : {}),
+    ...('voidAudit' in row
+      ? { voidAudit: parseManualTradeVoidAudit(row.voidAudit) }
       : {}),
   }
   if (
@@ -228,6 +237,22 @@ export function prepareCashRevision(
     )
       cashRevisionConflict(
         'Imported execution audit must exactly match its cash correction',
+        400
+      )
+  }
+  if (request.voidAudit) {
+    const audit = request.voidAudit
+    if (
+      request.replacement !== null ||
+      request.executionAudit ||
+      request.importedExecutionAudit ||
+      request.proposedTrade !== undefined ||
+      request.idempotencyKey !== audit.input.idempotencyKey ||
+      request.expectedRevisionId !== audit.input.expectedRevisionId ||
+      request.reason !== audit.input.reason
+    )
+      cashRevisionConflict(
+        'A manual trade void requires a terminal reversal and matching source audit',
         400
       )
   }

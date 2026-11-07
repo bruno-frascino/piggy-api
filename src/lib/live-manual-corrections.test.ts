@@ -14,7 +14,11 @@ vi.mock('./account-lock.js', () => ({
 vi.mock('./prisma.js', () => ({
   prisma: { $transaction: mocks.transaction },
 }))
-import { correctLiveManualAcquisition } from './draft-cash-ledger.js'
+import {
+  correctLiveManualAcquisition,
+  voidLiveManualTrade,
+  readLiveManualTradeVoids,
+} from './draft-cash-ledger.js'
 
 const input = {
   idempotencyKey: 'fix1',
@@ -41,6 +45,40 @@ beforeEach(() => {
   mocks.ledger.mockResolvedValue(null)
 })
 describe('live manual acquisition correction boundary', () => {
+  it('requires strict void input before database access', async () => {
+    await expect(
+      voidLiveManualTrade('u1', 'a1', 'tx1', input)
+    ).rejects.toMatchObject({ status: 400 })
+    expect(mocks.transaction).not.toHaveBeenCalled()
+  })
+  it.each([
+    { id: 'a1', status: 'ACTIVE', isDemo: true },
+    { id: 'a1', status: 'CLOSED', isDemo: false },
+    { id: 'a1', status: 'ACTIVE', isDemo: false },
+  ])(
+    'does not enable accounts through voids or audit reads %j',
+    async (account) => {
+      mocks.account.mockResolvedValue(account)
+      const {
+        idempotencyKey,
+        expectedRevisionId,
+        expectedSourceFingerprint,
+        reason,
+      } = input
+      await expect(
+        voidLiveManualTrade('u1', 'a1', 'tx1', {
+          idempotencyKey,
+          expectedRevisionId,
+          expectedSourceFingerprint,
+          reason,
+        })
+      ).rejects.toMatchObject({ status: 409 })
+      await expect(readLiveManualTradeVoids('u1', 'a1')).rejects.toMatchObject({
+        status: 409,
+      })
+      expect(mocks.write).not.toHaveBeenCalled()
+    }
+  )
   it.each([
     { quantity: 2 },
     { quantity: '9007199254740992' },

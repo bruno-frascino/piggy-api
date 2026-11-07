@@ -333,6 +333,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./manual-trade-void.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/manual-trade-void.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./position-service.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/position-service.ts",
@@ -465,6 +482,7 @@
         "src/lib/draft-trade-command.ts",
         "src/lib/execution-correction.ts",
         "src/lib/import-execution-correction.ts",
+        "src/lib/manual-trade-void.ts",
         "src/lib/draft-cash-evidence.ts",
         "src/lib/live-acquisition-corrections.ts"
       ],
@@ -758,6 +776,23 @@
           "moduleSystem": "es6",
           "resolved": "src/lib/import-execution-correction.ts",
           "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./manual-trade-void.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/manual-trade-void.ts",
+          "valid": true
         }
       ],
       "dependents": [
@@ -766,6 +801,7 @@
         "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/draft-cash-ledger.test.ts",
         "src/lib/execution-correction.test.ts",
+        "src/lib/manual-trade-void.test.ts",
         "src/lib/position-mutations.integration.test.ts"
       ],
       "orphan": false,
@@ -842,6 +878,7 @@
       "dependents": [
         "src/lib/draft-cash-ledger.ts",
         "src/lib/cash-revisions.ts",
+        "src/lib/manual-trade-void.ts",
         "src/controllers/opening-statements.ts",
         "src/lib/execution-correction.test.ts"
       ],
@@ -876,6 +913,52 @@
       ],
       "orphan": false,
       "source": "src/lib/import-execution-correction.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./execution-correction.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/execution-correction.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/cash-revisions.ts",
+        "src/lib/manual-trade-void.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/manual-trade-void.ts",
       "valid": true
     },
     {
@@ -1332,6 +1415,7 @@
       "dependents": [
         "src/controllers/accounts.ts",
         "src/controllers/trading-account-lifecycle.integration.test.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/trading-account-mutations.test.ts",
         "src/lib/user-lifecycle.integration.test.ts"
       ],
@@ -2245,6 +2329,7 @@
       "dependents": [
         "src/lib/imports/service.ts",
         "src/controllers/positions.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/position-derived-values.test.ts",
         "src/lib/user-lifecycle.integration.test.ts"
       ],
@@ -3410,6 +3495,7 @@
       "dependents": [
         "src/controllers/positions.ts",
         "src/controllers/trading-account-lifecycle.integration.test.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/imports/service.integration.test.ts",
         "src/lib/position-mutations.integration.test.ts",
         "src/lib/position-mutations.test.ts",
@@ -3819,7 +3905,8 @@
       ],
       "dependents": [
         "src/controllers/tax-reports.ts",
-        "src/lib/cgt-engine.test.ts"
+        "src/lib/cgt-engine.test.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts"
       ],
       "orphan": false,
       "source": "src/lib/cgt-engine.ts",
@@ -5025,6 +5112,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./cgt-engine.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cgt-engine.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./draft-cash-ledger.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/draft-cash-ledger.ts",
@@ -5076,6 +5180,40 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./position-derived-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-derived-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-mutations.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./position-service.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/position-service.ts",
@@ -5096,6 +5234,23 @@
           "module": "./prisma.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./trading-account-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/trading-account-mutations.ts",
           "valid": true
         }
       ],
@@ -5851,6 +6006,48 @@
       "dependents": [],
       "orphan": false,
       "source": "src/lib/mailer.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cash-revisions.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cash-revisions.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./manual-trade-void.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/manual-trade-void.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/manual-trade-void.test.ts",
       "valid": true
     },
     {
@@ -6700,8 +6897,8 @@
         }
       ]
     },
-    "totalCruised": 132,
-    "totalDependenciesCruised": 306,
+    "totalCruised": 134,
+    "totalDependenciesCruised": 316,
     "violations": [],
     "warn": 0
   }

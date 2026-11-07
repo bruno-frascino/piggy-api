@@ -120,6 +120,8 @@ export async function closePosition(
       include: { transactions: { orderBy: { date: 'asc' } } },
     })
     if (!position) fail(404, 'Position not found')
+    if (position.voidedAt)
+      fail(409, 'Voided positions are retained for audit and cannot be changed')
     await requireNoCashLedger(db, [position.accountId])
     if (position.status === 'CLOSED') fail(400, 'Position is already closed')
     const buyQty = position.transactions
@@ -192,6 +194,7 @@ export async function updateCloseEvent(
     const where = {
       id: transactionId,
       type: 'SELL' as const,
+      voidedAt: null,
       position: { userId },
     }
     const pointer = await db.transaction.findFirst({
@@ -270,6 +273,8 @@ export async function deletePosition(
       include: { transactions: { select: { id: true, brokerRef: true } } },
     })
     if (!position) fail(404, 'Position not found')
+    if (position.voidedAt)
+      fail(409, 'Voided positions are retained for audit and cannot be deleted')
     await requireNoCashLedger(db, [position.accountId])
     requireManualSource(
       position.origin !== 'MANUAL' ||
@@ -358,6 +363,8 @@ export async function updatePositionAcquisition(
       },
     })
     if (!existing) fail(404, 'Position not found')
+    if (existing.voidedAt)
+      fail(409, 'Voided positions are retained for audit and cannot be changed')
     let accountStatus = existing.account?.status
     if (destinationAccountId) {
       const destination = await db.tradingAccount.findFirst({

@@ -2706,6 +2706,432 @@ describe.skipIf(!enabled)(
       ).toEqual(originalEvent)
     })
 
+    async function voidInput(accountId: string, expectedRevisionId: string) {
+      const ledger = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId },
+      })
+      return {
+        idempotencyKey: randomUUID(),
+        expectedRevisionId,
+        expectedSourceFingerprint: ledger.acceptedSourceFingerprint,
+        reason: 'Duplicate manual trade entered in error',
+      }
+    }
+
+    it.each(['4', '10'])(
+      'voids a %s-unit sale, restores inventory and retains immutable trades and postings',
+      async (quantity) => {
+        const {
+          voidLiveManualTrade,
+          readLiveManualTradeVoids,
+          postAccountTrade,
+        } = await import('./draft-cash-ledger.js')
+        const f = await liveAcquisitionFixture(quantity)
+        const original = await prisma.accountCashOperation.findUniqueOrThrow({
+          where: { id: f.sale.operationId },
+          include: { postings: true },
+        })
+        const trade = await prisma.transaction.findUniqueOrThrow({
+          where: { id: f.sale.transactionId },
+        })
+        const input = await voidInput(f.accountId, f.sale.operationId)
+        const { computeCapitalGainsReport } = await import('./cgt-engine.js')
+        expect(
+          (await computeCapitalGainsReport(f.userId, 2026, [f.accountId]))
+            .lineItems
+        ).toHaveLength(1)
+        const result = await voidLiveManualTrade(
+          f.userId,
+          f.accountId,
+          f.sale.transactionId,
+          input
+        )
+        expect(
+          (await computeCapitalGainsReport(f.userId, 2026, [f.accountId]))
+            .lineItems
+        ).toHaveLength(0)
+        expect(result.replay.balances[0].endingAmount).toBe('899')
+        expect(
+          await prisma.position.findUniqueOrThrow({
+            where: { id: f.positionId },
+          })
+        ).toMatchObject({
+          quantity: 10,
+          status: 'OPEN',
+          voidedAt: null,
+          closeDate: null,
+          realizedPnL: null,
+        })
+        const retained = await prisma.transaction.findUniqueOrThrow({
+          where: { id: f.sale.transactionId },
+        })
+        expect(retained).toMatchObject({
+          id: trade.id,
+          date: trade.date,
+          type: 'SELL',
+          price: trade.price,
+          quantity: trade.quantity,
+          totalValue: trade.totalValue,
+          fees: trade.fees,
+          voidedAt: expect.any(Date),
+        })
+        expect(
+          await prisma.accountCashOperation.findUniqueOrThrow({
+            where: { id: f.sale.operationId },
+            include: { postings: true },
+          })
+        ).toEqual(original)
+        const revision =
+          await prisma.accountCashOperationRevision.findUniqueOrThrow({
+            where: { id: result.revisionId },
+            include: { postings: { orderBy: { legIndex: 'asc' } } },
+          })
+        expect(revision.request).toMatchObject({
+          replacement: null,
+          voidAudit: { kind: 'SELL' },
+        })
+        expect(
+          revision.postings.map((row) => [row.phase, row.amount.toFixed()])
+        ).toEqual([
+          ['REVERSAL', `-${Number(quantity) * 20}`],
+          ['REVERSAL', '1'],
+        ])
+        expect(
+          await voidLiveManualTrade(
+            f.userId,
+            f.accountId,
+            f.sale.transactionId,
+            input
+          )
+        ).toMatchObject({ created: false, revisionId: result.revisionId })
+        const audits = await readLiveManualTradeVoids(f.userId, f.accountId)
+        expect(audits.items[0]).toMatchObject({
+          kind: 'SELL',
+          reason: input.reason,
+          transactionId: trade.id,
+        })
+        await expect(
+          postAccountTrade(
+            f.userId,
+            f.accountId,
+            liveTradeInput({
+              assetId: f.assetId,
+              effectiveDate: '2026-10-03',
+              sequence: 1,
+            })
+          )
+        ).rejects.toMatchObject({ status: 409 })
+        const next = await postAccountTrade(f.userId, f.accountId, {
+          kind: 'SELL',
+          positionId: f.positionId,
+          idempotencyKey: randomUUID(),
+          effectiveDate: '2026-10-04',
+          sequence: 1,
+          quantity: '1',
+          price: '20',
+          fees: '0',
+        })
+        expect(next.replay.balances[0].endingAmount).toBe('919')
+        expect(
+          await prisma.position.findUniqueOrThrow({
+            where: { id: f.positionId },
+          })
+        ).toMatchObject({ quantity: 9, status: 'PARTIAL' })
+      }
+    )
+
+    it('voids an acquisition only after all sales are voided and preserves terminal audit retries', async () => {
+      const {
+        voidLiveManualTrade,
+        readLiveManualTradeVoids,
+        correctLiveManualAcquisition,
+        postAccountTrade,
+      } = await import('./draft-cash-ledger.js')
+      const f = await liveAcquisitionFixture()
+      await expect(
+        voidLiveManualTrade(
+          f.userId,
+          f.accountId,
+          f.buy.transactionId,
+          await voidInput(f.accountId, f.buy.operationId)
+        )
+      ).rejects.toThrow('effective sales')
+      const corrected = await correctLiveManualAcquisition(
+        f.userId,
+        f.accountId,
+        f.buy.transactionId,
+        f.correction
+      )
+      const saleInput = await voidInput(f.accountId, f.sale.operationId)
+      await voidLiveManualTrade(
+        f.userId,
+        f.accountId,
+        f.sale.transactionId,
+        saleInput
+      )
+      const input = await voidInput(f.accountId, corrected.revisionId)
+      const beforeVoid = await prisma.position.findUniqueOrThrow({
+        where: { id: f.positionId },
+      })
+      const result = await voidLiveManualTrade(
+        f.userId,
+        f.accountId,
+        f.buy.transactionId,
+        input
+      )
+      expect(result.replay.balances[0].endingAmount).toBe('1000')
+      expect(
+        await prisma.position.findUniqueOrThrow({ where: { id: f.positionId } })
+      ).toMatchObject({
+        quantity: 0,
+        status: 'OPEN',
+        voidedAt: expect.any(Date),
+        closeDate: null,
+      })
+      expect(
+        await prisma.transaction.count({
+          where: { positionId: f.positionId, type: 'BUY' },
+        })
+      ).toBe(1)
+      expect(
+        await voidLiveManualTrade(
+          f.userId,
+          f.accountId,
+          f.buy.transactionId,
+          input
+        )
+      ).toMatchObject({ created: false, revisionId: result.revisionId })
+      expect(
+        await voidLiveManualTrade(
+          f.userId,
+          f.accountId,
+          f.sale.transactionId,
+          saleInput
+        )
+      ).toMatchObject({ created: false })
+      expect(
+        await correctLiveManualAcquisition(
+          f.userId,
+          f.accountId,
+          f.buy.transactionId,
+          f.correction
+        )
+      ).toMatchObject({ created: false, revisionId: corrected.revisionId })
+      await expect(
+        voidLiveManualTrade(f.userId, f.accountId, f.buy.transactionId, {
+          ...input,
+          reason: 'changed retry',
+        })
+      ).rejects.toMatchObject({ status: 409 })
+      await expect(
+        voidLiveManualTrade(
+          f.userId,
+          f.accountId,
+          f.buy.transactionId,
+          await voidInput(f.accountId, result.revisionId)
+        )
+      ).rejects.toMatchObject({ status: 409 })
+      await expect(
+        postAccountTrade(f.userId, f.accountId, {
+          kind: 'SELL',
+          positionId: f.positionId,
+          idempotencyKey: randomUUID(),
+          effectiveDate: '2026-10-04',
+          sequence: 1,
+          quantity: '1',
+          price: '20',
+          fees: '0',
+        })
+      ).rejects.toMatchObject({ status: 409 })
+      const { updatePositionAcquisition, deletePosition } =
+        await import('./position-mutations.js')
+      await expect(
+        updatePositionAcquisition(f.userId, f.positionId, { notes: 'edit' })
+      ).rejects.toMatchObject({ status: 409 })
+      await expect(
+        deletePosition(f.userId, f.positionId)
+      ).rejects.toMatchObject({ status: 409 })
+      const { savePositionHistory, savePositionStopLossHit } =
+        await import('./position-derived-values.js')
+      await expect(
+        savePositionHistory(beforeVoid, { maxRunUpPercent: 1 })
+      ).rejects.toMatchObject({ status: 409 })
+      await expect(
+        savePositionStopLossHit(beforeVoid, new Date())
+      ).rejects.toMatchObject({ status: 409 })
+      const audits = await readLiveManualTradeVoids(f.userId, f.accountId, 1, 0)
+      expect(audits.total).toBe(2)
+      expect(audits.items).toHaveLength(1)
+      expect(
+        (await readLiveManualTradeVoids(f.userId, f.accountId, 1, 1)).items
+      ).toHaveLength(1)
+      const { previewAccountOpening } =
+        await import('./accounting-preview-service.js')
+      const preview = await previewAccountOpening(f.userId, f.accountId, {
+        openingDate: '2026-10-01',
+        cashBalances: [{ currency: 'AUD', amount: '1000' }],
+      })
+      expect(preview.parcels).toHaveLength(0)
+      expect(preview.counts.postBoundaryTrades).toBe(0)
+      const { closeTradingAccount } =
+        await import('./trading-account-mutations.js')
+      await closeTradingAccount(f.userId, f.accountId)
+      expect(
+        (await readLiveManualTradeVoids(f.userId, f.accountId)).total
+      ).toBe(2)
+      await expect(
+        voidLiveManualTrade(f.userId, f.accountId, f.buy.transactionId, input)
+      ).rejects.toMatchObject({ status: 409 })
+    })
+
+    it('rejects a sale void that would unfund a later purchase without changing any stored state', async () => {
+      const { voidLiveManualTrade, postAccountTrade } =
+        await import('./draft-cash-ledger.js')
+      const f = await liveAcquisitionFixture('10')
+      await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: f.assetId,
+          effectiveDate: '2026-10-04',
+          price: '1000',
+          fees: '0',
+        })
+      )
+      const trade = await prisma.transaction.findUniqueOrThrow({
+        where: { id: f.sale.transactionId },
+      })
+      const parcel = await prisma.position.findUniqueOrThrow({
+        where: { id: f.positionId },
+      })
+      const ledger = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      await expect(
+        voidLiveManualTrade(
+          f.userId,
+          f.accountId,
+          trade.id,
+          await voidInput(f.accountId, f.sale.operationId)
+        )
+      ).rejects.toMatchObject({ status: 422 })
+      expect(
+        await prisma.transaction.findUniqueOrThrow({ where: { id: trade.id } })
+      ).toEqual(trade)
+      expect(
+        await prisma.position.findUniqueOrThrow({ where: { id: parcel.id } })
+      ).toEqual(parcel)
+      expect(
+        await prisma.accountCashLedger.findUniqueOrThrow({
+          where: { accountId: f.accountId },
+        })
+      ).toEqual(ledger)
+      expect(
+        await prisma.accountCashOperationRevision.count({
+          where: { operationId: f.sale.operationId },
+        })
+      ).toBe(0)
+    })
+
+    it('serializes competing voids and rejects unaudited marker tampering', async () => {
+      const { voidLiveManualTrade, readLiveManualTradeVoids } =
+        await import('./draft-cash-ledger.js')
+      const f = await liveAcquisitionFixture()
+      const input = await voidInput(f.accountId, f.sale.operationId)
+      const results = await Promise.allSettled([
+        voidLiveManualTrade(f.userId, f.accountId, f.sale.transactionId, input),
+        voidLiveManualTrade(f.userId, f.accountId, f.sale.transactionId, {
+          ...input,
+          idempotencyKey: randomUUID(),
+        }),
+      ])
+      expect(
+        results.filter((result) => result.status === 'fulfilled')
+      ).toHaveLength(1)
+      expect(
+        results.filter((result) => result.status === 'rejected')
+      ).toHaveLength(1)
+      await prisma.transaction.update({
+        where: { id: f.sale.transactionId },
+        data: { voidedAt: null },
+      })
+      await expect(
+        readLiveManualTradeVoids(f.userId, f.accountId)
+      ).rejects.toThrow('void marker')
+    })
+
+    it('rolls back a void on audit write failure and rejects stale, foreign and imported requests', async () => {
+      const { voidLiveManualTrade } = await import('./draft-cash-ledger.js')
+      const f = await liveAcquisitionFixture()
+      const input = await voidInput(f.accountId, f.sale.operationId)
+      await expect(
+        voidLiveManualTrade(f.userId, f.accountId, f.sale.transactionId, {
+          ...input,
+          expectedSourceFingerprint: 'a'.repeat(64),
+        })
+      ).rejects.toMatchObject({ status: 409 })
+      await expect(
+        voidLiveManualTrade(
+          randomUUID(),
+          f.accountId,
+          f.sale.transactionId,
+          input
+        )
+      ).rejects.toMatchObject({ status: 401 })
+      const other = await liveAcquisitionFixture()
+      await expect(
+        voidLiveManualTrade(
+          f.userId,
+          other.accountId,
+          f.sale.transactionId,
+          input
+        )
+      ).rejects.toMatchObject({ status: 404 })
+      const imported = await liveImportedExecutionFixture()
+      await expect(
+        voidLiveManualTrade(
+          imported.userId,
+          imported.accountId,
+          imported.transactionId,
+          await voidInput(imported.accountId, imported.operationId)
+        )
+      ).rejects.toMatchObject({ status: 404 })
+      const originalTransaction = prisma.$transaction.bind(prisma)
+      const injected = vi
+        .spyOn(prisma, '$transaction')
+        .mockImplementationOnce(async (callback) =>
+          originalTransaction(async (db) => {
+            vi.spyOn(
+              db.accountCashOperationRevision,
+              'create'
+            ).mockRejectedValueOnce(new Error('Injected void audit failure'))
+            if (typeof callback !== 'function')
+              throw new Error('Expected transaction callback')
+            return callback(db)
+          })
+        )
+      try {
+        await expect(
+          voidLiveManualTrade(
+            f.userId,
+            f.accountId,
+            f.sale.transactionId,
+            input
+          )
+        ).rejects.toThrow('Injected void audit failure')
+      } finally {
+        injected.mockRestore()
+      }
+      expect(
+        await prisma.transaction.findUniqueOrThrow({
+          where: { id: f.sale.transactionId },
+        })
+      ).toMatchObject({ voidedAt: null })
+      expect(
+        await prisma.position.findUniqueOrThrow({ where: { id: f.positionId } })
+      ).toMatchObject({ quantity: 6 })
+    })
+
     it('audits live acquisition corrections, closes/reopens sold parcels, preserves sales and replays a mixed BUY/SELL chain', async () => {
       const {
         correctLiveManualAcquisition,

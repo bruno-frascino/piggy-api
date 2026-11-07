@@ -321,7 +321,12 @@ describe('statistics controller', () => {
       expect(transactionFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            position: { userId: 'u_1', account: { isDemo: false } },
+            voidedAt: null,
+            position: {
+              userId: 'u_1',
+              voidedAt: null,
+              account: { isDemo: false },
+            },
           }),
         })
       )
@@ -341,7 +346,8 @@ describe('statistics controller', () => {
       expect(transactionFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            position: { userId: 'u_1', accountId: 'demo_1' },
+            voidedAt: null,
+            position: { userId: 'u_1', voidedAt: null, accountId: 'demo_1' },
           }),
         })
       )

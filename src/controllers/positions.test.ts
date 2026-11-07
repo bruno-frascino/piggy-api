@@ -173,7 +173,7 @@ describe('positions controller', () => {
       expect(response.body.meta).toEqual({ total: 1, limit: 50, offset: 0 })
       expect(positionFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { userId: 'u_1', account: { isDemo: false } },
+          where: { userId: 'u_1', voidedAt: null, account: { isDemo: false } },
         })
       )
     })
@@ -190,6 +190,7 @@ describe('positions controller', () => {
         expect.objectContaining({
           where: {
             userId: 'u_1',
+            voidedAt: null,
             status: { in: ['OPEN', 'PARTIAL'] },
             accountId: 'acc_1',
           },
@@ -432,7 +433,12 @@ describe('positions controller', () => {
         expect.objectContaining({
           where: {
             type: 'SELL',
-            position: { userId: 'u_1', account: { isDemo: false } },
+            voidedAt: null,
+            position: {
+              userId: 'u_1',
+              voidedAt: null,
+              account: { isDemo: false },
+            },
           },
           take: 500,
           skip: 0,
@@ -532,11 +538,16 @@ describe('positions controller', () => {
         expect.objectContaining({
           where: {
             type: 'SELL',
+            voidedAt: null,
             date: {
               gte: new Date('2026-01-01T00:00:00.000Z'),
               lte: new Date('2026-06-30T23:59:59.999Z'),
             },
-            position: { userId: 'u_1', account: { isDemo: false } },
+            position: {
+              userId: 'u_1',
+              voidedAt: null,
+              account: { isDemo: false },
+            },
           },
           take: 50,
           skip: 100,
@@ -557,7 +568,8 @@ describe('positions controller', () => {
         expect.objectContaining({
           where: {
             type: 'SELL',
-            position: { userId: 'u_1', accountId: 'demo_1' },
+            voidedAt: null,
+            position: { userId: 'u_1', voidedAt: null, accountId: 'demo_1' },
           },
         })
       )
@@ -586,6 +598,7 @@ describe('positions controller', () => {
         where: {
           id: 'missing',
           type: 'SELL',
+          voidedAt: null,
           position: { userId: 'u_1' },
         },
         select: {

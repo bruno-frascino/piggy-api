@@ -342,6 +342,7 @@ describe('accounts controller', () => {
       where: {
         accountId: 'a2',
         userId: 'u_1',
+        voidedAt: null,
         status: { in: ['OPEN', 'PARTIAL'] },
       },
     })

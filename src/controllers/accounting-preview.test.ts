@@ -88,9 +88,11 @@ describe('opening preview endpoint and read-only service', () => {
     expect(mocks.positions.mock.calls[0][0].where).toEqual({
       accountId: 'a1',
       userId: 'u1',
+      voidedAt: null,
     })
     expect(mocks.trades.mock.calls[0][0].where).toEqual({
-      position: { accountId: 'a1', userId: 'u1' },
+      voidedAt: null,
+      position: { accountId: 'a1', userId: 'u1', voidedAt: null },
     })
     expect(mocks.transaction.mock.calls[0][1]).toEqual({
       isolationLevel: 'RepeatableRead',

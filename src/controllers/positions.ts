@@ -88,7 +88,8 @@ const CLOSE_REASONS = ['STOP_LOSS', 'TARGET', 'MANUAL', 'OTHER']
  * @swagger
  * /api/positions:
  *   get:
- *     summary: List all positions for the authenticated user
+ *     summary: List effective positions for the authenticated user
+ *     description: Voided acquisitions and voided transactions are excluded. Original records remain available in retained manual trade void audits.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -176,7 +177,10 @@ router.get(
             .filter(Boolean)
         : []
 
-    const where: Record<string, unknown> = { userId: req.user!.userId }
+    const where: Record<string, unknown> = {
+      userId: req.user!.userId,
+      voidedAt: null,
+    }
     if (statuses.length === 1) {
       where.status = statuses[0]
     } else if (statuses.length > 1) {
@@ -197,7 +201,7 @@ router.get(
         include: {
           account: true,
           asset: { include: { exchange: true } },
-          transactions: { orderBy: { date: 'asc' } },
+          transactions: { where: { voidedAt: null }, orderBy: { date: 'asc' } },
         },
         orderBy: { openDate: 'desc' },
         take: limit,
@@ -490,7 +494,8 @@ router.post(
  *     summary: List close events (SELL transactions) for the authenticated user
  *     description: >
  *       Without `accountId`, close events from demo accounts are excluded. Pass a demo
- *       account's ID to list its history explicitly.
+ *       account's ID to list its history explicitly. Voided sales and acquisitions are
+ *       excluded; retained void audits are available separately on the account.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -601,9 +606,11 @@ router.get(
 
     const where = {
       type: 'SELL' as const,
+      voidedAt: null,
       ...(dateBounds ? { date: dateBounds } : {}),
       position: {
         userId: req.user!.userId,
+        voidedAt: null,
         ...(accountId ? { accountId } : { account: { isDemo: false } }),
       },
     }
@@ -663,7 +670,7 @@ router.get(
               // Only BUY rows, and only the quantity — the client needs the
               // total bought units to prorate buy fees across partial sells.
               transactions: {
-                where: { type: 'BUY' },
+                where: { type: 'BUY', voidedAt: null },
                 select: { id: true, type: true, quantity: true },
               },
             },
@@ -896,7 +903,7 @@ router.post(
   [param('id').isString(), handleValidationErrors],
   asyncHandler(async (req: Request, res: Response) => {
     const position = await prisma.position.findFirst({
-      where: { id: req.params.id, userId: req.user!.userId },
+      where: { id: req.params.id, userId: req.user!.userId, voidedAt: null },
       include: { asset: true },
     })
     if (!position) {
@@ -1006,7 +1013,7 @@ router.post(
   ],
   asyncHandler(async (req: Request, res: Response) => {
     const position = await prisma.position.findFirst({
-      where: { id: req.params.id, userId: req.user!.userId },
+      where: { id: req.params.id, userId: req.user!.userId, voidedAt: null },
       include: { asset: true },
     })
     if (!position) {
@@ -1213,7 +1220,7 @@ router.patch(
   ],
   asyncHandler(async (req: Request, res: Response) => {
     const existing = await prisma.position.findFirst({
-      where: { id: req.params.id, userId: req.user!.userId },
+      where: { id: req.params.id, userId: req.user!.userId, voidedAt: null },
       include: {
         account: { select: { isDemo: true } },
         asset: { include: { exchange: true } },

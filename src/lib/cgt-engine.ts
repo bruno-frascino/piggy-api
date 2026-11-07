@@ -101,9 +101,11 @@ export async function computeCapitalGainsReport(
   const disposals = await prisma.transaction.findMany({
     where: {
       type: 'SELL',
+      voidedAt: null,
       date: { gte: start, lt: end },
       position: {
         userId,
+        voidedAt: null,
         accountId: { in: accountIds },
         account: { isDemo: false },
       },
@@ -114,7 +116,7 @@ export async function computeCapitalGainsReport(
           asset: { include: { exchange: true } },
           account: true,
           transactions: {
-            where: { type: 'BUY' },
+            where: { type: 'BUY', voidedAt: null },
             select: { quantity: true },
             take: 1,
           },

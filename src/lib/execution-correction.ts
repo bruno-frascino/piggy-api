@@ -159,7 +159,7 @@ export function parseAcquisitionCorrection(
   return { ...parseSaleCorrection(sale), quantity }
 }
 
-function snapshot(raw: unknown): ExecutionSnapshot {
+export function parseExecutionSnapshot(raw: unknown): ExecutionSnapshot {
   const row = object(raw, [
     'transactionId',
     'positionId',
@@ -216,8 +216,8 @@ export function parseExecutionAudit(raw: unknown): ExecutionAudit {
     ...(acquisition
       ? { kind: 'BUY', input: parseAcquisitionCorrection(row.input) }
       : { input: parseSaleCorrection(row.input) }),
-    before: snapshot(row.before),
-    after: snapshot(row.after),
+    before: parseExecutionSnapshot(row.before),
+    after: parseExecutionSnapshot(row.after),
   }
   if (
     audit.before.transactionId !== audit.after.transactionId ||

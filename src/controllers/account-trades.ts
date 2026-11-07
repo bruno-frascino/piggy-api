@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express'
-import { body, param } from 'express-validator'
+import { body, param, query } from 'express-validator'
 import { authenticateToken } from '../middleware/auth.js'
 import {
   asyncHandler,
@@ -10,6 +10,8 @@ import {
   correctLiveManualSale,
   correctLiveImportedExecution,
   postAccountTrade,
+  voidLiveManualTrade,
+  readLiveManualTradeVoids,
 } from '../lib/draft-cash-ledger.js'
 
 const router = Router()
@@ -394,6 +396,164 @@ router.post(
       req.body
     )
     res.status(result.created ? 201 : 200).json({ success: true, data: result })
+  })
+)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/trades/{transactionId}/voids:
+ *   post:
+ *     summary: Void an audited live manual trade without deleting its records
+ *     description: SELL voids restore parcel inventory and remove proceeds from cash replay. BUY voids require no effective sales. Only active real ledgers and manual parcels are supported. The terminal revision retains original trades, postings and date/sequence reservations. No account is activated.
+ *     tags: [Accounts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: transactionId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: false
+ *             required: [idempotencyKey, expectedRevisionId, expectedSourceFingerprint, reason]
+ *             properties:
+ *               idempotencyKey: { type: string, minLength: 1, maxLength: 200 }
+ *               expectedRevisionId: { type: string, minLength: 1, maxLength: 200 }
+ *               expectedSourceFingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+ *               reason: { type: string, minLength: 1, maxLength: 1000 }
+ *     responses:
+ *       201:
+ *         description: Trade void, parcel update and cash reversal committed atomically.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/LiveExecutionCorrectionResponse' }
+ *       200:
+ *         description: Idempotent retry of an already committed void.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/LiveExecutionCorrectionResponse' }
+ *       400: { description: Invalid void request. }
+ *       401: { description: Unauthorized. }
+ *       404: { description: Owned live manual trade not found. }
+ *       409: { description: Stale source/revision, terminal trade or unsupported parcel. }
+ *       422: { description: Removing the trade would leave insufficient cash or unsupported history. }
+ */
+router.post(
+  '/:id/trades/:transactionId/voids',
+  [
+    param('id').isString().trim().notEmpty(),
+    param('transactionId').isString().trim().notEmpty(),
+    body('idempotencyKey').isString().notEmpty().isLength({ max: 200 }),
+    body('expectedRevisionId').isString().notEmpty().isLength({ max: 200 }),
+    body('expectedSourceFingerprint')
+      .isString()
+      .matches(/^[a-f0-9]{64}$/),
+    body('reason').isString().notEmpty().isLength({ max: 1000 }),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await voidLiveManualTrade(
+      req.user!.userId,
+      req.params.id,
+      req.params.transactionId,
+      req.body
+    )
+    res.status(result.created ? 201 : 200).json({ success: true, data: result })
+  })
+)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/trades/voids:
+ *   get:
+ *     summary: Read retained manual trade void audits for a confirmed real ledger
+ *     description: Read-only audit access remains available on archived accounts. The stored operation, revision, posting and void-marker chain is validated; this is not a current cash reconciliation or source-freshness assertion.
+ *     tags: [Accounts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+ *       - in: query
+ *         name: offset
+ *         schema: { type: integer, minimum: 0, default: 0 }
+ *     responses:
+ *       200:
+ *         description: Retained voids sorted by void timestamp descending.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, data]
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   required: [items, total, limit, offset]
+ *                   properties:
+ *                     total: { type: integer }
+ *                     limit: { type: integer }
+ *                     offset: { type: integer }
+ *                     items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         required: [operationId, revisionId, transactionId, positionId, kind, voidedAt, reason, before]
+ *                         properties:
+ *                           operationId: { type: string }
+ *                           revisionId: { type: string }
+ *                           transactionId: { type: string }
+ *                           positionId: { type: string }
+ *                           kind: { type: string, enum: [BUY, SELL] }
+ *                           voidedAt: { type: string, format: date-time }
+ *                           reason: { type: string }
+ *                           before:
+ *                             type: object
+ *                             required: [transactionId, positionId, date, quantity, price, totalValue, fees, currency]
+ *                             properties:
+ *                               transactionId: { type: string }
+ *                               positionId: { type: string }
+ *                               date: { type: string, format: date-time }
+ *                               quantity: { type: string }
+ *                               price: { type: string }
+ *                               totalValue: { type: string }
+ *                               fees: { type: string }
+ *                               currency: { type: string }
+ *       400: { description: Invalid pagination. }
+ *       401: { description: Unauthorized. }
+ *       404: { description: Owned account not found. }
+ *       409: { description: Account is not ledger-enabled or retained audit history is inconsistent. }
+ */
+router.get(
+  '/:id/trades/voids',
+  [
+    param('id').isString().trim().notEmpty(),
+    query('limit').optional().isInt({ min: 1, max: 100 }),
+    query('offset').optional().isInt({ min: 0, max: Number.MAX_SAFE_INTEGER }),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await readLiveManualTradeVoids(
+      req.user!.userId,
+      req.params.id,
+      req.query.limit === undefined ? 100 : Number(req.query.limit),
+      req.query.offset === undefined ? 0 : Number(req.query.offset)
+    )
+    res.json({ success: true, data: result })
   })
 )
 
