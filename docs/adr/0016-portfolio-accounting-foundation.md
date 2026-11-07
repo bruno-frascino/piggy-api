@@ -1,6 +1,6 @@
 # 0016. Confirmed opening statements and source-linked portfolio accounting
 
-- **Status**: Proposed; gated live trade posting is implemented, but no account is activated
+- **Status**: Proposed; gated live trade posting and audited manual BUY/SELL corrections are implemented, but no account is activated
 - **Date**: 2026-10-31
 - **Implementation**: executable reference specification, read-only opening preview, persistent
   inactive drafts, and an atomic manual trade/cash writer requiring an explicitly provisioned
@@ -803,6 +803,48 @@ non-retrying React Query hook, but does not route the existing trade-entry UI to
 There is no confirmation, activation, balance-read or performance surface in this increment;
 live posting is not available to ordinary users until a separate reviewed activation flow
 provisions the ledger.
+
+### Audited corrections for live manual sales
+
+Live cash-linked manual SELL corrections append an `AccountCashOperationRevision` and exact
+reversal/replacement postings; the original operation and its posting rows remain immutable.
+Only the sale's effective date, stable sequence, price and fees can change. Quantity, parcel,
+currency and source identity stay fixed, and reversal is not supported. Imported executions
+remain ineligible because their source records require a separate source-aware adjustment policy.
+
+The correction locks the owned account and parcel, checks the expected revision and current
+account source fingerprint, validates the acquisition boundary and reserved sequence slots, then
+replays the complete cash timeline before committing the transaction, recomputed parcel results,
+revision audit and accepted fingerprint together. Replays validate the ordered operation/revision
+chain, snapshots and postings against current source data. The closed-trade history exposes
+correction metadata only for eligible active-account manual sales; its editor requires an audit
+reason and does not queue writes offline. This remains a gated writer: it provisions no ledger,
+activates no account and does not enable imported financial corrections or execution reversal.
+
+### Audited corrections for live manual acquisitions
+
+Live cash-linked manual BUYs use the same append-only operation revision and fingerprint chain
+as SELL corrections, with acquisition audits explicitly tagged `kind: BUY`. The endpoint
+`POST /api/accounts/{id}/trades/{transactionId}/acquisition-corrections` accepts exact total bought
+quantity, price, fees, effective date and sequence with an expected revision/source head,
+idempotency key and audit reason. Existing untagged SELL audit hashes remain unchanged.
+
+Under owned account/parcel locks, the writer preserves every existing sale and requires the
+corrected acquisition to cover their quantities, precede their dates and precede any same-day
+effective sale cash. Imported purchases and parcels containing broker-linked allocations remain
+ineligible. The full dated cash replay must remain funded. The single BUY, parcel cost basis,
+remaining quantity/status, realized results, immutable reversal/replacement cash legs and source
+fingerprint advance commit together or roll back together. A quantity correction may close or
+reopen the parcel without changing a disposal; acquisition-based derived caches are cleared.
+Existing Float quantity storage retains the same exact round-trip and precision limits as the
+draft acquisition workflow.
+
+The UI exposes corrections in holdings and closed-trade history, including fully sold parcels,
+using full exact acquisition metadata rather than prorated fees/remaining holdings. It requires
+explicit acknowledgement of live cash/cost-basis/tax-report impacts, preserves retry identity,
+and blocks offline or stale review submissions. Legacy financial editors cannot bypass the
+ledger. Account activation, demo ledger provisioning, moves, deletion, reversals and imported
+financial adjustments remain separate work.
 
 ## Consequences
 

@@ -3,6 +3,10 @@ import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../lib/user-lock.js', () => ({ lockActiveUser: vi.fn() }))
+const acquisitionCorrections = vi.hoisted(() => ({ read: vi.fn() }))
+vi.mock('../lib/live-acquisition-corrections.js', () => ({
+  readLiveAcquisitionCorrections: acquisitionCorrections.read,
+}))
 const derived = vi.hoisted(() => ({ history: vi.fn(), stop: vi.fn() }))
 vi.mock('../lib/position-derived-values.js', () => ({
   savePositionHistory: derived.history,
@@ -135,6 +139,7 @@ function createApp() {
 describe('positions controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    acquisitionCorrections.read.mockResolvedValue(new Map())
     tradeLinkFindFirstMock.mockResolvedValue(null)
     liveTradeLinkFindFirstMock.mockResolvedValue(null)
     cashLedgerFindUniqueMock.mockResolvedValue(null)
@@ -185,6 +190,30 @@ describe('positions controller', () => {
           },
         })
       )
+    })
+    it('exposes exact acquisition correction controls on the owning position without leaking cash operations', async () => {
+      const metadata = {
+        operationId: 'op1',
+        transactionId: 'buy1',
+        expectedRevisionId: 'r1',
+        expectedSourceFingerprint: 'a'.repeat(64),
+        effectiveDate: '2026-10-02',
+        sequence: 1,
+        quantity: '10',
+        price: '0.123456789012',
+        fees: '0.12345678',
+      }
+      positionFindManyMock.mockResolvedValue([{ id: 'p_1' }])
+      positionCountMock.mockResolvedValue(1)
+      acquisitionCorrections.read.mockResolvedValue(
+        new Map([['p_1', metadata]])
+      )
+      const response = await request(createApp()).get('/api/positions')
+      expect(response.body.data[0]).toEqual({
+        id: 'p_1',
+        acquisitionCorrection: metadata,
+      })
+      expect(acquisitionCorrections.read).toHaveBeenCalledWith('u_1', ['p_1'])
     })
   })
 
@@ -345,7 +374,24 @@ describe('positions controller', () => {
 
   describe('GET /api/positions/close-events', () => {
     it('lists SELL transactions for the authenticated user', async () => {
-      transactionFindManyMock.mockResolvedValue([{ id: 'tx_1', type: 'SELL' }])
+      transactionFindManyMock.mockResolvedValue([
+        {
+          id: 'tx_1',
+          type: 'SELL',
+          brokerRef: null,
+          cashOperation: null,
+          position: {
+            id: 'p_1',
+            origin: 'MANUAL',
+            account: {
+              id: 'acc_1',
+              name: 'Main',
+              isDemo: false,
+              status: 'ACTIVE',
+            },
+          },
+        },
+      ])
       transactionCountMock.mockResolvedValue(1)
 
       const response = await request(createApp()).get(
@@ -365,6 +411,37 @@ describe('positions controller', () => {
           skip: 0,
         })
       )
+    })
+    it('exposes acquisition controls on fully closed parcels in sale history', async () => {
+      const metadata = {
+        transactionId: 'buy1',
+        quantity: '10',
+        price: '12',
+        fees: '1',
+      }
+      transactionFindManyMock.mockResolvedValue([
+        {
+          id: 'tx_1',
+          type: 'SELL',
+          brokerRef: null,
+          cashOperation: null,
+          position: {
+            id: 'p_1',
+            origin: 'MANUAL',
+            account: { status: 'ACTIVE', isDemo: false },
+          },
+        },
+      ])
+      transactionCountMock.mockResolvedValue(1)
+      acquisitionCorrections.read.mockResolvedValue(
+        new Map([['p_1', metadata]])
+      )
+      const response = await request(createApp()).get(
+        '/api/positions/close-events'
+      )
+      expect(response.status).toBe(200)
+      expect(response.body.data[0].acquisitionCorrection).toEqual(metadata)
+      expect(acquisitionCorrections.read).toHaveBeenCalledWith('u_1', ['p_1'])
     })
 
     it('applies inclusive date bounds and pagination', async () => {

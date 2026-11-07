@@ -30,6 +30,10 @@ erDiagram
     Transaction ||--o{ AccountCashOperation : "transaction"
     ImportedEvent ||--o{ AccountCashOperation : "importedEvent"
     AccountCashOperation ||--o{ AccountCashPosting : "operation"
+    AccountCashOperation ||--o{ AccountCashOperationRevision : "operation"
+    AccountCashOperationRevision ||--o{ AccountCashOperationRevision : "previousRevision"
+    AccountCashOperationRevision ||--o{ AccountCashOperationRevision : "nextRevisions"
+    AccountCashOperationRevision ||--o{ AccountCashRevisionPosting : "revision"
     Exchange ||--o{ Asset : "exchange"
     Asset ||--o{ PriceHistory : "asset"
     User ||--o{ Position : "user"
@@ -374,6 +378,7 @@ Constraints: `@@unique([statementId, transactionId])`
 | transaction | `Transaction` | @relation(fields: [transactionId], references: [id], onDelete: Restrict) |
 | importedEvent | `ImportedEvent?` | @relation(fields: [importedEventId], references: [id], onDelete: Restrict) |
 | postings | `AccountCashPosting[]` | — |
+| revisions | `AccountCashOperationRevision[]` | — |
 
 Constraints: `@@unique([accountId, id])`, `@@unique([accountId, idempotencyKey])`, `@@unique([accountId, effectiveDate, sequence])`, `@@unique([accountId, auditNumber])`
 
@@ -390,6 +395,46 @@ Constraints: `@@unique([accountId, id])`, `@@unique([accountId, idempotencyKey])
 | operation | `AccountCashOperation` | @relation(fields: [operationId], references: [id], onDelete: Cascade) |
 
 Constraints: `@@unique([operationId, legIndex])`
+
+### `AccountCashOperationRevision` (table: `account_cash_operation_revisions`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| accountId | `String` | — |
+| operationId | `String` | — |
+| revisionNumber | `Int` | — |
+| previousRevisionId | `String?` | — |
+| idempotencyKey | `String` | — |
+| payloadHash | `String` | — |
+| reason | `String` | — |
+| request | `Json` | — |
+| auditNumber | `Int` | — |
+| previousFingerprint | `String` | — |
+| nextFingerprint | `String` | — |
+| transactionSnapshot | `Json` | — |
+| recordedAt | `DateTime` | @default(now()) |
+| operation | `AccountCashOperation` | @relation(fields: [accountId, operationId], references: [accountId, id], onDelete: Cascade) |
+| previousRevision | `AccountCashOperationRevision?` | @relation("AccountCashRevisionChain", fields: [accountId, previousRevisionId], references: [accountId, id], onDelete: Restrict) |
+| nextRevisions | `AccountCashOperationRevision[]` | @relation("AccountCashRevisionChain") |
+| postings | `AccountCashRevisionPosting[]` | — |
+
+Constraints: `@@unique([accountId, id])`, `@@unique([accountId, idempotencyKey])`, `@@unique([accountId, auditNumber])`, `@@unique([operationId, revisionNumber])`
+
+### `AccountCashRevisionPosting` (table: `account_cash_revision_postings`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| revisionId | `String` | — |
+| legIndex | `Int` | — |
+| phase | `String` | — |
+| currency | `String` | — |
+| amount | `Decimal` | @db.Decimal(38, 12) |
+| role | `String` | — |
+| revision | `AccountCashOperationRevision` | @relation(fields: [revisionId], references: [id], onDelete: Cascade) |
+
+Constraints: `@@unique([revisionId, legIndex])`
 
 ### `Asset` (table: `assets`)
 
@@ -702,3 +747,4 @@ Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, s
 - `20261101201744_draft_cash_statement_evidence`
 - `20261106195301_add_gated_live_cash_ledger`
 - `20261106212113_add_imported_cash_operation_source`
+- `20261107002207_audited_live_manual_sale_corrections`

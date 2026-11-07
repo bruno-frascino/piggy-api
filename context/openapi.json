@@ -94,6 +94,79 @@
         },
         "type": "object"
       },
+      "LiveExecutionCorrectionResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "created": {
+                "type": "boolean"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "replay": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "activity": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "balances": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "funded": {
+                    "type": "boolean"
+                  },
+                  "fundingIssues": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "openingDate": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "openingDate",
+                  "funded",
+                  "balances",
+                  "activity",
+                  "fundingIssues"
+                ],
+                "type": "object"
+              },
+              "revisionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operationId",
+              "revisionId",
+              "created",
+              "replay"
+            ],
+            "type": "object"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "type": "object"
+      },
       "OpeningStatement": {
         "properties": {
           "accountId": {
@@ -2074,6 +2147,250 @@
         ]
       }
     },
+    "/api/accounts/{id}/trades/{transactionId}/acquisition-corrections": {
+      "post": {
+        "description": "Appends an immutable BUY revision and reversal/replacement cash postings. Date, stable cash sequence, exact bought quantity, price and fees may change. All existing sales are preserved; the corrected acquisition must cover them and precede their dates and cash ordering. Imported executions, moves and reversal remain unsupported. No account is activated.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "transactionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "effectiveDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "expectedRevisionId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedSourceFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "fees": {
+                    "description": "Exact non-negative decimal purchase fee.",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "price": {
+                    "description": "Exact positive decimal purchase price.",
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "description": "Exact positive bought quantity",
+                    "not remaining units.": null,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "expectedRevisionId",
+                  "expectedSourceFingerprint",
+                  "reason",
+                  "effectiveDate",
+                  "sequence",
+                  "quantity",
+                  "price",
+                  "fees"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveExecutionCorrectionResponse"
+                }
+              }
+            },
+            "description": "Idempotent retry of an already committed correction."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveExecutionCorrectionResponse"
+                }
+              }
+            },
+            "description": "Acquisition, parcel results, audit revision and cash postings committed atomically."
+          },
+          "400": {
+            "description": "Invalid correction or unrepresentable amount or quantity."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned live manual acquisition not found."
+          },
+          "409": {
+            "description": "Stale revision, source drift, reserved sequence, imported allocation or invalid acquisition/sale ordering."
+          },
+          "422": {
+            "description": "Correction would leave an unsupported or insufficiently funded ledger."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Correct an audited live manual acquisition",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/trades/{transactionId}/corrections": {
+      "post": {
+        "description": "Appends an immutable correction revision for a cash-linked manual SELL. Only date, stable cash sequence, price and fees may change; quantity, source identity and imported executions are immutable. Reversal is not supported.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "transactionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "effectiveDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "expectedRevisionId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedSourceFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "fees": {
+                    "description": "Exact non-negative decimal fee.",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "price": {
+                    "description": "Exact positive decimal sale price.",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "expectedRevisionId",
+                  "expectedSourceFingerprint",
+                  "reason",
+                  "effectiveDate",
+                  "sequence",
+                  "price",
+                  "fees"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Idempotent retry of an already committed correction."
+          },
+          "201": {
+            "description": "Correction, audit revision and cash postings were committed atomically."
+          },
+          "400": {
+            "description": "Invalid correction."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Live manual sale not found."
+          },
+          "409": {
+            "description": "Stale revision, source drift, reserved sequence or inconsistent cash history."
+          },
+          "422": {
+            "description": "Correction would leave an unsupported or insufficiently funded cash ledger."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Correct an audited live manual sale",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/auth/forgot-password": {
       "post": {
         "description": "Emails a reset link to the address if it is registered. Always responds with 200 regardless of whether the email exists or whether delivery succeeded (prevents user enumeration). In non-production environments the `resetToken` field is also included in the response for testing. Reset-token replacement is atomic under an exclusive user lock. Users deleted or purged during the request receive the same generic response without a token.\n",
@@ -3252,7 +3569,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Paginated list of positions"
+            "description": "Paginated list of positions. Eligible live manual acquisitions include acquisitionCorrection metadata with transactionId, operationId, expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string quantity (total bought units), price and fees. Imported, demo and legacy acquisitions do not receive these controls.\n"
           },
           "401": {
             "description": "Unauthorized"
@@ -3489,7 +3806,7 @@
                 }
               }
             },
-            "description": "Paginated SELL transactions with position and asset context. Each event carries `closeReason` (STOP_LOSS | TARGET | MANUAL | OTHER, or null when unknown).\n"
+            "description": "Paginated SELL transactions with position and asset context. Each event carries `closeReason` (STOP_LOSS | TARGET | MANUAL | OTHER, or null when unknown). Eligible live manual sales also include `cashCorrection` metadata for the audited correction endpoint; imported and legacy sales do not. Eligible live manual BUYs include `acquisitionCorrection`, also for fully closed parcels: transactionId, operationId, expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string quantity (total bought units), price and fees.\n"
           },
           "400": {
             "description": "Validation error"
@@ -3511,7 +3828,7 @@
     },
     "/api/positions/close-events/{id}": {
       "patch": {
-        "description": "Updates the sale and parcel totals atomically under an owned-account and parcel lock. Does not activate or spend inactive draft cash. Concurrent parcel moves require reload. Imported broker-linked execution values are immutable here. Financial changes to cash-linked manual trades require the coordinated acquisition/sale-correction endpoints in opening reconciliation; this ordinary editor returns 409 instead. Notes and close reason remain editable; unchanged financial values are not rewritten.\n",
+        "description": "Updates the sale and parcel totals atomically under an owned-account and parcel lock. Does not activate or spend inactive draft cash. Concurrent parcel moves require reload. Imported broker-linked execution values are immutable here. Financial changes to cash-linked manual trades require the audited account trade correction endpoint; this ordinary editor returns 409 instead. Notes and close reason remain editable; unchanged financial values are not rewritten.\n",
         "parameters": [
           {
             "in": "path",

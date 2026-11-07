@@ -353,10 +353,11 @@ model AccountCashOperation {
   transactionSnapshot Json
   recordedAt          DateTime @default(now())
 
-  ledger        AccountCashLedger    @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
-  transaction   Transaction          @relation(fields: [transactionId], references: [id], onDelete: Restrict)
-  importedEvent ImportedEvent?       @relation(fields: [importedEventId], references: [id], onDelete: Restrict)
+  ledger        AccountCashLedger              @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
+  transaction   Transaction                    @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  importedEvent ImportedEvent?                 @relation(fields: [importedEventId], references: [id], onDelete: Restrict)
   postings      AccountCashPosting[]
+  revisions     AccountCashOperationRevision[]
 
   @@unique([accountId, id])
   @@unique([accountId, idempotencyKey])
@@ -377,6 +378,49 @@ model AccountCashPosting {
 
   @@unique([operationId, legIndex])
   @@map("account_cash_postings")
+}
+
+model AccountCashOperationRevision {
+  id                  String   @id @default(cuid())
+  accountId           String
+  operationId         String
+  revisionNumber      Int
+  previousRevisionId  String?
+  idempotencyKey      String
+  payloadHash         String
+  reason              String
+  request             Json
+  auditNumber         Int
+  previousFingerprint String
+  nextFingerprint     String
+  transactionSnapshot Json
+  recordedAt          DateTime @default(now())
+
+  operation        AccountCashOperation           @relation(fields: [accountId, operationId], references: [accountId, id], onDelete: Cascade)
+  previousRevision AccountCashOperationRevision?  @relation("AccountCashRevisionChain", fields: [accountId, previousRevisionId], references: [accountId, id], onDelete: Restrict)
+  nextRevisions    AccountCashOperationRevision[] @relation("AccountCashRevisionChain")
+  postings         AccountCashRevisionPosting[]
+
+  @@unique([accountId, id])
+  @@unique([accountId, idempotencyKey])
+  @@unique([accountId, auditNumber])
+  @@unique([operationId, revisionNumber])
+  @@map("account_cash_operation_revisions")
+}
+
+model AccountCashRevisionPosting {
+  id         String  @id @default(cuid())
+  revisionId String
+  legIndex   Int
+  phase      String
+  currency   String
+  amount     Decimal @db.Decimal(38, 12)
+  role       String
+
+  revision AccountCashOperationRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@unique([revisionId, legIndex])
+  @@map("account_cash_revision_postings")
 }
 
 // ─── Assets ──────────────────────────────────────────────────────────────────

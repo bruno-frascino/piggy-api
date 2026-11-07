@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { body, param, query } from 'express-validator'
 import { prisma } from '../lib/prisma.js'
+import { readLiveAcquisitionCorrections } from '../lib/live-acquisition-corrections.js'
 import { lockActiveUser } from '../lib/user-lock.js'
 import {
   savePositionHistory,
@@ -35,6 +36,12 @@ import {
 
 const router = Router()
 router.use(authenticateToken)
+
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
 
 async function validateKrakenMarket(
   symbol: string,
@@ -122,7 +129,12 @@ const CLOSE_REASONS = ['STOP_LOSS', 'TARGET', 'MANUAL', 'OTHER']
  *           default: 0
  *     responses:
  *       200:
- *         description: Paginated list of positions
+ *         description: >
+ *           Paginated list of positions. Eligible live manual acquisitions include
+ *           acquisitionCorrection metadata with transactionId, operationId, expectedRevisionId,
+ *           expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string
+ *           quantity (total bought units), price and fees. Imported, demo and legacy
+ *           acquisitions do not receive these controls.
  *       401:
  *         description: Unauthorized
  */
@@ -190,7 +202,17 @@ router.get(
       prisma.position.count({ where }),
     ])
 
-    res.json({ success: true, data: positions, meta: { total, limit, offset } })
+    const corrections = await readLiveAcquisitionCorrections(
+      req.user!.userId,
+      positions.map((position) => position.id)
+    )
+    const data = positions.map((position) => ({
+      ...position,
+      ...(corrections.has(position.id)
+        ? { acquisitionCorrection: corrections.get(position.id) }
+        : {}),
+    }))
+    res.json({ success: true, data, meta: { total, limit, offset } })
   })
 )
 
@@ -485,6 +507,12 @@ router.post(
  *         description: >
  *           Paginated SELL transactions with position and asset context. Each event
  *           carries `closeReason` (STOP_LOSS | TARGET | MANUAL | OTHER, or null when unknown).
+ *           Eligible live manual sales also include `cashCorrection` metadata for the
+ *           audited correction endpoint; imported and legacy sales do not.
+ *           Eligible live manual BUYs include `acquisitionCorrection`, also for fully
+ *           closed parcels: transactionId, operationId, expectedRevisionId,
+ *           expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string
+ *           quantity (total bought units), price and fees.
  *         content:
  *           application/json:
  *             schema:
@@ -565,9 +593,30 @@ router.get(
           fees: true,
           notes: true,
           closeReason: true,
+          brokerRef: true,
+          cashOperation: {
+            select: {
+              id: true,
+              importedEventId: true,
+              command: true,
+              effectiveDate: true,
+              sequence: true,
+              revisions: {
+                orderBy: { revisionNumber: 'asc' },
+                select: { id: true, request: true },
+              },
+              ledger: {
+                select: {
+                  state: true,
+                  acceptedSourceFingerprint: true,
+                },
+              },
+            },
+          },
           position: {
             select: {
               id: true,
+              origin: true,
               openDate: true,
               entryPrice: true,
               buyFees: true,
@@ -575,7 +624,9 @@ router.get(
               notes: true,
               maxDrawdownPercent: true,
               maxRunUpPercent: true,
-              account: { select: { id: true, name: true, isDemo: true } },
+              account: {
+                select: { id: true, name: true, isDemo: true, status: true },
+              },
               asset: {
                 select: {
                   symbol: true,
@@ -599,7 +650,68 @@ router.get(
       prisma.transaction.count({ where }),
     ])
 
-    res.json({ success: true, data: events, meta: { total, limit, offset } })
+    const acquisitionCorrections = await readLiveAcquisitionCorrections(
+      req.user!.userId,
+      [...new Set(events.map((event) => event.position.id))]
+    )
+    const data = events.map((event) => {
+      const { cashOperation, brokerRef, ...publicEvent } = event
+      const account = event.position.account
+      const operation = cashOperation
+      const latestRevision = operation?.revisions.at(-1)
+      const latestRequest = latestRevision
+        ? jsonRecord(latestRevision.request)
+        : null
+      const latestReplacement = latestRevision
+        ? jsonRecord(latestRequest?.replacement)
+        : jsonRecord(jsonRecord(operation?.command)?.cashCommand)
+      const sequence =
+        typeof latestReplacement?.sequence === 'number'
+          ? latestReplacement.sequence
+          : operation
+            ? Number(operation.sequence)
+            : NaN
+      const expectedSourceFingerprint =
+        operation?.ledger.acceptedSourceFingerprint
+      const eligible =
+        operation &&
+        !operation.importedEventId &&
+        brokerRef === null &&
+        event.position.origin === 'MANUAL' &&
+        account.status === 'ACTIVE' &&
+        !account.isDemo &&
+        operation.ledger.state === 'ACTIVE' &&
+        typeof expectedSourceFingerprint === 'string' &&
+        Number.isSafeInteger(sequence) &&
+        sequence > 0
+
+      return {
+        ...publicEvent,
+        ...(acquisitionCorrections.has(event.position.id)
+          ? {
+              acquisitionCorrection: acquisitionCorrections.get(
+                event.position.id
+              ),
+            }
+          : {}),
+        ...(eligible
+          ? {
+              cashCorrection: {
+                operationId: operation.id,
+                expectedRevisionId: latestRevision?.id ?? operation.id,
+                expectedSourceFingerprint,
+                effectiveDate:
+                  typeof latestReplacement?.effectiveDate === 'string'
+                    ? latestReplacement.effectiveDate
+                    : operation.effectiveDate.toISOString().slice(0, 10),
+                sequence,
+              },
+            }
+          : {}),
+      }
+    })
+
+    res.json({ success: true, data, meta: { total, limit, offset } })
   })
 )
 
@@ -614,8 +726,8 @@ router.get(
  *       Updates the sale and parcel totals atomically under an owned-account and parcel lock.
  *       Does not activate or spend inactive draft cash. Concurrent parcel moves require reload.
  *       Imported broker-linked execution values are immutable here. Financial changes to
- *       cash-linked manual trades require the coordinated acquisition/sale-correction endpoints in opening
- *       reconciliation; this ordinary editor returns 409 instead.
+ *       cash-linked manual trades require the audited account trade correction endpoint;
+ *       this ordinary editor returns 409 instead.
  *       Notes and close reason remain editable; unchanged financial values are not rewritten.
  *     tags: [Positions]
  *     security:

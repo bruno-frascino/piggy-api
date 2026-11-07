@@ -10,9 +10,10 @@ The review also supports audited correction/reversal of staged manual deposits a
 An isolated proposed BUY/SELL workflow and its corrections now atomically store draft
 parcels and cash; they do not change real holdings. A new live BUY/SELL writer now posts
 manual trades and cash atomically, but only behind an explicitly confirmed statement and
-active account cash ledger. No activation endpoint or account provisioning flow exists, so
+active account cash ledger. Audited correction of live manual BUYs and SELLs is now supported for
+ledger-backed accounts, but no activation endpoint or account provisioning flow exists, so
 legacy accounts remain on their existing behavior.
-Date: 6 November 2026.
+Date: 7 November 2026.
 Scope: piggy-api and sibling piggy-fe.
 
 ## Goal
@@ -537,8 +538,8 @@ so a notes save cannot overwrite an imported timestamp, rounded fee or partial p
 Those guards remain in place; the dedicated coordinated manual acquisition and sale workflows
 below are the only financial execution corrections currently exposed. Live accounting remains disabled.
 
-Manual SELL corrections now update the live sale, recomputed parcel results and linked draft
-cash atomically. The review requires exact price/fee strings, effective date, stable sequence,
+Opening-reconciliation manual SELL corrections update the draft sale, recomputed parcel results
+and linked draft cash atomically. The review requires exact price/fee strings, effective date, stable sequence,
 audit reason, explicit acknowledgement, expected operation head and expected source fingerprint.
 Quantity, instrument, parcel, currency and source identity cannot change. Date corrections must
 stay after opening, on/after acquisition and within the original observation date. Same-day
@@ -582,11 +583,50 @@ correction workflows exist. Kraken imports to legacy accounts retain their exist
 There is deliberately no account activation or opening-confirmation workflow, and the existing
 trade-entry UI still uses the legacy path for legacy accounts.
 
+### Audited corrections for live manual sales
+
+The history editor can append a cash correction for eligible live manual SELLs through
+`POST /api/accounts/{id}/trades/{transactionId}/corrections`. The immutable revision records the
+reason, expected revision/source head, before/after execution snapshots and exact reversal and
+replacement cash legs. Only sale date, stable sequence, price and fees are editable; quantity,
+parcel, currency and source identity stay fixed. Imported and broker-linked sales, reversals and
+sequence-slot reuse remain unavailable.
+
+The account and parcel are locked while the current source, correction head, opening/observation
+date bounds and reserved sequence slots are revalidated. The corrected cash timeline must remain
+funded. The transaction, recomputed parcel values, revision postings and accepted source
+fingerprint commit atomically. History exposes correction controls only for eligible active
+real-account sales, requires an audit reason and disables offline writes. This does not activate
+accounts or change behavior for legacy accounts.
+
+### Audited corrections for live manual acquisitions
+
+Eligible manual BUYs now use
+`POST /api/accounts/{id}/trades/{transactionId}/acquisition-corrections`. The same live revision
+and cash replay machinery supports date, sequence, exact total bought quantity, price and fees.
+Instrument, account, currency and purchase identity are fixed. All existing sales are preserved:
+the purchase must cover their quantities and precede their dates and same-day cash sequence.
+Imported purchases and parcels with broker-linked sales remain excluded.
+
+The purchase, parcel cost basis, remaining quantity, status, realized results, reversal/replacement
+cash legs and accepted source fingerprint commit atomically. Quantity corrections can close or
+reopen a parcel; acquisition-based drawdown/run-up and unrealized caches are cleared. Original
+operations/postings remain unchanged and retries reuse the original audit revision even after
+later BUY/SELL corrections. The editor uses exact full purchase values, not prorated remaining
+holdings, requires an audit reason and explicit financial/tax-impact acknowledgement, and blocks
+offline and stale writes. Controls are available from holdings and closed-trade history so fully
+sold parcels remain correctable. No account is activated.
+
 Next deliver the remaining supported financial paths and a reviewed activation/cutover workflow
-before enabling any real account. Imported financial adjustments, execution reversals, moves and
-deletion remain unsupported coordinated workflows. Live trades remain unavailable to ordinary
-legacy accounts, and accounting-backed balances/performance are not exposed or substituted for
-legacy portfolio results.
+before enabling any real account. Imported financial adjustments, execution reversals, moves,
+and deletion remain unsupported coordinated workflows. Live trades
+remain unavailable to ordinary legacy accounts, and accounting-backed balances/performance are
+not exposed or substituted for legacy portfolio results.
+
+Ledger-backed demo accounts are a subsequent controlled proving ground, not enabled by this
+increment. They should share the accounting engine and audit/funding rules with real accounts,
+but start from explicit virtual cash rather than broker-statement evidence. Existing demos must
+not be silently migrated or reinterpreted, and must remain excluded from real aggregates and tax.
 
 ## Existing implementation references
 

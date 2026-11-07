@@ -348,6 +348,7 @@
         "src/lib/draft-cash-ledger.test.ts",
         "src/lib/draft-manual-trades.integration.test.ts",
         "src/lib/imports/service.integration.test.ts",
+        "src/lib/live-manual-corrections.test.ts",
         "src/lib/position-mutations.integration.test.ts"
       ],
       "orphan": false,
@@ -446,7 +447,8 @@
         "src/lib/cash-revisions.ts",
         "src/lib/draft-trade-command.ts",
         "src/lib/execution-correction.ts",
-        "src/lib/draft-cash-evidence.ts"
+        "src/lib/draft-cash-evidence.ts",
+        "src/lib/live-acquisition-corrections.ts"
       ],
       "orphan": false,
       "source": "src/lib/accounting-values.ts",
@@ -531,6 +533,7 @@
         "src/lib/cash-revisions.ts",
         "src/lib/draft-cash-evidence.ts",
         "src/lib/opening-statements.ts",
+        "src/lib/live-acquisition-corrections.ts",
         "src/lib/accounting-preview.test.ts"
       ],
       "orphan": false,
@@ -558,6 +561,7 @@
         "src/controllers/portfolio.ts",
         "src/lib/portfolio-snapshot.ts",
         "src/controllers/positions.ts",
+        "src/lib/live-acquisition-corrections.ts",
         "src/lib/position-mutations.ts",
         "src/controllers/screener.ts",
         "src/controllers/statistics.ts",
@@ -3027,6 +3031,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/live-acquisition-corrections.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/live-acquisition-corrections.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../lib/position-derived-values.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/position-derived-values.ts",
@@ -3141,6 +3162,68 @@
       ],
       "orphan": false,
       "source": "src/controllers/positions.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/controllers/positions.ts",
+        "src/lib/live-acquisition-corrections.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/live-acquisition-corrections.ts",
       "valid": true
     },
     {
@@ -5557,6 +5640,56 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./live-acquisition-corrections.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/live-acquisition-corrections.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/live-acquisition-corrections.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./draft-cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-cash-ledger.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/live-manual-corrections.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./mailer.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/mailer.ts",
@@ -6415,8 +6548,8 @@
         }
       ]
     },
-    "totalCruised": 126,
-    "totalDependenciesCruised": 293,
+    "totalCruised": 129,
+    "totalDependenciesCruised": 299,
     "violations": [],
     "warn": 0
   }

@@ -2156,6 +2156,499 @@ describe.skipIf(!enabled)(
         ...overrides,
       }
     }
+    async function liveAcquisitionFixture(
+      soldQuantity = '4',
+      saleSequence = 1
+    ) {
+      const { postAccountTrade } = await import('./draft-cash-ledger.js')
+      const f = await fixture('1000')
+      if (!exchangeId) throw new Error('Missing fixture exchange')
+      const asset = await prisma.asset.create({
+        data: {
+          symbol: `LIVE-BUY-${randomUUID()}`,
+          name: 'Live purchase fixture',
+          exchangeId,
+        },
+      })
+      await confirmCashLedger(f.accountId, f.statementId)
+      const buy = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: asset.id,
+          effectiveDate: '2026-10-02',
+          quantity: '10',
+          price: '10',
+          fees: '1',
+        })
+      )
+      const transaction = await prisma.transaction.findUniqueOrThrow({
+        where: { id: buy.transactionId },
+      })
+      const sale = await postAccountTrade(f.userId, f.accountId, {
+        kind: 'SELL',
+        positionId: transaction.positionId,
+        idempotencyKey: randomUUID(),
+        effectiveDate: '2026-10-03',
+        sequence: saleSequence,
+        quantity: soldQuantity,
+        price: '20',
+        fees: '1',
+      })
+      const ledger = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      return {
+        ...f,
+        buy,
+        sale,
+        positionId: transaction.positionId,
+        assetId: asset.id,
+        correction: {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: buy.operationId,
+          expectedSourceFingerprint: ledger.acceptedSourceFingerprint,
+          reason: 'Correct purchase from statement',
+          effectiveDate: '2026-10-02',
+          sequence: 1,
+          quantity: '4',
+          price: '12',
+          fees: '2',
+        },
+      }
+    }
+
+    it('audits live acquisition corrections, closes/reopens sold parcels, preserves sales and replays a mixed BUY/SELL chain', async () => {
+      const {
+        correctLiveManualAcquisition,
+        correctLiveManualSale,
+        postAccountTrade,
+      } = await import('./draft-cash-ledger.js')
+      const f = await liveAcquisitionFixture()
+      const original = await prisma.accountCashOperation.findUniqueOrThrow({
+        where: { id: f.buy.operationId },
+        include: { postings: { orderBy: { legIndex: 'asc' } } },
+      })
+      const saleBefore = await prisma.transaction.findUniqueOrThrow({
+        where: { id: f.sale.transactionId },
+      })
+      const parcelBefore = await prisma.position.findUniqueOrThrow({
+        where: { id: f.positionId },
+      })
+      await prisma.position.update({
+        where: { id: f.positionId },
+        data: {
+          maxDrawdownPercent: 12,
+          maxRunUpPercent: 20,
+          unrealizedPnL: '20',
+          updatedAt: parcelBefore.updatedAt,
+        },
+      })
+      const first = await correctLiveManualAcquisition(
+        f.userId,
+        f.accountId,
+        f.buy.transactionId,
+        f.correction
+      )
+      expect(first.replay.balances[0].endingAmount).toBe('1029')
+      expect(
+        await prisma.position.findUniqueOrThrow({ where: { id: f.positionId } })
+      ).toMatchObject({
+        quantity: 0,
+        status: 'CLOSED',
+        maxDrawdownPercent: null,
+        maxRunUpPercent: null,
+        unrealizedPnL: null,
+      })
+      expect(
+        await prisma.transaction.findUniqueOrThrow({
+          where: { id: f.sale.transactionId },
+        })
+      ).toEqual(saleBefore)
+      const revision =
+        await prisma.accountCashOperationRevision.findUniqueOrThrow({
+          where: { id: first.revisionId },
+          include: { postings: { orderBy: { legIndex: 'asc' } } },
+        })
+      expect(
+        revision.postings.map((row) => [row.phase, row.amount.toFixed()])
+      ).toEqual([
+        ['REVERSAL', '100'],
+        ['REVERSAL', '1'],
+        ['REPLACEMENT', '-48'],
+        ['REPLACEMENT', '-2'],
+      ])
+      expect(revision.request).toMatchObject({
+        executionAudit: {
+          kind: 'BUY',
+          before: { quantity: '10' },
+          after: { quantity: '4' },
+        },
+      })
+      const ledger = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      const secondInput = {
+        ...f.correction,
+        idempotencyKey: randomUUID(),
+        expectedRevisionId: first.revisionId,
+        expectedSourceFingerprint: ledger.acceptedSourceFingerprint,
+        quantity: '6',
+      }
+      const second = await correctLiveManualAcquisition(
+        f.userId,
+        f.accountId,
+        f.buy.transactionId,
+        secondInput
+      )
+      expect(second.replay.balances[0].endingAmount).toBe('1005')
+      expect(
+        await prisma.position.findUniqueOrThrow({ where: { id: f.positionId } })
+      ).toMatchObject({ quantity: 2, status: 'PARTIAL', closeDate: null })
+      const afterBuyLedger = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      const correctedSale = await correctLiveManualSale(
+        f.userId,
+        f.accountId,
+        f.sale.transactionId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: f.sale.operationId,
+          expectedSourceFingerprint: afterBuyLedger.acceptedSourceFingerprint,
+          reason: 'Correct sale fee',
+          effectiveDate: '2026-10-03',
+          sequence: 1,
+          price: '20',
+          fees: '0.5',
+        }
+      )
+      expect(correctedSale.replay.balances[0].endingAmount).toBe('1005.5')
+      const retry = await correctLiveManualAcquisition(
+        f.userId,
+        f.accountId,
+        f.buy.transactionId,
+        f.correction
+      )
+      expect(retry).toMatchObject({
+        created: false,
+        revisionId: first.revisionId,
+      })
+      expect(
+        await prisma.accountCashOperation.findUniqueOrThrow({
+          where: { id: f.buy.operationId },
+          include: { postings: { orderBy: { legIndex: 'asc' } } },
+        })
+      ).toEqual(original)
+      const next = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: f.assetId,
+          effectiveDate: '2026-10-04',
+          quantity: '1',
+          price: '10',
+          fees: '0',
+        })
+      )
+      expect(next.replay.balances[0].endingAmount).toBe('995.5')
+      expect(
+        await prisma.transaction.count({
+          where: { positionId: f.positionId, type: 'BUY' },
+        })
+      ).toBe(1)
+      const originalRetry = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: f.assetId,
+          idempotencyKey: original.idempotencyKey,
+          effectiveDate: '2026-10-02',
+          quantity: '10',
+          price: '10',
+          fees: '1',
+        })
+      )
+      expect(originalRetry).toMatchObject({
+        created: false,
+        transactionId: f.buy.transactionId,
+      })
+    })
+
+    it.each([
+      [{ quantity: '3' }, 409],
+      [{ effectiveDate: '2026-10-04' }, 409],
+      [{ effectiveDate: '2026-10-01' }, 409],
+      [{ effectiveDate: '2999-01-01' }, 409],
+      [{ quantity: '4.0000000000001' }, 400],
+      [{ quantity: '9007199254740992' }, 400],
+      [{ price: '400' }, 422],
+      [{ expectedRevisionId: 'stale' }, 409],
+      [{ expectedSourceFingerprint: 'a'.repeat(64) }, 409],
+      [{ quantity: '10', price: '10', fees: '1' }, 400],
+    ])(
+      'rejects invalid live acquisition %j without partial writes',
+      async (extra, status) => {
+        const { correctLiveManualAcquisition } =
+          await import('./draft-cash-ledger.js')
+        const f = await liveAcquisitionFixture()
+        const before = await prisma.position.findUniqueOrThrow({
+          where: { id: f.positionId },
+          include: { transactions: true },
+        })
+        const ledger = await prisma.accountCashLedger.findUniqueOrThrow({
+          where: { accountId: f.accountId },
+        })
+        await expect(
+          correctLiveManualAcquisition(
+            f.userId,
+            f.accountId,
+            f.buy.transactionId,
+            {
+              ...f.correction,
+              ...extra,
+            }
+          )
+        ).rejects.toMatchObject({ status })
+        expect(
+          await prisma.position.findUniqueOrThrow({
+            where: { id: f.positionId },
+            include: { transactions: true },
+          })
+        ).toEqual(before)
+        expect(
+          await prisma.accountCashLedger.findUniqueOrThrow({
+            where: { accountId: f.accountId },
+          })
+        ).toEqual(ledger)
+        expect(
+          await prisma.accountCashOperationRevision.count({
+            where: { accountId: f.accountId },
+          })
+        ).toBe(0)
+      }
+    )
+
+    it('enforces same-day acquisition ordering and reserves former sequence slots', async () => {
+      const { correctLiveManualAcquisition, postAccountTrade } =
+        await import('./draft-cash-ledger.js')
+      const f = await liveAcquisitionFixture()
+      await expect(
+        correctLiveManualAcquisition(
+          f.userId,
+          f.accountId,
+          f.buy.transactionId,
+          {
+            ...f.correction,
+            effectiveDate: '2026-10-03',
+            sequence: 2,
+          }
+        )
+      ).rejects.toMatchObject({ status: 409, message: /same-day sales/i })
+      const corrected = await correctLiveManualAcquisition(
+        f.userId,
+        f.accountId,
+        f.buy.transactionId,
+        {
+          ...f.correction,
+          effectiveDate: '2026-10-02',
+          sequence: 2,
+        }
+      )
+      expect(corrected.created).toBe(true)
+      await expect(
+        postAccountTrade(
+          f.userId,
+          f.accountId,
+          liveTradeInput({
+            assetId: f.assetId,
+            effectiveDate: '2026-10-02',
+            sequence: 1,
+          })
+        )
+      ).rejects.toMatchObject({ status: 409 })
+      const ordered = await liveAcquisitionFixture('4', 3)
+      const sameDay = await correctLiveManualAcquisition(
+        ordered.userId,
+        ordered.accountId,
+        ordered.buy.transactionId,
+        {
+          ...ordered.correction,
+          effectiveDate: '2026-10-03',
+          sequence: 2,
+        }
+      )
+      expect(sameDay.created).toBe(true)
+      expect(
+        await prisma.transaction.findUniqueOrThrow({
+          where: { id: ordered.buy.transactionId },
+        })
+      ).toMatchObject({ date: new Date('2026-10-03T01:00:00Z') })
+    })
+
+    it('does not enable demo, closed or legacy accounts and rejects ownership and imported-source drift', async () => {
+      const { correctLiveManualAcquisition } =
+        await import('./draft-cash-ledger.js')
+      for (const accountChange of [
+        { isDemo: true },
+        { status: 'CLOSED' as const },
+      ]) {
+        const f = await liveAcquisitionFixture()
+        await prisma.tradingAccount.update({
+          where: { id: f.accountId },
+          data: accountChange,
+        })
+        await expect(
+          correctLiveManualAcquisition(
+            f.userId,
+            f.accountId,
+            f.buy.transactionId,
+            f.correction
+          )
+        ).rejects.toMatchObject({ status: 409 })
+        expect(
+          await prisma.accountCashOperationRevision.count({
+            where: { accountId: f.accountId },
+          })
+        ).toBe(0)
+      }
+      const f = await liveAcquisitionFixture()
+      await expect(
+        correctLiveManualAcquisition(
+          'unowned-user',
+          f.accountId,
+          f.buy.transactionId,
+          f.correction
+        )
+      ).rejects.toMatchObject({ status: 401 })
+      await expect(
+        correctLiveManualAcquisition(
+          f.userId,
+          'unowned-account',
+          f.buy.transactionId,
+          f.correction
+        )
+      ).rejects.toMatchObject({ status: 404 })
+      await prisma.transaction.update({
+        where: { id: f.sale.transactionId },
+        data: { brokerRef: 'imported-allocation' },
+      })
+      await expect(
+        correctLiveManualAcquisition(
+          f.userId,
+          f.accountId,
+          f.buy.transactionId,
+          f.correction
+        )
+      ).rejects.toMatchObject({ status: 404 })
+      expect(
+        await prisma.accountCashOperationRevision.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(0)
+      const legacy = await fixture('1000', true)
+      if (!legacy.transactionId) throw new Error('Missing legacy transaction')
+      await expect(
+        correctLiveManualAcquisition(
+          legacy.userId,
+          legacy.accountId,
+          legacy.transactionId,
+          f.correction
+        )
+      ).rejects.toMatchObject({ status: 409 })
+    })
+
+    it('serializes competing live acquisition corrections and rejects changed retry content', async () => {
+      const { correctLiveManualAcquisition } =
+        await import('./draft-cash-ledger.js')
+      const f = await liveAcquisitionFixture()
+      const results = await Promise.allSettled(
+        ['left', 'right'].map((idempotencyKey) =>
+          correctLiveManualAcquisition(
+            f.userId,
+            f.accountId,
+            f.buy.transactionId,
+            { ...f.correction, idempotencyKey }
+          )
+        )
+      )
+      expect(
+        results.filter((result) => result.status === 'fulfilled')
+      ).toHaveLength(1)
+      expect(
+        await prisma.accountCashOperationRevision.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(1)
+      const revision =
+        await prisma.accountCashOperationRevision.findFirstOrThrow({
+          where: { accountId: f.accountId },
+        })
+      await expect(
+        correctLiveManualAcquisition(
+          f.userId,
+          f.accountId,
+          f.buy.transactionId,
+          {
+            ...f.correction,
+            idempotencyKey: revision.idempotencyKey,
+            quantity: '5',
+          }
+        )
+      ).rejects.toMatchObject({ status: 409 })
+    })
+
+    it('rolls back purchase, parcel, revision postings and fingerprint if a final live acquisition write fails', async () => {
+      const { correctLiveManualAcquisition } =
+        await import('./draft-cash-ledger.js')
+      const f = await liveAcquisitionFixture()
+      const before = await prisma.position.findUniqueOrThrow({
+        where: { id: f.positionId },
+        include: { transactions: true },
+      })
+      const ledger = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      const auditModule = await import('./accounting-preview-service.js')
+      const read = auditModule.readAccountOpeningPreview
+      let reads = 0
+      const fail = vi
+        .spyOn(auditModule, 'readAccountOpeningPreview')
+        .mockImplementation(async (...args) => {
+          reads += 1
+          if (reads === 2)
+            throw new Error('Injected live acquisition audit failure')
+          return read(...args)
+        })
+      try {
+        await expect(
+          correctLiveManualAcquisition(
+            f.userId,
+            f.accountId,
+            f.buy.transactionId,
+            f.correction
+          )
+        ).rejects.toThrow('Injected live acquisition audit failure')
+      } finally {
+        fail.mockRestore()
+      }
+      expect(
+        await prisma.position.findUniqueOrThrow({
+          where: { id: f.positionId },
+          include: { transactions: true },
+        })
+      ).toEqual(before)
+      expect(
+        await prisma.accountCashLedger.findUniqueOrThrow({
+          where: { accountId: f.accountId },
+        })
+      ).toEqual(ledger)
+      expect(
+        await prisma.accountCashOperationRevision.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(0)
+    })
     it('requires an explicitly confirmed live ledger and atomically posts a retry-safe BUY', async () => {
       const { postAccountTrade } = await import('./draft-cash-ledger.js')
       const f = await fixture('100')
@@ -2251,7 +2744,8 @@ describe.skipIf(!enabled)(
       ).toBe(1)
     })
     it('posts a funded manual SELL against one owned parcel and rejects overselling without writes', async () => {
-      const { postAccountTrade } = await import('./draft-cash-ledger.js')
+      const { correctLiveManualSale, postAccountTrade } =
+        await import('./draft-cash-ledger.js')
       if (!userId || !exchangeId) throw new Error('Missing fixture owner')
       const account = await prisma.tradingAccount.create({
         data: { userId, name: `Live sale fixture ${randomUUID()}` },
@@ -2330,6 +2824,116 @@ describe.skipIf(!enabled)(
           where: { accountId: account.id },
         })
       ).toBe(1)
+
+      const operation = await prisma.accountCashOperation.findUniqueOrThrow({
+        where: { transactionId: result.transactionId },
+      })
+      const ledger = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: account.id },
+      })
+      const correction = {
+        idempotencyKey: `live-sale-correction-${randomUUID()}`,
+        expectedRevisionId: operation.id,
+        expectedSourceFingerprint: ledger.acceptedSourceFingerprint,
+        reason: 'Corrected from the broker statement',
+        effectiveDate: currentSydneyDate(),
+        sequence: 2,
+        price: '21',
+        fees: '0.5',
+      }
+      const corrected = await correctLiveManualSale(
+        userId,
+        account.id,
+        result.transactionId,
+        correction
+      )
+      expect(corrected).toMatchObject({
+        operationId: operation.id,
+        created: true,
+        replay: { funded: true },
+      })
+      expect(corrected.replay.balances[0].endingAmount).toBe('141.5')
+      const currentLedger = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: account.id },
+      })
+      const secondCorrection = {
+        ...correction,
+        idempotencyKey: `live-sale-correction-${randomUUID()}`,
+        expectedRevisionId: corrected.revisionId,
+        expectedSourceFingerprint: currentLedger.acceptedSourceFingerprint,
+        sequence: 3,
+        price: '22',
+        fees: '0.25',
+      }
+      const correctedAgain = await correctLiveManualSale(
+        userId,
+        account.id,
+        result.transactionId,
+        secondCorrection
+      )
+      expect(correctedAgain.replay.balances[0].endingAmount).toBe('143.75')
+      const revisedOperation =
+        await prisma.accountCashOperation.findUniqueOrThrow({
+          where: { id: operation.id },
+          include: {
+            revisions: {
+              orderBy: { revisionNumber: 'asc' },
+              include: {
+                postings: { orderBy: { legIndex: 'asc' } },
+              },
+            },
+          },
+        })
+      expect(revisedOperation.sequence).toBe(1n)
+      expect(revisedOperation.revisions).toHaveLength(2)
+      expect(revisedOperation.revisions[1]).toMatchObject({
+        revisionNumber: 2,
+        previousRevisionId: revisedOperation.revisions[0].id,
+      })
+      expect(
+        revisedOperation.revisions[0].postings.map((row) => [
+          row.phase,
+          row.amount.toFixed(),
+        ])
+      ).toEqual([
+        ['REVERSAL', '-40'],
+        ['REVERSAL', '1'],
+        ['REPLACEMENT', '42'],
+        ['REPLACEMENT', '-0.5'],
+      ])
+      const correctedTransaction = await prisma.transaction.findUniqueOrThrow({
+        where: { id: result.transactionId },
+      })
+      expect(correctedTransaction.quantity).toBe(2)
+      expect(correctedTransaction.price.toFixed()).toBe('22')
+      expect(correctedTransaction.totalValue.toFixed()).toBe('44')
+      expect(correctedTransaction.fees.toFixed()).toBe('0.25')
+      const retry = await correctLiveManualSale(
+        userId,
+        account.id,
+        result.transactionId,
+        correction
+      )
+      expect(retry).toMatchObject({
+        revisionId: revisedOperation.revisions[0].id,
+        created: false,
+      })
+      expect(retry.replay.balances[0].endingAmount).toBe('143.75')
+      await expect(
+        postAccountTrade(userId, account.id, {
+          ...input,
+          idempotencyKey: `reserved-revision-slot-${randomUUID()}`,
+          sequence: 2,
+          quantity: '1',
+        })
+      ).rejects.toMatchObject({ status: 409 })
+      const replayed = await postAccountTrade(userId, account.id, {
+        ...input,
+        idempotencyKey: `after-sale-correction-${randomUUID()}`,
+        sequence: 4,
+        quantity: '1',
+      })
+      expect(replayed.replay.funded).toBe(true)
     })
     it('serializes competing live spending and rolls back an unaffordable BUY', async () => {
       const { postAccountTrade } = await import('./draft-cash-ledger.js')
