@@ -112,6 +112,7 @@ export async function readLiveImportedExecutionCorrections(
     const transaction = operation.transaction
     if (
       !event ||
+      !transaction ||
       operation.importedEventId !== event.id ||
       event.source !== 'KRAKEN' ||
       event.status !== 'APPLIED' ||

@@ -9,7 +9,7 @@ A stock/ETF/crypto portfolio tracking REST API built with Express, Prisma, and T
 - **Position Tracking**: One acquisition parcel per BUY, partial/full sales, metadata and historical drawdown; financial editing/deletion is restricted for imported or cash-linked records
 - **Portfolio Snapshots**: Legacy invested-capital/gain snapshots and historical curves, not yet cash-inclusive sourced portfolio valuations or TWR/XIRR
 - **Kraken Imports**: Supported CSV review and parcel allocation; enum entries for other providers do not imply implemented adapters
-- **Accounting Foundation (gated)**: Read-only opening previews, immutable inactive drafts, exact cash replay/evidence review, coordinated live trades, audited execution corrections and terminal manual voids
+- **Accounting Foundation (gated)**: Read-only opening previews, immutable inactive drafts, exact cash replay/evidence review, explicit reviewed per-account confirmation, capability-aware ordinary BUY/SELL routing, coordinated live trades/funding/income, audited execution and income corrections, and terminal manual voids
 - **CGT Reports**: Explicit real-account selection, append-only PDF revisions and source-staleness indicators
 - **Stock Search & Quotes**: Symbol search and live quotes powered by Yahoo Finance (no API key required)
 - **API Documentation**: Interactive Swagger UI
@@ -21,9 +21,64 @@ remaining increments, acceptance gates and commit order, and [ADR 0016](./docs/a
 for accounting policy. The plan is the resume point for ongoing foundation work.
 
 Opening preview/save/reconciliation does not activate an account or create spendable cash.
-Live posting/corrections/voids require an already provisioned, matching confirmed opening
-statement and active real cash ledger. There is no user-facing provisioning flow; do not
-manually provision production accounts to bypass the release gate.
+An authenticated, explicit confirmation can enable only one eligible active real account after
+the latest clean draft, source fingerprint, issue-free inventory, funded cash replay and latest
+exact user-attested statement evidence are revalidated atomically. Saved activity on the selected
+draft blocks confirmation; activity on other drafts is retained, listed and audited as excluded,
+never copied into the live ledger. Four explicit acknowledgements cover opening balances,
+user-attested cash, excluded draft activity and unavailable performance returns without sourced
+valuations. Confirmation is online-only and retry-safe; it is not called by saving a draft,
+account lookup or ordinary trade entry. Do not manually provision production accounts to bypass
+the release gate.
+Live posting/deposits/withdrawals/funding revisions/trade corrections/voids require the matching
+confirmed opening statement and active real cash ledger. Deposits and withdrawals are cash-only
+audited operations; they never create synthetic trades or auto-balance a ledger. Funding
+corrections/reversals append immutable cash-only postings and are constrained by full dated
+replay.
+Manual equity/ETF income receipts require an active confirmed ledger and user-supplied statement
+figures. The ledger posts only gross income less withholding; franked/unfranked amounts and
+non-cash AUD franking credits remain tax attributes, not spendable cash. Audited replacement and
+terminal reversal are supported; replacement preserves asset, currency and source reference.
+Reverse and record a new receipt to correct those identity fields. AMIT components, automated
+estimates and crypto staking remain unsupported; do not edit or delete posted receipts
+directly.
+Same-currency cash-transfer posting/history uses paired immutable operations between two owned
+active confirmed ledgers, one shared effective date and separate account sequences. Principal is
+debited/credited atomically; an explicit fee is charged only to the sender. Principal is external
+to either account but cancels across both; fees remain costs. Both dated timelines must be funded.
+The transfer endpoint does not support direct edits, one-sided reversals, currency conversion,
+holdings transfers or untracked endpoints.
+Dedicated paired corrections can replace principal, sender fee, shared date and both sequences,
+preserving accounts, currency and source reference. Both current audit heads and fresh active
+ledgers are required; immutable audits and all historical slots remain retained. Reversal is
+terminal and removes the original economic effect, including fees. Exact retries and funded
+dated replay on both accounts are enforced.
+Explicit same-account FX posting records an already executed broker conversion as linked
+source debit and gross received credit, before fees in either exchanged currency. Both currency
+openings must be explicit and the dated timeline including fees must remain funded. These
+immutable cash-only postings are not external capital and create no holdings, live exchange,
+market rate, reporting valuation or account activation. Statement amounts/reference are retained;
+exact retries are supported. Dedicated audited FX corrections retain account, currency
+pair/direction and source, while amounts, fees, date and sequence may change. Current
+revision/audit/fingerprint, reason and funded replay in both currencies are required.
+Reversal is terminal and removes the effective conversion including fees; original records,
+inverse/replacement legs and historical slots remain retained. Generic funding revisions and
+third-currency fees remain blocked.
+Statement-supported equity/ETF reinvestment atomically records one income receipt and a new
+BUY parcel in the same account/currency. Exact net income must equal consideration, explicit
+fees and residual cash actually paid into the account. Historical entitlement holdings and
+user-confirmed statement tax figures are required; current holdings do not determine income.
+Payment and acquisition dates/sequences are retained, and full replay protects later allotment
+funding. Both immutable linked operations share the normalized statement identity; exact retries
+do not duplicate income or parcels. Issuer-held credits, extra funding, existing-receipt relinking
+and independent income/acquisition revisions or voids are blocked. Dedicated paired corrections
+retain account/asset/currency/source identity and require both review heads, a reason, funded
+replay and no effective parcel sales. Terminal reversal removes both effects without a disposal;
+void effective sales first. No schema change or activation is needed.
+Ordinary trade entry reads the server-owned capability for the selected account and effective
+date: only `LIVE_LEDGER` uses the coordinated writer, while legacy/demo accounts keep their
+existing flows. Blocked, archived, unavailable and offline live writes fail closed; no account
+is provisioned or activated by capability lookup or trade entry.
 
 Manual SELL voids restore inventory and remove proceeds. Manual BUY voids require no effective
 sales and exclude the acquisition from current holdings without treating it as a disposal.
@@ -33,10 +88,9 @@ Imported corrections retain source events and fixed quantity/parcel allocations;
 voids, financial moves and deletion are blocked. Retained void audits remain readable on archived
 ledger-backed accounts, but are not a source-freshness or reconciliation assertion.
 
-Next milestones: live funding, funding revisions, balances/activity/evidence review, ordinary
-ledger trade-entry routing, then reviewed per-account confirmation. Income/transfers, sourced
-valuations and cash-flow-adjusted returns follow later. Existing demos remain legacy practice
-accounts, excluded from real aggregates and tax.
+Next milestone: a separately agreed corporate-action/adjustment slice. Sourced valuations and
+cash-flow-adjusted returns follow later.
+Existing demos remain legacy practice accounts, excluded from real aggregates and tax.
 
 ## Tech Stack
 
@@ -124,9 +178,17 @@ The API will be available at `http://localhost:4000` (configurable via the `PORT
 
 - `POST /api/accounts/:id/opening-preview` - Read-only opening holdings/cash preview
 - `POST /api/accounts/:id/opening-statements` - Save a reviewed inactive opening draft
-- `GET /api/accounts/:id/opening-statements` - List retained opening drafts
-- `GET /api/accounts/:id/opening-statements/:statementId/reconciliation` - Inactive cash/inventory/evidence review; never activation-ready
+- `GET /api/accounts/:id/opening-statements` - List retained draft and confirmed opening statements
+- `GET /api/accounts/:id/opening-statements/:statementId/reconciliation` - Read-only cash/inventory/evidence review and confirmation blockers
+- `POST /api/accounts/:id/opening-statements/:statementId/confirm` - Explicitly confirm one eligible draft and atomically enable its cash ledger
+- `GET /api/accounts/:id/trade-capability` - Read account trade capability and available effective-date sequence; never activates an account
 - `POST /api/accounts/:id/trades` - Gated atomic manual BUY/SELL and cash posting
+- `POST /api/accounts/:id/cash-operations` - Gated cash-only live deposit/withdrawal with dated funding replay
+- `POST /api/accounts/:id/cash-transfers` - Atomic same-currency paired cash transfer and sender-paid fee between owned active real ledgers
+- `POST /api/accounts/:id/income-receipts` - Gated manual equity/ETF cash distribution; posts net cash and retains statement tax attributes
+- `POST /api/accounts/:id/income-receipts/:operationId/corrections` - Audited income replacement or terminal reversal with dated cash replay
+- `GET /api/accounts/:id/cash-operations` - Exact live cash replay, effective activity, source freshness, attested statement evidence and retained audits; read-only for active and archived ledger accounts
+- `POST /api/accounts/:id/cash-operations/:operationId/corrections` - Audited live funding replacement or terminal reversal
 - `POST /api/accounts/:id/trades/:transactionId/corrections` - Audited live manual SELL date/sequence/price/fee correction
 - `POST /api/accounts/:id/trades/:transactionId/acquisition-corrections` - Audited live manual BUY date/sequence/quantity/price/fee correction
 - `POST /api/accounts/:id/imported-executions/:eventId/corrections` - Restricted source-preserving live Kraken execution correction

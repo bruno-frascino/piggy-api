@@ -5,14 +5,46 @@ import {
   isAccountingDate,
 } from './accounting-values.js'
 
-export type AccountTradeInput = {
+type AccountTradeCommon = {
   idempotencyKey: string
   effectiveDate: string
   sequence: number
   quantity: string
   price: string
   fees: string
-} & ({ kind: 'BUY'; assetId: string } | { kind: 'SELL'; positionId: string })
+}
+
+export type AccountTradeInput = AccountTradeCommon &
+  (
+    | {
+        kind: 'BUY'
+        assetId: string
+        symbol?: never
+        exchangeCode?: never
+        assetName?: never
+        assetType?: never
+        industry?: never
+        openReason?: never
+        stopLossPrice?: never
+      }
+    | {
+        kind: 'BUY'
+        assetId?: never
+        symbol: string
+        exchangeCode: string
+        assetName?: string
+        assetType?: 'EQUITY' | 'ETF' | 'CRYPTO'
+        industry?: string
+        openReason?: string
+        stopLossPrice?: string | null
+      }
+    | {
+        kind: 'SELL'
+        positionId: string
+        closeReason?: 'STOP_LOSS' | 'TARGET' | 'MANUAL' | 'OTHER'
+        notes?: string
+      }
+  )
 
 function invalid(): never {
   throw Object.assign(new Error('Invalid live trade command'), {
@@ -78,8 +110,7 @@ export function parseAccountTradeInput(raw: unknown): AccountTradeInput {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) invalid()
   const initial = raw as Record<string, unknown>
   if (initial.kind !== 'BUY' && initial.kind !== 'SELL') invalid()
-  const identity = initial.kind === 'BUY' ? 'assetId' : 'positionId'
-  const row = object(raw, [
+  const commonKeys = [
     'kind',
     'idempotencyKey',
     'effectiveDate',
@@ -87,8 +118,24 @@ export function parseAccountTradeInput(raw: unknown): AccountTradeInput {
     'quantity',
     'price',
     'fees',
-    identity,
-  ])
+  ]
+  const identityKeys =
+    initial.kind === 'BUY'
+      ? [
+          'assetId',
+          'symbol',
+          'exchangeCode',
+          'assetName',
+          'assetType',
+          'industry',
+          'openReason',
+          'stopLossPrice',
+        ]
+      : ['positionId', 'closeReason', 'notes']
+  const row = object(
+    raw,
+    [...commonKeys, ...identityKeys].filter((key) => key in raw)
+  )
   if (
     !isAccountingDate(row.effectiveDate) ||
     typeof row.sequence !== 'number' ||
@@ -104,9 +151,77 @@ export function parseAccountTradeInput(raw: unknown): AccountTradeInput {
     price: amount(row.price, 12, 12, true),
     fees: amount(row.fees, 10, 8, false),
   }
-  return row.kind === 'BUY'
-    ? { ...common, kind: 'BUY', assetId: text(row.assetId, 200) }
-    : { ...common, kind: 'SELL', positionId: text(row.positionId, 200) }
+  if (row.kind === 'BUY') {
+    if (typeof row.assetId === 'string') {
+      if (
+        row.symbol !== undefined ||
+        row.exchangeCode !== undefined ||
+        row.assetName !== undefined ||
+        row.assetType !== undefined ||
+        row.industry !== undefined ||
+        row.openReason !== undefined ||
+        row.stopLossPrice !== undefined
+      )
+        invalid()
+      return { ...common, kind: 'BUY', assetId: text(row.assetId, 200) }
+    }
+    if (typeof row.symbol !== 'string' || typeof row.exchangeCode !== 'string')
+      invalid()
+    const metadata = {
+      symbol: text(row.symbol, 20).toUpperCase(),
+      exchangeCode: text(row.exchangeCode, 200).toUpperCase(),
+      ...(row.assetName !== undefined
+        ? { assetName: text(row.assetName, 200) }
+        : {}),
+      ...(row.assetType !== undefined
+        ? {
+            assetType: (() => {
+              if (!['EQUITY', 'ETF', 'CRYPTO'].includes(String(row.assetType)))
+                return invalid()
+              return row.assetType as 'EQUITY' | 'ETF' | 'CRYPTO'
+            })(),
+          }
+        : {}),
+      ...(row.industry !== undefined
+        ? { industry: text(row.industry, 200) }
+        : {}),
+      ...(row.openReason !== undefined
+        ? { openReason: text(row.openReason, 2000) }
+        : {}),
+      ...(row.stopLossPrice !== undefined
+        ? {
+            stopLossPrice:
+              row.stopLossPrice === null
+                ? null
+                : amount(row.stopLossPrice, 12, 12, true),
+          }
+        : {}),
+    }
+    return { ...common, kind: 'BUY', ...metadata }
+  }
+  if (typeof row.positionId !== 'string') invalid()
+  if (
+    row.closeReason !== undefined &&
+    !['STOP_LOSS', 'TARGET', 'MANUAL', 'OTHER'].includes(
+      String(row.closeReason)
+    )
+  )
+    invalid()
+  return {
+    ...common,
+    kind: 'SELL',
+    positionId: text(row.positionId, 200),
+    ...(row.closeReason !== undefined
+      ? {
+          closeReason: row.closeReason as
+            | 'STOP_LOSS'
+            | 'TARGET'
+            | 'MANUAL'
+            | 'OTHER',
+        }
+      : {}),
+    ...(row.notes !== undefined ? { notes: text(row.notes, 2000) } : {}),
+  }
 }
 
 export function accountTradePayloadHash(input: AccountTradeInput): string {

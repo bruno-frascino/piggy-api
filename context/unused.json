@@ -85,6 +85,87 @@
       "duplicates": [],
       "enumMembers": [],
       "exports": [],
+      "file": "src/lib/account-capital-command.ts",
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [
+        {
+          "col": 18,
+          "line": 3,
+          "name": "AccountCapitalFlowInput",
+          "pos": 98
+        }
+      ],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "binaries": [],
+      "catalog": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [],
+      "file": "src/lib/account-cash-transfer.ts",
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [
+        {
+          "col": 18,
+          "line": 10,
+          "name": "TransferRevisionHead",
+          "pos": 278
+        },
+        {
+          "col": 18,
+          "line": 16,
+          "name": "TransferReplacement",
+          "pos": 392
+        },
+        {
+          "col": 18,
+          "line": 137,
+          "name": "AccountCashTransferInput",
+          "pos": 3570
+        }
+      ],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "binaries": [],
+      "catalog": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [],
+      "file": "src/lib/account-fx-command.ts",
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [
+        {
+          "col": 18,
+          "line": 3,
+          "name": "AccountFxConversionInput",
+          "pos": 72
+        }
+      ],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "binaries": [],
+      "catalog": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [],
       "file": "src/lib/cash-revisions.ts",
       "files": [],
       "namespaceMembers": [],
@@ -92,9 +173,33 @@
       "types": [
         {
           "col": 18,
-          "line": 27,
+          "line": 40,
           "name": "CashRevisionRequest",
-          "pos": 696
+          "pos": 1118
+        },
+        {
+          "col": 18,
+          "line": 58,
+          "name": "TransferCashAudit",
+          "pos": 1701
+        },
+        {
+          "col": 18,
+          "line": 188,
+          "name": "CapitalCashAudit",
+          "pos": 5899
+        },
+        {
+          "col": 13,
+          "line": 196,
+          "name": "FxCashAudit",
+          "pos": 6056
+        },
+        {
+          "col": 18,
+          "line": 198,
+          "name": "IncomeCashAudit",
+          "pos": 6105
         }
       ],
       "unlisted": [],
@@ -183,6 +288,35 @@
           "line": 154,
           "name": "ReconciliationRow",
           "pos": 3745
+        }
+      ],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "binaries": [],
+      "catalog": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [],
+      "file": "src/lib/opening-confirmation.ts",
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [
+        {
+          "col": 18,
+          "line": 3,
+          "name": "OpeningConfirmationAcknowledgements",
+          "pos": 59
+        },
+        {
+          "col": 18,
+          "line": 10,
+          "name": "OpeningConfirmationInput",
+          "pos": 261
         }
       ],
       "unlisted": [],

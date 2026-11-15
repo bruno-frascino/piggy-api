@@ -3,22 +3,73 @@ import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { post, correct, correctBuy, correctImported, voidTrade, readVoids } =
-  vi.hoisted(() => ({
-    post: vi.fn(),
-    correct: vi.fn(),
-    correctBuy: vi.fn(),
-    correctImported: vi.fn(),
-    voidTrade: vi.fn(),
-    readVoids: vi.fn(),
-  }))
+const {
+  post,
+  postCapital,
+  postFx,
+  readFxReview,
+  correctFx,
+  postIncome,
+  postReinvestment,
+  readReinvestment,
+  correctReinvestment,
+  postTransfer,
+  readTransferReview,
+  correctTransfer,
+  correctIncome,
+  correctCapital,
+  readCapital,
+  correct,
+  correctBuy,
+  correctImported,
+  voidTrade,
+  readVoids,
+  readCapability,
+} = vi.hoisted(() => ({
+  post: vi.fn(),
+  postCapital: vi.fn(),
+  postFx: vi.fn(),
+  readFxReview: vi.fn(),
+  correctFx: vi.fn(),
+  postIncome: vi.fn(),
+  postReinvestment: vi.fn(),
+  readReinvestment: vi.fn(),
+  correctReinvestment: vi.fn(),
+  postTransfer: vi.fn(),
+  readTransferReview: vi.fn(),
+  correctTransfer: vi.fn(),
+  correctIncome: vi.fn(),
+  correctCapital: vi.fn(),
+  readCapital: vi.fn(),
+  correct: vi.fn(),
+  correctBuy: vi.fn(),
+  correctImported: vi.fn(),
+  voidTrade: vi.fn(),
+  readVoids: vi.fn(),
+  readCapability: vi.fn(),
+}))
 vi.mock('../lib/draft-cash-ledger.js', () => ({
   postAccountTrade: post,
+  postAccountCapitalFlow: postCapital,
+  postAccountFxConversion: postFx,
+  readLiveFxConversionReview: readFxReview,
+  correctLiveFxConversion: correctFx,
+  postAccountIncomeReceipt: postIncome,
+  postAccountReinvestment: postReinvestment,
+  readLiveReinvestmentReview: readReinvestment,
+  correctLiveReinvestment: correctReinvestment,
+  postAccountCashTransfer: postTransfer,
+  readLiveCashTransferReview: readTransferReview,
+  correctLiveCashTransfer: correctTransfer,
+  correctLiveIncomeReceipt: correctIncome,
+  correctLiveCapitalOperation: correctCapital,
+  readLiveCapitalOperations: readCapital,
   correctLiveManualSale: correct,
   correctLiveManualAcquisition: correctBuy,
   correctLiveImportedExecution: correctImported,
   voidLiveManualTrade: voidTrade,
   readLiveManualTradeVoids: readVoids,
+  readAccountTradeCapability: readCapability,
 }))
 vi.mock('../middleware/auth.js', () => ({
   authenticateToken: (req: Request, res: Response, next: NextFunction) => {
@@ -53,12 +104,283 @@ const buy = {
   fees: '1',
 }
 
+describe('explicit FX posting route', () => {
+  it('authenticates and forwards paired reinvestment review/correction with creation and retry status', async () => {
+    const path = '/api/accounts/a1/reinvestments/i1/corrections'
+    await request(app()).get(path).expect(401)
+    readReinvestment.mockResolvedValueOnce({ current: null })
+    await request(app())
+      .get(path)
+      .set('Authorization', 'Bearer test')
+      .expect(200)
+    expect(readReinvestment).toHaveBeenCalledWith('u1', 'a1', 'i1')
+    const input = {
+      idempotencyKey: 'reverse',
+      expectedIncomeRevisionId: 'i1',
+      expectedAcquisitionRevisionId: 'b1',
+      expectedAuditNumber: 2,
+      expectedSourceFingerprint: 'a'.repeat(64),
+      reason: 'Cancelled statement',
+      replacement: null,
+    }
+    await request(app()).post(path).send(input).expect(401)
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send({ ...input, expectedAcquisitionRevisionId: '' })
+      .expect(400)
+    expect(correctReinvestment).not.toHaveBeenCalled()
+    for (const created of [true, false]) {
+      correctReinvestment.mockResolvedValueOnce({ created })
+      await request(app())
+        .post(path)
+        .set('Authorization', 'Bearer test')
+        .send(input)
+        .expect(created ? 201 : 200)
+      expect(correctReinvestment).toHaveBeenLastCalledWith(
+        'u1',
+        'a1',
+        'i1',
+        input
+      )
+    }
+    correctReinvestment.mockRejectedValueOnce(
+      Object.assign(new Error('Effective sales remain'), { status: 409 })
+    )
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(409)
+  })
+  it('authenticates, validates and forwards atomic reinvestment creation and retry', async () => {
+    const input = {
+      idempotencyKey: 'drp-1',
+      income: {
+        assetId: 'asset-1',
+        entitlementDate: '2026-10-01',
+        paymentDate: '2026-10-15',
+        sequence: 1,
+        currency: 'AUD',
+        grossAmount: '100',
+        withholdingAmount: '15',
+        frankedAmount: '60',
+        unfrankedAmount: '40',
+        frankingCreditAud: '25',
+        sourceReference: 'statement-1',
+      },
+      acquisition: {
+        effectiveDate: '2026-10-15',
+        sequence: 2,
+        quantity: '4',
+        price: '20',
+        fees: '1',
+      },
+      residualAmount: '4',
+      residualDisposition: 'ACCOUNT_CASH',
+      statementConfirmed: true,
+    }
+    const path = '/api/accounts/a1/reinvestments'
+    await request(app()).post(path).send(input).expect(401)
+    for (const patch of [
+      { statementConfirmed: false },
+      { residualDisposition: 'ISSUER_CREDIT' },
+      { acquisition: { ...input.acquisition, sequence: 0 } },
+      { income: { ...input.income, grossAmount: 100 } },
+    ])
+      await request(app())
+        .post(path)
+        .set('Authorization', 'Bearer test')
+        .send({ ...input, ...patch })
+        .expect(400)
+    expect(postReinvestment).not.toHaveBeenCalled()
+    for (const created of [true, false]) {
+      postReinvestment.mockResolvedValueOnce({
+        created,
+        incomeOperationId: 'i1',
+        acquisitionOperationId: 'b1',
+        positionId: 'p1',
+        replay: { funded: true },
+      })
+      const response = await request(app())
+        .post(path)
+        .set('Authorization', 'Bearer test')
+        .send(input)
+        .expect(created ? 201 : 200)
+      expect(response.body.data.positionId).toBe('p1')
+      expect(postReinvestment).toHaveBeenLastCalledWith('u1', 'a1', input)
+    }
+    postReinvestment.mockRejectedValueOnce(
+      Object.assign(new Error('Unfunded dated history'), { status: 409 })
+    )
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(409)
+  })
+  it('authenticates FX review and validates revision heads before invoking the writer', async () => {
+    await request(app())
+      .get('/api/accounts/a1/fx-conversions/fx1/corrections')
+      .expect(401)
+    readFxReview.mockResolvedValue({ operationId: 'fx1', current: null })
+    const review = await request(app())
+      .get('/api/accounts/a1/fx-conversions/fx1/corrections')
+      .set('Authorization', 'Bearer token')
+      .expect(200)
+    expect(review.body.data.current).toBeNull()
+    expect(readFxReview).toHaveBeenCalledWith('u1', 'a1', 'fx1')
+    await request(app())
+      .post('/api/accounts/a1/fx-conversions/fx1/corrections')
+      .set('Authorization', 'Bearer token')
+      .send({ replacement: null })
+      .expect(400)
+    expect(correctFx).not.toHaveBeenCalled()
+  })
+  it.each([true, false])(
+    'returns audited FX creation/retry status (created=%s)',
+    async (created) => {
+      const input = {
+        idempotencyKey: 'fx-reverse',
+        expectedRevisionId: 'fx1',
+        expectedAuditNumber: 1,
+        expectedSourceFingerprint: 'a'.repeat(64),
+        reason: 'Duplicate exchange',
+        replacement: null,
+      }
+      correctFx.mockResolvedValueOnce({
+        operationId: 'fx1',
+        revisionId: 'r1',
+        created,
+      })
+      const response = await request(app())
+        .post('/api/accounts/a1/fx-conversions/fx1/corrections')
+        .set('Authorization', 'Bearer token')
+        .send(input)
+        .expect(created ? 201 : 200)
+      expect(response.body.data).toMatchObject({ revisionId: 'r1', created })
+      expect(correctFx).toHaveBeenCalledWith('u1', 'a1', 'fx1', input)
+      correctFx.mockRejectedValueOnce(
+        Object.assign(new Error('Stale cash head'), { status: 409 })
+      )
+      await request(app())
+        .post('/api/accounts/a1/fx-conversions/fx1/corrections')
+        .set('Authorization', 'Bearer token')
+        .send(input)
+        .expect(409)
+    }
+  )
+  const fx = {
+    idempotencyKey: 'fx1',
+    effectiveDate: '2026-11-12',
+    sequence: 1,
+    from: { currency: 'AUD', amount: '1500' },
+    to: { currency: 'USD', amount: '975' },
+    fees: [{ currency: 'AUD', amount: '5' }],
+    sourceReference: 'statement-fx',
+  }
+  it('requires auth and validates transport before calling the ledger writer', async () => {
+    await request(app())
+      .post('/api/accounts/a1/fx-conversions')
+      .send(fx)
+      .expect(401)
+    await request(app())
+      .post('/api/accounts/a1/fx-conversions')
+      .set('Authorization', 'Bearer token')
+      .send({ ...fx, to: { currency: 'USD', amount: 975 } })
+      .expect(400)
+    expect(postFx).not.toHaveBeenCalled()
+  })
+  it.each([true, false])(
+    'returns creation/retry status and surfaces writer conflicts (created=%s)',
+    async (created) => {
+      postFx.mockResolvedValueOnce({
+        operationId: 'fx-op',
+        created,
+        replay: { funded: true },
+      })
+      const response = await request(app())
+        .post('/api/accounts/a1/fx-conversions')
+        .set('Authorization', 'Bearer token')
+        .send(fx)
+        .expect(created ? 201 : 200)
+      expect(response.body.data).toMatchObject({
+        operationId: 'fx-op',
+        created,
+      })
+      expect(postFx).toHaveBeenCalledWith('u1', 'a1', fx)
+      postFx.mockRejectedValueOnce(
+        Object.assign(new Error('Insufficient dated USD cash'), { status: 422 })
+      )
+      await request(app())
+        .post('/api/accounts/a1/fx-conversions')
+        .set('Authorization', 'Bearer token')
+        .send(fx)
+        .expect(422)
+    }
+  )
+})
+
 beforeEach(() => {
   vi.resetAllMocks()
   post.mockResolvedValue({
     operationId: 'op1',
     transactionId: 'tx1',
     created: true,
+  })
+  postCapital.mockResolvedValue({
+    operationId: 'capital1',
+    created: true,
+    replay: { funded: true, balances: [], activity: [], fundingIssues: [] },
+  })
+  postIncome.mockResolvedValue({
+    operationId: 'income1',
+    created: true,
+    replay: { funded: true, balances: [], activity: [], fundingIssues: [] },
+  })
+  correctCapital.mockResolvedValue({
+    operationId: 'capital1',
+    revisionId: 'revision1',
+    created: true,
+    replay: { funded: true, balances: [], activity: [], fundingIssues: [] },
+  })
+  correctIncome.mockResolvedValue({
+    operationId: 'income1',
+    revisionId: 'revision1',
+    created: true,
+    replay: { funded: true, balances: [], activity: [], fundingIssues: [] },
+  })
+  readCapital.mockResolvedValue({
+    items: [],
+    total: 0,
+    limit: 100,
+    offset: 0,
+    activity: [],
+    activityTotal: 0,
+    auditOperations: [],
+    auditTotal: 0,
+    accountStatus: 'ACTIVE',
+    ledgerState: 'ACTIVE',
+    openingBoundary: {
+      date: '2026-10-01',
+      timezone: 'Australia/Sydney',
+      type: 'END_OF_DAY',
+    },
+    reviewedAsOfDate: '2026-10-31',
+    checkedAt: '2026-11-08T00:00:00.000Z',
+    sourceFreshness: {
+      status: 'CURRENT',
+      acceptedFingerprint: 'a'.repeat(64),
+      currentFingerprint: 'a'.repeat(64),
+    },
+    cashCompleteness: 'COMPLETE',
+    unsupportedEvents: [],
+    sourceReviewIssues: [],
+    evidence: [],
+    evidenceStatus: 'NO_ATTESTATION',
+    auditNumber: 1,
+    sourceFingerprint: 'a'.repeat(64),
+    replay: { funded: true, balances: [], activity: [], fundingIssues: [] },
   })
   correct.mockResolvedValue({
     operationId: 'op1',
@@ -75,9 +397,140 @@ beforeEach(() => {
     revisionId: 'revision1',
     created: true,
   })
+  readCapability.mockResolvedValue({
+    accountId: 'a1',
+    mode: 'LIVE_LEDGER',
+    reason: null,
+    openingDate: '2026-10-01',
+    effectiveDate: '2026-10-02',
+    nextSequence: 2,
+  })
 })
 
 describe('account trade endpoint', () => {
+  it('authenticates review/correction, validates both heads and forwards terminal paired reversal status', async () => {
+    const path = '/api/accounts/a1/cash-transfers/out1/corrections'
+    await request(app()).get(path).expect(401)
+    readTransferReview.mockResolvedValue({ current: null })
+    await request(app())
+      .get(path)
+      .set('Authorization', 'Bearer test')
+      .expect(200)
+    expect(readTransferReview).toHaveBeenCalledWith('u1', 'a1', 'out1')
+    const input = {
+      idempotencyKey: 'fix',
+      reason: 'Statement correction',
+      sourceHead: {
+        revisionId: 'out1',
+        auditNumber: 1,
+        sourceFingerprint: 'a'.repeat(64),
+      },
+      destinationHead: {
+        revisionId: 'in1',
+        auditNumber: 2,
+        sourceFingerprint: 'b'.repeat(64),
+      },
+      replacement: null,
+    }
+    await request(app()).post(path).send(input).expect(401)
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send({ ...input, destinationHead: {} })
+      .expect(400)
+    expect(correctTransfer).not.toHaveBeenCalled()
+    correctTransfer.mockResolvedValue({ created: true })
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(201)
+    expect(correctTransfer).toHaveBeenCalledWith('u1', 'a1', 'out1', input)
+    correctTransfer.mockResolvedValue({ created: false })
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(200)
+    correctTransfer.mockRejectedValue(
+      Object.assign(new Error('Stale review'), { status: 409 })
+    )
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(409)
+  })
+
+  it('authenticates, validates and forwards paired cash transfers including retry status', async () => {
+    const path = '/api/accounts/a1/cash-transfers'
+    const input = {
+      toAccountId: 'a2',
+      idempotencyKey: 'transfer-1',
+      effectiveDate: '2026-11-13',
+      sourceSequence: 1,
+      destinationSequence: 2,
+      currency: 'AUD',
+      amount: '40',
+      fee: '0.5',
+      sourceReference: 'statement-1',
+    }
+    await request(app()).post(path).send(input).expect(401)
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send({ ...input, amount: 40 })
+      .expect(400)
+    expect(postTransfer).not.toHaveBeenCalled()
+    postTransfer.mockResolvedValue({
+      sourceOperationId: 'out',
+      destinationOperationId: 'in',
+      created: true,
+    })
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(201)
+    expect(postTransfer).toHaveBeenCalledWith('u1', 'a1', input)
+    postTransfer.mockResolvedValue({ created: false })
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(200)
+    postTransfer.mockRejectedValue(
+      Object.assign(new Error('Insufficient recorded cash'), { status: 422 })
+    )
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(422)
+  })
+
+  it('resolves an authenticated, validated account trade capability', async () => {
+    const path = '/api/accounts/a1/trade-capability'
+    await request(app()).get(path).expect(401)
+    await request(app())
+      .get(`${path}?effectiveDate=not-a-date`)
+      .set('Authorization', '******')
+      .expect(400)
+    expect(readCapability).not.toHaveBeenCalled()
+    await request(app())
+      .get(`${path}?effectiveDate=2026-10-02`)
+      .set('Authorization', '******')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data).toMatchObject({
+          mode: 'LIVE_LEDGER',
+          effectiveDate: '2026-10-02',
+          nextSequence: 2,
+        })
+      })
+    expect(readCapability).toHaveBeenCalledWith('u1', 'a1', '2026-10-02')
+  })
+
   it('authenticates, validates and forwards manual voids, retries and errors', async () => {
     const input = {
       idempotencyKey: 'void-1',
@@ -176,6 +629,45 @@ describe('account trade endpoint', () => {
     expect(post).toHaveBeenCalledWith('u1', 'a1', buy)
   })
 
+  it('accepts symbol-based BUY metadata and sale close metadata', async () => {
+    const buyInput = {
+      ...buy,
+      assetId: undefined,
+      symbol: 'AAPL',
+      exchangeCode: 'NASDAQ',
+      assetName: 'Apple',
+      assetType: 'EQUITY',
+      industry: 'Technology',
+      openReason: 'Long-term holding',
+      stopLossPrice: '150',
+    }
+    await request(app())
+      .post('/api/accounts/a1/trades')
+      .set('Authorization', '******')
+      .send(buyInput)
+      .expect(201)
+    expect(post).toHaveBeenCalledWith('u1', 'a1', buyInput)
+
+    const sellInput = {
+      kind: 'SELL',
+      positionId: 'position-1',
+      idempotencyKey: 'sell-1',
+      effectiveDate: '2026-10-02',
+      sequence: 2,
+      quantity: '1',
+      price: '12',
+      fees: '0',
+      closeReason: 'TARGET',
+      notes: 'Target reached',
+    }
+    await request(app())
+      .post('/api/accounts/a1/trades')
+      .set('Authorization', '******')
+      .send(sellInput)
+      .expect(201)
+    expect(post).toHaveBeenLastCalledWith('u1', 'a1', sellInput)
+  })
+
   it('returns 200 for an idempotent retry', async () => {
     post.mockResolvedValue({ operationId: 'op1', created: false })
     await request(app())
@@ -183,6 +675,257 @@ describe('account trade endpoint', () => {
       .set('Authorization', '******')
       .send(buy)
       .expect(200)
+  })
+
+  it('authenticates, validates and forwards exact live capital flows and retries', async () => {
+    const input = {
+      kind: 'DEPOSIT',
+      idempotencyKey: 'deposit-1',
+      effectiveDate: '2026-10-02',
+      sequence: 1,
+      currency: 'AUD',
+      amount: '100.000000000001',
+      sourceReference: 'bank-transfer-123',
+    }
+    const path = '/api/accounts/a1/cash-operations'
+    await request(app()).post(path).send(input).expect(401)
+    for (const invalid of [
+      { ...input, kind: 'BUY' },
+      { ...input, sequence: 0 },
+      { ...input, effectiveDate: '2026-02-30' },
+      { ...input, amount: 100 },
+      { ...input, sourceReference: '' },
+    ]) {
+      await request(app())
+        .post(path)
+        .set('Authorization', '******')
+        .send(invalid)
+        .expect(400)
+    }
+    expect(postCapital).not.toHaveBeenCalled()
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(input)
+      .expect(201)
+    expect(postCapital).toHaveBeenCalledWith('u1', 'a1', input)
+    postCapital.mockResolvedValueOnce({
+      operationId: 'capital1',
+      created: false,
+      replay: { funded: true, balances: [], activity: [], fundingIssues: [] },
+    })
+
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(input)
+      .expect(200)
+    postCapital.mockRejectedValueOnce(
+      Object.assign(new Error('Insufficient funds'), { status: 422 })
+    )
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(input)
+      .expect(422)
+  })
+
+  it('authenticates, validates and forwards statement-supported income receipts', async () => {
+    const input = {
+      idempotencyKey: 'income-1',
+      assetId: 'asset-1',
+      entitlementDate: '2026-10-01',
+      paymentDate: '2026-10-15',
+      sequence: 1,
+      currency: 'AUD',
+      grossAmount: '100',
+      withholdingAmount: '15',
+      frankedAmount: '60',
+      unfrankedAmount: '40',
+      frankingCreditAud: '25',
+      sourceReference: 'broker-dividend-statement',
+    }
+    const path = '/api/accounts/a1/income-receipts'
+    await request(app()).post(path).send(input).expect(401)
+    for (const invalid of [
+      { ...input, paymentDate: '2026-02-30' },
+      { ...input, sequence: 0 },
+      { ...input, grossAmount: 100 },
+      { ...input, sourceReference: '' },
+    ]) {
+      await request(app())
+        .post(path)
+        .set('Authorization', '******')
+        .send(invalid)
+        .expect(400)
+    }
+    expect(postIncome).not.toHaveBeenCalled()
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(input)
+      .expect(201)
+    expect(postIncome).toHaveBeenCalledWith('u1', 'a1', input)
+    postIncome.mockResolvedValueOnce({
+      operationId: 'income1',
+      created: false,
+      replay: { funded: true, balances: [], activity: [], fundingIssues: [] },
+    })
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(input)
+      .expect(200)
+  })
+
+  it('authenticates, validates and forwards audited income corrections and reversals', async () => {
+    const correction = {
+      idempotencyKey: 'income-correction-1',
+      expectedRevisionId: 'income1',
+      expectedAuditNumber: 3,
+      expectedSourceFingerprint: 'a'.repeat(64),
+      reason: 'Corrected withholding from the issuer statement',
+      replacement: {
+        entitlementDate: '2026-10-01',
+        paymentDate: '2026-10-16',
+        sequence: 2,
+        grossAmount: '100',
+        withholdingAmount: '20',
+        frankedAmount: '60',
+        unfrankedAmount: '40',
+        frankingCreditAud: '25',
+      },
+    }
+    const path = '/api/accounts/a1/income-receipts/income1/corrections'
+    await request(app()).post(path).send(correction).expect(401)
+    for (const invalid of [
+      { ...correction, expectedAuditNumber: -1 },
+      { ...correction, expectedSourceFingerprint: 'bad' },
+      {
+        ...correction,
+        replacement: { ...correction.replacement, assetId: 'asset-2' },
+      },
+      {
+        ...correction,
+        replacement: { ...correction.replacement, sequence: 0 },
+      },
+    ]) {
+      await request(app())
+        .post(path)
+        .set('Authorization', '******')
+        .send(invalid)
+        .expect(400)
+    }
+    expect(correctIncome).not.toHaveBeenCalled()
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(correction)
+      .expect(201)
+    expect(correctIncome).toHaveBeenCalledWith(
+      'u1',
+      'a1',
+      'income1',
+      correction
+    )
+    correctIncome.mockResolvedValueOnce({
+      operationId: 'income1',
+      revisionId: 'revision1',
+      created: false,
+      replay: { funded: true, balances: [], activity: [], fundingIssues: [] },
+    })
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send({ ...correction, replacement: null })
+      .expect(200)
+  })
+
+  it('reads and corrects/reverses audited live capital operations', async () => {
+    const readPath = '/api/accounts/a1/cash-operations'
+    await request(app()).get(readPath).expect(401)
+    await request(app())
+      .get(`${readPath}?limit=101`)
+      .set('Authorization', '******')
+      .expect(400)
+    const read = await request(app())
+      .get(`${readPath}?limit=25&offset=5`)
+      .set('Authorization', '******')
+      .expect(200)
+    expect(read.body.data).toMatchObject({
+      items: [],
+      total: 0,
+      limit: 100,
+      offset: 0,
+      openingBoundary: { type: 'END_OF_DAY' },
+      sourceFreshness: { status: 'CURRENT' },
+      evidenceStatus: 'NO_ATTESTATION',
+    })
+    expect(readCapital).toHaveBeenCalledWith('u1', 'a1', 25, 5)
+
+    const correction = {
+      idempotencyKey: 'capital-correction-1',
+      expectedRevisionId: 'capital1',
+      expectedAuditNumber: 1,
+      expectedSourceFingerprint: 'a'.repeat(64),
+      reason: 'Correct bank statement amount',
+      replacement: {
+        effectiveDate: '2026-10-03',
+        sequence: 2,
+        amount: '90.25',
+      },
+    }
+    const path = `${readPath}/capital1/corrections`
+    await request(app()).post(path).send(correction).expect(401)
+    for (const invalid of [
+      { ...correction, expectedAuditNumber: -1 },
+      { ...correction, expectedSourceFingerprint: 'invalid' },
+      { ...correction, reason: '' },
+      { ...correction, replacement: { ...correction.replacement, amount: 0 } },
+    ])
+      await request(app())
+        .post(path)
+        .set('Authorization', '******')
+        .send(invalid)
+        .expect(400)
+    expect(correctCapital).not.toHaveBeenCalled()
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(correction)
+      .expect(201)
+    expect(correctCapital).toHaveBeenCalledWith(
+      'u1',
+      'a1',
+      'capital1',
+      correction
+    )
+    correctCapital.mockResolvedValueOnce({
+      operationId: 'capital1',
+      revisionId: 'revision1',
+      created: false,
+      replay: { funded: true, balances: [], activity: [], fundingIssues: [] },
+    })
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(correction)
+      .expect(200)
+    const reversal = {
+      ...correction,
+      idempotencyKey: 'capital-reversal-1',
+      replacement: null,
+    }
+    correctCapital.mockRejectedValueOnce(
+      Object.assign(new Error('Funding would leave cash unfunded'), {
+        status: 422,
+      })
+    )
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(reversal)
+      .expect(422)
   })
 
   it('authenticates, validates and forwards an audited sale correction', async () => {

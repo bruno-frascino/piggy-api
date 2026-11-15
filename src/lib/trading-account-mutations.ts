@@ -44,7 +44,11 @@ export async function closeTradingAccount(userId: string, id: string) {
     if (account.status === 'CLOSED') return account
     return db.tradingAccount.update({
       where: { id },
-      data: { status: 'CLOSED', closedAt: new Date() },
+      data: {
+        status: 'CLOSED',
+        closedAt: new Date(),
+        updatedAt: account.updatedAt,
+      },
     })
   }, transactionOptions)
 }
@@ -52,10 +56,10 @@ export async function closeTradingAccount(userId: string, id: string) {
 export async function reopenTradingAccount(userId: string, id: string) {
   return prisma.$transaction(async (db) => {
     await lockOwnedTradingAccount(db, userId, id)
-    await loadAccount(db, userId, id)
+    const account = await loadAccount(db, userId, id)
     return db.tradingAccount.update({
       where: { id },
-      data: { status: 'ACTIVE', closedAt: null },
+      data: { status: 'ACTIVE', closedAt: null, updatedAt: account.updatedAt },
     })
   }, transactionOptions)
 }
@@ -67,13 +71,16 @@ export async function renameTradingAccount(
 ) {
   return prisma.$transaction(async (db) => {
     await lockOwnedTradingAccount(db, userId, id)
-    await loadAccount(db, userId, id)
+    const account = await loadAccount(db, userId, id)
     const existing = await db.tradingAccount.findFirst({
       where: { userId, name, id: { not: id } },
       select: { id: true },
     })
     if (existing) conflict('An account with this name already exists')
-    return db.tradingAccount.update({ where: { id }, data: { name } })
+    return db.tradingAccount.update({
+      where: { id },
+      data: { name, updatedAt: account.updatedAt },
+    })
   }, transactionOptions)
 }
 

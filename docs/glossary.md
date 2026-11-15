@@ -72,8 +72,9 @@ verification. Speculative proposed trades are not real holdings.
 
 **Ledger-backed account** — A real account with an active `AccountCashLedger` tied to its
 matching confirmed opening statement. Live writers validate source/audit history and dated
-funding under account locks. User-facing provisioning remains planned; ordinary legacy
-accounts are not ledger-backed merely because an opening draft exists.
+funding under account locks. Reviewed per-account confirmation is the explicit user-facing
+activation path; ordinary legacy accounts are not ledger-backed merely because an opening
+draft exists.
 
 **Effective trade/operation** — The currently applicable economic effect after audited
 corrections, excluding terminal reversals/voids. Retained original records and reversal legs
@@ -97,6 +98,39 @@ source-freshness assertion.
 **Cash evidence** — User-attested, dated currency balances with source/reference and variance
 decisions. Evidence is immutable; variances are recalculated against effective replay.
 A matching balance is neither an adjustment that creates cash nor independent broker verification.
+
+**Paired cash transfer** — One same-currency, same-date movement between two owned confirmed
+real ledgers, retained as immutable `TRANSFER_OUT`/`TRANSFER_IN` cash operations sharing a
+normalized request, hash and idempotency key. Only the sender pays the fee. Principal is
+external to each individual account but cancels when both are selected; the fee remains a cost.
+No parcel changes, currency conversion or implicit funding occurs. One-sided edits/reversals
+are forbidden. Dedicated paired revisions atomically replace principal, sender fee, shared date
+and account sequences with both current review heads; endpoint/currency/source identity stays
+fixed. Reversal is terminal, removing the original economic effect including fees. Immutable
+audits and historical slots remain retained, and both dated timelines must stay funded. See ADR 0016.
+
+**Explicit FX conversion** — One immutable same-account cash operation recording an executed
+exchange between two distinct supported currencies. Positive exchanged amounts are before
+explicit fees, which may be in either exchanged currency. Linked `FX_PRINCIPAL` legs are not
+external capital. Both currency openings and funded dated replay are required. Actual amounts
+and source reference are retained; no live exchange, market rate, implicit funding or holdings
+change is inferred. Dedicated audited corrections preserve account, currency direction and
+source while replacing amounts, fees, date or sequence with current review heads and funded
+replay. Reversal is terminal and removes the effective conversion, not a new reverse exchange.
+Original records, revisions and historical slots remain retained. Third-currency fees remain
+blocked. See ADR 0016.
+
+**Statement-supported dividend reinvestment** — One atomic, manually reviewed equity/ETF
+statement recording income once and creating a separate BUY parcel in the same account/currency.
+Net income equals exact consideration plus acquisition fees plus residual cash paid into the
+account. Tax attributes and entitlement/payment/acquisition dates remain explicit; entitlement
+uses historical eligible holdings, not current quantities or an estimated dividend. Immutable
+income/acquisition links share the complete normalized request identity and retain both cash
+postings. No existing parcel receives extra units. Issuer-held carry-forward is not account cash
+and is unsupported, as are extra funding, existing-receipt relinking and independent financial
+corrections/voids. Dedicated paired audited corrections/reversal require both review heads,
+funded replay and no effective parcel sales. Terminal reversal removes both effects without a
+disposal. See ADR 0016.
 
 **Demo account** — A `TradingAccount` with `isDemo = true`, chosen at creation and immutable.
 Used for practice: positions open and close normally, but the account is never eligible for

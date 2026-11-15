@@ -30,6 +30,8 @@ erDiagram
     Transaction ||--o{ AccountCashOperation : "transaction"
     ImportedEvent ||--o{ AccountCashOperation : "importedEvent"
     AccountCashOperation ||--o{ AccountCashPosting : "operation"
+    AccountCashOperation ||--o{ AccountIncomeReceipt : "operation"
+    Asset ||--o{ AccountIncomeReceipt : "asset"
     AccountCashOperation ||--o{ AccountCashOperationRevision : "operation"
     AccountCashOperationRevision ||--o{ AccountCashOperationRevision : "previousRevision"
     AccountCashOperationRevision ||--o{ AccountCashOperationRevision : "nextRevisions"
@@ -349,6 +351,11 @@ Constraints: `@@unique([statementId, transactionId])`
 | state | `String` | @default("ACTIVE") |
 | openingSourceFingerprint | `String` | — |
 | acceptedSourceFingerprint | `String` | — |
+| confirmedByUserId | `String?` | — |
+| confirmedAt | `DateTime?` | — |
+| confirmationIdempotencyKey | `String?` | @unique |
+| confirmationPayloadHash | `String?` | — |
+| confirmationAudit | `Json?` | — |
 | createdAt | `DateTime` | @default(now()) |
 | updatedAt | `DateTime` | @updatedAt |
 | account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
@@ -363,7 +370,7 @@ Constraints: `@@unique([statementId, transactionId])`
 | accountId | `String` | — |
 | idempotencyKey | `String` | — |
 | payloadHash | `String` | — |
-| transactionId | `String` | @unique |
+| transactionId | `String?` | @unique |
 | importedEventId | `String?` | @unique |
 | kind | `String` | — |
 | effectiveDate | `DateTime` | @db.Date |
@@ -375,10 +382,11 @@ Constraints: `@@unique([statementId, transactionId])`
 | transactionSnapshot | `Json` | — |
 | recordedAt | `DateTime` | @default(now()) |
 | ledger | `AccountCashLedger` | @relation(fields: [accountId], references: [accountId], onDelete: Cascade) |
-| transaction | `Transaction` | @relation(fields: [transactionId], references: [id], onDelete: Restrict) |
+| transaction | `Transaction?` | @relation(fields: [transactionId], references: [id], onDelete: Restrict) |
 | importedEvent | `ImportedEvent?` | @relation(fields: [importedEventId], references: [id], onDelete: Restrict) |
 | postings | `AccountCashPosting[]` | — |
 | revisions | `AccountCashOperationRevision[]` | — |
+| incomeReceipt | `AccountIncomeReceipt?` | — |
 
 Constraints: `@@unique([accountId, id])`, `@@unique([accountId, idempotencyKey])`, `@@unique([accountId, effectiveDate, sequence])`, `@@unique([accountId, auditNumber])`
 
@@ -395,6 +403,27 @@ Constraints: `@@unique([accountId, id])`, `@@unique([accountId, idempotencyKey])
 | operation | `AccountCashOperation` | @relation(fields: [operationId], references: [id], onDelete: Cascade) |
 
 Constraints: `@@unique([operationId, legIndex])`
+
+### `AccountIncomeReceipt` (table: `account_income_receipts`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| accountId | `String` | — |
+| operationId | `String` | @unique |
+| assetId | `String` | — |
+| entitlementDate | `DateTime` | @db.Date |
+| currency | `String` | — |
+| grossAmount | `Decimal` | @db.Decimal(38, 12) |
+| withholdingAmount | `Decimal` | @db.Decimal(38, 12) |
+| frankedAmount | `Decimal` | @db.Decimal(38, 12) |
+| unfrankedAmount | `Decimal` | @db.Decimal(38, 12) |
+| frankingCreditAud | `Decimal` | @db.Decimal(38, 12) |
+| recordedAt | `DateTime` | @default(now()) |
+| operation | `AccountCashOperation` | @relation(fields: [accountId, operationId], references: [accountId, id], onDelete: Cascade) |
+| asset | `Asset` | @relation(fields: [assetId], references: [id], onDelete: Restrict) |
+
+Constraints: `@@unique([accountId, operationId])`, `@@unique([accountId, id])`
 
 ### `AccountCashOperationRevision` (table: `account_cash_operation_revisions`)
 
@@ -453,6 +482,7 @@ Constraints: `@@unique([revisionId, legIndex])`
 | updatedAt | `DateTime` | @updatedAt |
 | exchange | `Exchange` | @relation(fields: [exchangeId], references: [id]) |
 | positions | `Position[]` | — |
+| incomeReceipts | `AccountIncomeReceipt[]` | — |
 | priceHistory | `PriceHistory[]` | — |
 | watchlistItems | `WatchlistItem[]` | — |
 
@@ -751,3 +781,6 @@ Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, s
 - `20261106212113_add_imported_cash_operation_source`
 - `20261107002207_audited_live_manual_sale_corrections`
 - `20261107104751_audited_manual_trade_voids`
+- `20261108065037_account_cash_operations_support_capital_flows`
+- `20261111000000_reviewed_opening_confirmation`
+- `20261111185204_account_income_receipts`

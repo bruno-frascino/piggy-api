@@ -10,7 +10,9 @@ let exchangeId: string | undefined
 async function fixture(
   amount = '100',
   withTrade = false,
-  withImportedTrade = false
+  withImportedTrade = false,
+  withIncomeHolding = false,
+  extraCashBalances: { currency: string; amount: string }[] = []
 ) {
   if (!userId) throw new Error('Missing isolated cash fixture')
   const account = await prisma.tradingAccount.create({
@@ -18,6 +20,42 @@ async function fixture(
   })
   let transactionId: string | undefined
   let eventId: string | undefined
+  let incomeAssetId: string | undefined
+  if (withIncomeHolding) {
+    if (!exchangeId) throw new Error('Missing fixture exchange')
+    const asset = await prisma.asset.create({
+      data: {
+        symbol: `INCOME-${randomUUID()}`,
+        name: 'Disposable income receipt test asset',
+        exchangeId,
+        assetType: 'EQUITY',
+      },
+    })
+    incomeAssetId = asset.id
+    await prisma.position.create({
+      data: {
+        userId,
+        accountId: account.id,
+        assetId: asset.id,
+        openDate: new Date('2026-09-30T00:00:00Z'),
+        entryPrice: '60',
+        quantity: 1,
+        totalBuyValue: '60',
+        buyFees: '1',
+        capitalAllocated: '61',
+        transactions: {
+          create: {
+            type: 'BUY',
+            date: new Date('2026-09-30T00:00:00Z'),
+            quantity: 1,
+            price: '60',
+            totalValue: '60',
+            fees: '1',
+          },
+        },
+      },
+    })
+  }
   if (withTrade) {
     if (!exchangeId) throw new Error('Missing fixture exchange')
     const asset = await prisma.asset.create({
@@ -128,7 +166,7 @@ async function fixture(
   const { saveOpeningStatement } = await import('./opening-statements.js')
   const input = {
     openingDate: '2026-10-01',
-    cashBalances: [{ currency: 'AUD', amount }],
+    cashBalances: [{ currency: 'AUD', amount }, ...extraCashBalances],
   }
   const preview = await previewAccountOpening(userId, account.id, input)
   const saved = await saveOpeningStatement(userId, account.id, {
@@ -141,6 +179,7 @@ async function fixture(
     statementId: saved.statement.id,
     transactionId,
     eventId,
+    incomeAssetId,
   }
 }
 
@@ -175,7 +214,7 @@ describe.skipIf(!enabled)(
       exchangeId = (
         await prisma.exchange.create({
           data: {
-            code: `FIXTURE-${randomUUID()}`,
+            code: `FIXTURE-${randomUUID()}`.toUpperCase(),
             name: 'Disposable cash fixture',
             currency: 'AUD',
             countryName: 'Australia',
@@ -2118,6 +2157,717 @@ describe.skipIf(!enabled)(
         })
       ).toBe(0)
     })
+    it('corrects and terminally reverses paired transfers with immutable audit, safe retries and both dated funding checks', async () => {
+      const {
+        postAccountCashTransfer,
+        readLiveCashTransferReview,
+        correctLiveCashTransfer,
+        readLiveCapitalOperations,
+        postAccountCapitalFlow,
+        correctLiveCapitalOperation,
+      } = await import('./draft-cash-ledger.js')
+      const source = await fixture('100')
+      const destination = await fixture('0')
+      await confirmCashLedger(source.accountId, source.statementId)
+      await confirmCashLedger(destination.accountId, destination.statementId)
+      const transferInput = {
+        toAccountId: destination.accountId,
+        idempotencyKey: `transfer-${randomUUID()}`,
+        effectiveDate: '2026-10-03',
+        sourceSequence: 1,
+        destinationSequence: 1,
+        currency: 'AUD',
+        amount: '40',
+        fee: '1',
+        sourceReference: `statement-${randomUUID()}`,
+      }
+      const posted = await postAccountCashTransfer(
+        source.userId,
+        source.accountId,
+        transferInput
+      )
+      const review = await readLiveCashTransferReview(
+        source.userId,
+        source.accountId,
+        posted.sourceOperationId
+      )
+      const correction = {
+        idempotencyKey: `fix-${randomUUID()}`,
+        reason: 'Correct statement amount and fee',
+        sourceHead: review.sourceHead,
+        destinationHead: review.destinationHead,
+        replacement: {
+          effectiveDate: '2026-10-03',
+          sourceSequence: 1,
+          destinationSequence: 1,
+          amount: '30',
+          fee: '2',
+        },
+      }
+      const corrected = await correctLiveCashTransfer(
+        source.userId,
+        source.accountId,
+        posted.sourceOperationId,
+        correction
+      )
+      expect(corrected.sourceReplay.balances[0]).toMatchObject({
+        endingAmount: '68',
+        netExternalContribution: '-30',
+      })
+      expect(corrected.destinationReplay.balances[0]).toMatchObject({
+        endingAmount: '30',
+        netExternalContribution: '30',
+      })
+      expect(
+        await correctLiveCashTransfer(
+          source.userId,
+          source.accountId,
+          posted.sourceOperationId,
+          correction
+        )
+      ).toMatchObject({
+        created: false,
+        sourceRevisionId: corrected.sourceRevisionId,
+        destinationRevisionId: corrected.destinationRevisionId,
+      })
+      await expect(
+        correctLiveCashTransfer(
+          source.userId,
+          source.accountId,
+          posted.sourceOperationId,
+          {
+            ...correction,
+            replacement: { ...correction.replacement, fee: '3' },
+          }
+        )
+      ).rejects.toThrow(/Idempotency/)
+      const after = await readLiveCapitalOperations(
+        source.userId,
+        source.accountId
+      )
+      expect(
+        after.auditOperations[0].revisions[0].postings.map((row) => row.amount)
+      ).toEqual(['40', '1', '-30', '-2'])
+      expect(
+        (
+          await postAccountCashTransfer(
+            source.userId,
+            source.accountId,
+            transferInput
+          )
+        ).sourceReplay.balances[0].endingAmount
+      ).toBe('68')
+      const withdrawal = await postAccountCapitalFlow(
+        destination.userId,
+        destination.accountId,
+        {
+          kind: 'WITHDRAWAL',
+          idempotencyKey: `spend-${randomUUID()}`,
+          effectiveDate: '2026-10-04',
+          sequence: 1,
+          currency: 'AUD',
+          amount: '25',
+          sourceReference: `spend-${randomUUID()}`,
+        }
+      )
+      const latest = await readLiveCashTransferReview(
+        source.userId,
+        source.accountId,
+        posted.sourceOperationId
+      )
+      const next = {
+        ...correction,
+        idempotencyKey: `next-${randomUUID()}`,
+        sourceHead: latest.sourceHead,
+        destinationHead: latest.destinationHead,
+      }
+      await expect(
+        correctLiveCashTransfer(
+          source.userId,
+          source.accountId,
+          posted.sourceOperationId,
+          {
+            ...next,
+            replacement: { ...next.replacement, amount: '20' },
+          }
+        )
+      ).rejects.toThrow(/Insufficient/)
+      await expect(
+        correctLiveCashTransfer(
+          source.userId,
+          source.accountId,
+          posted.sourceOperationId,
+          {
+            ...next,
+            replacement: null,
+          }
+        )
+      ).rejects.toThrow(/Insufficient/)
+      await expect(
+        correctLiveCashTransfer(
+          source.userId,
+          source.accountId,
+          posted.sourceOperationId,
+          {
+            ...next,
+            replacement: {
+              ...next.replacement,
+              effectiveDate: '2026-10-04',
+              sourceSequence: 2,
+              destinationSequence: 2,
+            },
+          }
+        )
+      ).rejects.toThrow(/Insufficient/)
+      expect(
+        await prisma.accountCashOperationRevision.count({
+          where: {
+            operationId: {
+              in: [posted.sourceOperationId, posted.destinationOperationId],
+            },
+          },
+        })
+      ).toBe(2)
+      const moved = await correctLiveCashTransfer(
+        source.userId,
+        source.accountId,
+        posted.sourceOperationId,
+        {
+          ...next,
+          replacement: {
+            ...next.replacement,
+            effectiveDate: '2026-10-02',
+            sourceSequence: 2,
+            destinationSequence: 2,
+          },
+        }
+      )
+      expect(moved.destinationReplay.balances[0].endingAmount).toBe('5')
+      const fundingReview = await readLiveCapitalOperations(
+        destination.userId,
+        destination.accountId
+      )
+      await correctLiveCapitalOperation(
+        destination.userId,
+        destination.accountId,
+        withdrawal.operationId,
+        {
+          idempotencyKey: `unspend-${randomUUID()}`,
+          expectedRevisionId: withdrawal.operationId,
+          expectedAuditNumber: fundingReview.auditNumber,
+          expectedSourceFingerprint: fundingReview.sourceFingerprint,
+          reason: 'Duplicate statement withdrawal',
+          replacement: null,
+        }
+      )
+      const reversalReview = await readLiveCashTransferReview(
+        source.userId,
+        source.accountId,
+        posted.sourceOperationId
+      )
+      const reversal = {
+        idempotencyKey: `reverse-${randomUUID()}`,
+        reason: 'Statement confirms duplicate transfer',
+        sourceHead: reversalReview.sourceHead,
+        destinationHead: reversalReview.destinationHead,
+        replacement: null,
+      }
+      const reversed = await correctLiveCashTransfer(
+        source.userId,
+        source.accountId,
+        posted.sourceOperationId,
+        reversal
+      )
+      expect(reversed.sourceReplay.balances[0].endingAmount).toBe('100')
+      expect(reversed.destinationReplay.balances[0].endingAmount).toBe('0')
+      expect(
+        (
+          await correctLiveCashTransfer(
+            source.userId,
+            source.accountId,
+            posted.sourceOperationId,
+            reversal
+          )
+        ).created
+      ).toBe(false)
+      const terminal = await readLiveCashTransferReview(
+        source.userId,
+        source.accountId,
+        posted.sourceOperationId
+      )
+      expect(terminal.current).toBeNull()
+      await expect(
+        correctLiveCashTransfer(
+          source.userId,
+          source.accountId,
+          posted.sourceOperationId,
+          {
+            ...reversal,
+            idempotencyKey: `after-terminal-${randomUUID()}`,
+            sourceHead: terminal.sourceHead,
+            destinationHead: terminal.destinationHead,
+          }
+        )
+      ).rejects.toThrow(/reversed transfer/)
+    })
+
+    it('rejects stale paired review, reserves historic slots and serializes competing transfer corrections', async () => {
+      const {
+        postAccountCashTransfer,
+        readLiveCashTransferReview,
+        correctLiveCashTransfer,
+        postAccountCapitalFlow,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const a = await fixture('100')
+      const b = await fixture('0')
+      await confirmCashLedger(a.accountId, a.statementId)
+      await confirmCashLedger(b.accountId, b.statementId)
+      const posted = await postAccountCashTransfer(a.userId, a.accountId, {
+        toAccountId: b.accountId,
+        idempotencyKey: `transfer-${randomUUID()}`,
+        effectiveDate: '2026-10-03',
+        sourceSequence: 1,
+        destinationSequence: 1,
+        currency: 'AUD',
+        amount: '40',
+        fee: '1',
+        sourceReference: `statement-${randomUUID()}`,
+      })
+      let review = await readLiveCashTransferReview(
+        a.userId,
+        a.accountId,
+        posted.sourceOperationId
+      )
+      const originalHead = review.destinationHead
+      await postAccountCapitalFlow(b.userId, b.accountId, {
+        kind: 'DEPOSIT',
+        idempotencyKey: `deposit-${randomUUID()}`,
+        effectiveDate: '2026-10-04',
+        sequence: 1,
+        currency: 'AUD',
+        amount: '1',
+        sourceReference: `deposit-${randomUUID()}`,
+      })
+      const correction = {
+        idempotencyKey: `fix-${randomUUID()}`,
+        reason: 'Broker date correction',
+        sourceHead: review.sourceHead,
+        destinationHead: originalHead,
+        replacement: {
+          effectiveDate: '2026-10-02',
+          sourceSequence: 1,
+          destinationSequence: 1,
+          amount: '35',
+          fee: '2',
+        },
+      }
+      await expect(
+        correctLiveCashTransfer(
+          a.userId,
+          a.accountId,
+          posted.sourceOperationId,
+          correction
+        )
+      ).rejects.toThrow(/Cash history changed/)
+      review = await readLiveCashTransferReview(
+        a.userId,
+        a.accountId,
+        posted.sourceOperationId
+      )
+      const fixed = {
+        ...correction,
+        sourceHead: review.sourceHead,
+        destinationHead: review.destinationHead,
+      }
+      const results = await Promise.allSettled([
+        correctLiveCashTransfer(
+          a.userId,
+          a.accountId,
+          posted.sourceOperationId,
+          fixed
+        ),
+        correctLiveCashTransfer(
+          a.userId,
+          a.accountId,
+          posted.sourceOperationId,
+          { ...fixed, idempotencyKey: `race-${randomUUID()}` }
+        ),
+      ])
+      expect(results.filter((row) => row.status === 'fulfilled')).toHaveLength(
+        1
+      )
+      const next = await readLiveCashTransferReview(
+        a.userId,
+        a.accountId,
+        posted.sourceOperationId
+      )
+      await expect(
+        correctLiveCashTransfer(
+          a.userId,
+          a.accountId,
+          posted.sourceOperationId,
+          {
+            ...fixed,
+            idempotencyKey: `reserved-${randomUUID()}`,
+            sourceHead: next.sourceHead,
+            destinationHead: next.destinationHead,
+            replacement: { ...fixed.replacement, effectiveDate: '2026-10-03' },
+          }
+        )
+      ).rejects.toThrow(/slots remain reserved/)
+      const rows = await prisma.accountCashOperationRevision.findMany({
+        where: { operationId: posted.destinationOperationId },
+      })
+      await prisma.accountCashRevisionPosting.updateMany({
+        where: { revisionId: rows[0].id, phase: 'REPLACEMENT' },
+        data: { amount: '34' },
+      })
+      await expect(
+        readLiveCapitalOperations(a.userId, a.accountId)
+      ).rejects.toThrow(/Paired transfer revision/)
+    })
+
+    it('posts paired same-currency transfers once, retains cross-account audit and rejects one-sided changes', async () => {
+      const {
+        postAccountCashTransfer,
+        readLiveCapitalOperations,
+        correctLiveCapitalOperation,
+        saveDraftCashOperation,
+      } = await import('./draft-cash-ledger.js')
+      const source = await fixture('100')
+      const destination = await fixture('0')
+      await confirmCashLedger(source.accountId, source.statementId)
+      await confirmCashLedger(destination.accountId, destination.statementId)
+      const input = {
+        toAccountId: destination.accountId,
+        idempotencyKey: `transfer-${randomUUID()}`,
+        effectiveDate: '2026-10-03',
+        sourceSequence: 1,
+        destinationSequence: 1,
+        currency: 'AUD',
+        amount: '40.000000000001',
+        fee: '0.5',
+        sourceReference: `statement-${randomUUID()}`,
+      }
+      const result = await postAccountCashTransfer(
+        source.userId,
+        source.accountId,
+        input
+      )
+      expect(result.created).toBe(true)
+      expect(result.sourceReplay.balances[0]).toMatchObject({
+        endingAmount: '59.499999999999',
+        netExternalContribution: '-40.000000000001',
+      })
+      expect(result.destinationReplay.balances[0]).toMatchObject({
+        endingAmount: '40.000000000001',
+        netExternalContribution: '40.000000000001',
+      })
+      const retry = await postAccountCashTransfer(
+        source.userId,
+        source.accountId,
+        input
+      )
+      expect(retry).toMatchObject({
+        created: false,
+        sourceOperationId: result.sourceOperationId,
+        destinationOperationId: result.destinationOperationId,
+      })
+      await expect(
+        postAccountCashTransfer(source.userId, source.accountId, {
+          ...input,
+          fee: '1',
+        })
+      ).rejects.toThrow(/Idempotency/)
+      const review = await readLiveCapitalOperations(
+        source.userId,
+        source.accountId
+      )
+      expect(review.replay.balances[0].endingAmount).toBe('59.499999999999')
+      expect(review.auditOperations[0].current).toMatchObject({
+        kind: 'TRANSFER_OUT',
+        fee: '0.5',
+        transfer: {
+          fromAccountId: source.accountId,
+          toAccountId: destination.accountId,
+        },
+      })
+      await expect(
+        correctLiveCapitalOperation(
+          source.userId,
+          source.accountId,
+          result.sourceOperationId,
+          {
+            idempotencyKey: `reverse-${randomUUID()}`,
+            expectedRevisionId: result.sourceOperationId,
+            expectedAuditNumber: review.auditNumber,
+            expectedSourceFingerprint: review.sourceFingerprint,
+            reason: 'One-sided reversal is forbidden',
+            replacement: null,
+          }
+        )
+      ).rejects.toThrow()
+      await prisma.tradingAccount.update({
+        where: { id: source.accountId },
+        data: { status: 'CLOSED' },
+      })
+      expect(
+        (await readLiveCapitalOperations(source.userId, source.accountId))
+          .replay.balances[0].endingAmount
+      ).toBe('59.499999999999')
+      expect(
+        (await readLiveCapitalOperations(source.userId, destination.accountId))
+          .replay.balances[0].endingAmount
+      ).toBe('40.000000000001')
+      const operation = await prisma.accountCashOperation.findUniqueOrThrow({
+        where: { id: result.sourceOperationId },
+      })
+      if (
+        !operation.command ||
+        typeof operation.command !== 'object' ||
+        !('cashCommand' in operation.command)
+      )
+        throw new Error('Missing fixture command')
+      const draft = await fixture()
+      await expect(
+        saveDraftCashOperation(
+          source.userId,
+          draft.statementId,
+          operation.command.cashCommand
+        )
+      ).rejects.toThrow(/paired live/)
+      await prisma.accountCashPosting.updateMany({
+        where: { operationId: result.destinationOperationId },
+        data: { amount: '39' },
+      })
+      await expect(
+        readLiveCapitalOperations(source.userId, source.accountId)
+      ).rejects.toThrow(/Paired cash transfer/)
+      await prisma.accountCashOperation.delete({
+        where: { id: result.destinationOperationId },
+      })
+      await expect(
+        readLiveCapitalOperations(source.userId, source.accountId)
+      ).rejects.toThrow(/missing its paired/)
+    })
+
+    it('rolls back both transfer legs for invalid endpoints, dates, source drift, slots or funding gaps', async () => {
+      const { postAccountCashTransfer, postAccountCapitalFlow } =
+        await import('./draft-cash-ledger.js')
+      const source = await fixture('100')
+      const destination = await fixture('0')
+      await confirmCashLedger(source.accountId, source.statementId)
+      const input = {
+        toAccountId: destination.accountId,
+        idempotencyKey: `transfer-${randomUUID()}`,
+        effectiveDate: '2026-10-03',
+        sourceSequence: 1,
+        destinationSequence: 1,
+        currency: 'AUD',
+        amount: '100',
+        fee: '1',
+        sourceReference: `statement-${randomUUID()}`,
+      }
+      await expect(
+        postAccountCashTransfer(source.userId, source.accountId, input)
+      ).rejects.toThrow(/ledger/)
+      await confirmCashLedger(destination.accountId, destination.statementId)
+      await expect(
+        postAccountCashTransfer(source.userId, source.accountId, input)
+      ).rejects.toThrow(/Insufficient/)
+      await expect(
+        postAccountCashTransfer(source.userId, source.accountId, {
+          ...input,
+          amount: '1',
+          currency: 'USD',
+        })
+      ).rejects.toThrow(/opening cash/)
+      await expect(
+        postAccountCashTransfer(source.userId, source.accountId, {
+          ...input,
+          amount: '1',
+          effectiveDate: '2026-10-01',
+        })
+      ).rejects.toThrow(/opening boundary/)
+      await expect(
+        postAccountCashTransfer('another-user', source.accountId, input)
+      ).rejects.toThrow()
+      await expect(
+        postAccountCashTransfer(source.userId, source.accountId, {
+          ...input,
+          toAccountId: 'unowned-account',
+        })
+      ).rejects.toThrow(/not found/)
+      const originalAccount = await prisma.tradingAccount.findUniqueOrThrow({
+        where: { id: destination.accountId },
+      })
+      await prisma.tradingAccount.update({
+        where: { id: destination.accountId },
+        data: { status: 'CLOSED', updatedAt: originalAccount.updatedAt },
+      })
+      await expect(
+        postAccountCashTransfer(source.userId, source.accountId, input)
+      ).rejects.toThrow(/active real/)
+      await prisma.tradingAccount.update({
+        where: { id: destination.accountId },
+        data: {
+          status: 'ACTIVE',
+          isDemo: true,
+          updatedAt: originalAccount.updatedAt,
+        },
+      })
+      await expect(
+        postAccountCashTransfer(source.userId, source.accountId, input)
+      ).rejects.toThrow(/active real/)
+      await prisma.tradingAccount.update({
+        where: { id: destination.accountId },
+        data: { isDemo: false, updatedAt: originalAccount.updatedAt },
+      })
+      expect(
+        await prisma.accountCashOperation.count({
+          where: {
+            accountId: { in: [source.accountId, destination.accountId] },
+          },
+        })
+      ).toBe(0)
+      await postAccountCapitalFlow(source.userId, source.accountId, {
+        kind: 'DEPOSIT',
+        idempotencyKey: `late-${randomUUID()}`,
+        effectiveDate: '2026-10-04',
+        sequence: 1,
+        currency: 'AUD',
+        amount: '100',
+        sourceReference: `late-ref-${randomUUID()}`,
+      })
+      await expect(
+        postAccountCashTransfer(source.userId, source.accountId, {
+          ...input,
+          amount: '150',
+          fee: '0',
+        })
+      ).rejects.toThrow(/Insufficient/)
+      await postAccountCapitalFlow(source.userId, destination.accountId, {
+        kind: 'DEPOSIT',
+        idempotencyKey: `occupied-${randomUUID()}`,
+        effectiveDate: '2026-10-03',
+        sequence: 1,
+        currency: 'AUD',
+        amount: '1',
+        sourceReference: `occupied-ref-${randomUUID()}`,
+      })
+      await expect(
+        postAccountCashTransfer(source.userId, source.accountId, {
+          ...input,
+          amount: '1',
+        })
+      ).rejects.toThrow(/slots remain reserved/)
+      await prisma.tradingAccount.update({
+        where: { id: destination.accountId },
+        data: {
+          updatedAt: new Date(originalAccount.updatedAt.getTime() + 1000),
+        },
+      })
+      await expect(
+        postAccountCashTransfer(source.userId, source.accountId, {
+          ...input,
+          amount: '1',
+          destinationSequence: 2,
+        })
+      ).rejects.toThrow(/source|fingerprint/i)
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { idempotencyKey: input.idempotencyKey },
+        })
+      ).toBe(0)
+    })
+
+    it('serializes competing transfers and opposite-direction retries without overdrawing either ledger', async () => {
+      const { postAccountCashTransfer, readLiveCapitalOperations } =
+        await import('./draft-cash-ledger.js')
+      const a = await fixture('100')
+      const b = await fixture('0')
+      await confirmCashLedger(a.accountId, a.statementId)
+      await confirmCashLedger(b.accountId, b.statementId)
+      const input = {
+        toAccountId: b.accountId,
+        idempotencyKey: `transfer-${randomUUID()}`,
+        effectiveDate: '2026-10-03',
+        sourceSequence: 1,
+        destinationSequence: 1,
+        currency: 'AUD',
+        amount: '60',
+        fee: '1',
+        sourceReference: `statement-${randomUUID()}`,
+      }
+      const results = await Promise.allSettled([
+        postAccountCashTransfer(a.userId, a.accountId, input),
+        postAccountCashTransfer(a.userId, a.accountId, {
+          ...input,
+          idempotencyKey: `competing-${randomUUID()}`,
+          sourceReference: `competing-${randomUUID()}`,
+          sourceSequence: 2,
+          destinationSequence: 2,
+        }),
+      ])
+      expect(
+        results.filter((result) => result.status === 'fulfilled')
+      ).toHaveLength(1)
+      expect(
+        (await readLiveCapitalOperations(a.userId, a.accountId)).replay
+          .balances[0].endingAmount
+      ).toBe('39')
+      expect(
+        (await readLiveCapitalOperations(b.userId, b.accountId)).replay
+          .balances[0].endingAmount
+      ).toBe('60')
+      const roundTrip = {
+        ...input,
+        toAccountId: a.accountId,
+        idempotencyKey: `return-${randomUUID()}`,
+        amount: '10',
+        fee: '0',
+        sourceSequence: 3,
+        destinationSequence: 3,
+        sourceReference: `return-${randomUUID()}`,
+      }
+      const opposite = {
+        ...input,
+        idempotencyKey: `opposite-${randomUUID()}`,
+        amount: '5',
+        fee: '0',
+        sourceSequence: 4,
+        destinationSequence: 4,
+        sourceReference: `opposite-${randomUUID()}`,
+      }
+      const paired = await Promise.all([
+        postAccountCashTransfer(a.userId, b.accountId, roundTrip),
+        postAccountCashTransfer(a.userId, a.accountId, opposite),
+      ])
+      expect(paired.every((result) => result.created)).toBe(true)
+      const retries = await Promise.all([
+        postAccountCashTransfer(a.userId, b.accountId, roundTrip),
+        postAccountCashTransfer(a.userId, b.accountId, roundTrip),
+      ])
+      expect(retries.every((result) => !result.created)).toBe(true)
+      const concurrent = {
+        ...opposite,
+        amount: '1',
+        sourceSequence: 5,
+        destinationSequence: 5,
+        idempotencyKey: `concurrent-${randomUUID()}`,
+        sourceReference: `concurrent-${randomUUID()}`,
+      }
+      const deduplicated = await Promise.all([
+        postAccountCashTransfer(a.userId, a.accountId, concurrent),
+        postAccountCashTransfer(a.userId, a.accountId, concurrent),
+      ])
+      expect(deduplicated.filter((result) => result.created)).toHaveLength(1)
+      expect(deduplicated[0].sourceOperationId).toBe(
+        deduplicated[1].sourceOperationId
+      )
+    })
+
     function currentSydneyDate() {
       return new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Australia/Sydney',
@@ -2141,6 +2891,566 @@ describe.skipIf(!enabled)(
         },
       })
     }
+    it('posts atomic FX with both fee currencies, concurrent exact retries and retained cash-only history', async () => {
+      const {
+        postAccountFxConversion,
+        readLiveCapitalOperations,
+        correctLiveCapitalOperation,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('2000', false, false, false, [
+        { currency: 'USD', amount: '0' },
+      ])
+      const input = {
+        idempotencyKey: `fx-${randomUUID()}`,
+        effectiveDate: currentSydneyDate(),
+        sequence: 1,
+        from: { currency: 'AUD', amount: '1500.000000000001' },
+        to: { currency: 'USD', amount: '975' },
+        fees: [
+          { currency: 'USD', amount: '2' },
+          { currency: 'AUD', amount: '5' },
+        ],
+        sourceReference: `fx-statement-${randomUUID()}`,
+      }
+      await expect(
+        postAccountFxConversion(f.userId, f.accountId, input)
+      ).rejects.toThrow(/confirmed/)
+      await confirmCashLedger(f.accountId, f.statementId)
+      const results = await Promise.all([
+        postAccountFxConversion(f.userId, f.accountId, input),
+        postAccountFxConversion(f.userId, f.accountId, {
+          ...input,
+          fees: input.fees.slice().reverse(),
+        }),
+      ])
+      expect(results.map((result) => result.created).sort()).toEqual([
+        false,
+        true,
+      ])
+      expect(results[0].operationId).toBe(results[1].operationId)
+      expect(results[0].replay.balances).toMatchObject([
+        {
+          currency: 'AUD',
+          endingAmount: '494.999999999999',
+          netExternalContribution: '0',
+        },
+        { currency: 'USD', endingAmount: '973', netExternalContribution: '0' },
+      ])
+      await expect(
+        postAccountFxConversion(f.userId, f.accountId, {
+          ...input,
+          to: { currency: 'USD', amount: '976' },
+        })
+      ).rejects.toThrow(/different/)
+      const operation = await prisma.accountCashOperation.findUniqueOrThrow({
+        where: { id: results[0].operationId },
+        include: { postings: { orderBy: { legIndex: 'asc' } } },
+      })
+      expect(
+        operation.postings.map((posting) => [
+          posting.role,
+          posting.amount.toFixed(),
+        ])
+      ).toEqual([
+        ['FX_PRINCIPAL', '-1500.000000000001'],
+        ['FX_PRINCIPAL', '975'],
+        ['CASH_FEE', '-5'],
+        ['CASH_FEE', '-2'],
+      ])
+      expect(operation.previousFingerprint).toBe(operation.nextFingerprint)
+      expect(
+        await prisma.transaction.count({
+          where: { position: { accountId: f.accountId } },
+        })
+      ).toBe(0)
+      const review = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(review.auditOperations[0].original).toMatchObject({
+        kind: 'FX_CONVERSION',
+        from: input.from,
+        to: input.to,
+      })
+      await expect(
+        correctLiveCapitalOperation(f.userId, f.accountId, operation.id, {
+          idempotencyKey: `fx-reverse-${randomUUID()}`,
+          expectedRevisionId: operation.id,
+          expectedAuditNumber: review.auditNumber,
+          expectedSourceFingerprint: review.sourceFingerprint,
+          reason: 'Unsupported one-sided reversal',
+          replacement: null,
+        })
+      ).rejects.toThrow(/capital|funding|deposit|withdrawal/i)
+      await prisma.tradingAccount.update({
+        where: { id: f.accountId },
+        data: { status: 'CLOSED' },
+      })
+      expect(
+        (await readLiveCapitalOperations(f.userId, f.accountId))
+          .auditOperations[0].original.kind
+      ).toBe('FX_CONVERSION')
+      await expect(
+        postAccountFxConversion(f.userId, f.accountId, input)
+      ).rejects.toThrow(/active|closed|archived/i)
+    })
+
+    it('rolls back FX when either currency is missing or a backdated timeline cannot fund it', async () => {
+      const { postAccountFxConversion, postAccountCapitalFlow } =
+        await import('./draft-cash-ledger.js')
+      const input = {
+        idempotencyKey: `fx-${randomUUID()}`,
+        effectiveDate: '2026-10-12',
+        sequence: 1,
+        from: { currency: 'AUD', amount: '1500' },
+        to: { currency: 'USD', amount: '975' },
+        fees: [],
+        sourceReference: `fx-statement-${randomUUID()}`,
+      }
+      const missing = await fixture('2000')
+      await confirmCashLedger(missing.accountId, missing.statementId)
+      await expect(
+        postAccountFxConversion(missing.userId, missing.accountId, input)
+      ).rejects.toThrow(/Missing explicit opening/)
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: missing.accountId },
+        })
+      ).toBe(0)
+      const f = await fixture('1000', false, false, false, [
+        { currency: 'USD', amount: '0' },
+      ])
+      await confirmCashLedger(f.accountId, f.statementId)
+      await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        liveCapitalFlowInput({
+          effectiveDate: '2026-10-13',
+          amount: '1000',
+        })
+      )
+      await expect(
+        postAccountFxConversion(f.userId, f.accountId, input)
+      ).rejects.toThrow(/Insufficient recorded cash/i)
+      await expect(
+        postAccountFxConversion(f.userId, f.accountId, {
+          ...input,
+          effectiveDate: '2026-10-13',
+        })
+      ).rejects.toThrow(/sequence|slot/i)
+      await expect(
+        postAccountFxConversion(f.userId, f.accountId, {
+          ...input,
+          effectiveDate: '2026-10-01',
+        })
+      ).rejects.toThrow(/opening/i)
+      await expect(
+        postAccountFxConversion(f.userId, f.accountId, {
+          ...input,
+          effectiveDate: '2026-10-14',
+          fees: [{ currency: 'USD', amount: '976' }],
+        })
+      ).rejects.toThrow(/Insufficient recorded cash/i)
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(1)
+    })
+
+    it('serializes competing FX writes so the same source cash cannot be spent twice', async () => {
+      const { postAccountFxConversion, readLiveCapitalOperations } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, false, [
+        { currency: 'USD', amount: '0' },
+      ])
+      await confirmCashLedger(f.accountId, f.statementId)
+      const input = {
+        effectiveDate: currentSydneyDate(),
+        from: { currency: 'AUD', amount: '60' },
+        to: { currency: 'USD', amount: '39' },
+        fees: [],
+      }
+      await expect(
+        postAccountFxConversion('unowned-fixture-user', f.accountId, {
+          ...input,
+          sequence: 1,
+          idempotencyKey: randomUUID(),
+          sourceReference: randomUUID(),
+        })
+      ).rejects.toMatchObject({ status: 401 })
+      const outcomes = await Promise.allSettled(
+        [1, 2].map((sequence) =>
+          postAccountFxConversion(f.userId, f.accountId, {
+            ...input,
+            sequence,
+            idempotencyKey: randomUUID(),
+            sourceReference: randomUUID(),
+          })
+        )
+      )
+      expect(
+        outcomes.filter((result) => result.status === 'fulfilled')
+      ).toHaveLength(1)
+      const failure = outcomes.find((result) => result.status === 'rejected')
+      expect(
+        failure?.status === 'rejected' ? failure.reason : null
+      ).toMatchObject({ status: 422 })
+      const review = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(review.replay.balances).toMatchObject([
+        { currency: 'AUD', endingAmount: '40' },
+        { currency: 'USD', endingAmount: '39' },
+      ])
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(1)
+    })
+
+    it('fails closed on tampered signed FX postings', async () => {
+      const { postAccountFxConversion, readLiveCapitalOperations } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, false, [
+        { currency: 'USD', amount: '0' },
+      ])
+      await confirmCashLedger(f.accountId, f.statementId)
+      const input = {
+        idempotencyKey: `fx-${randomUUID()}`,
+        effectiveDate: currentSydneyDate(),
+        sequence: 1,
+        from: { currency: 'AUD', amount: '50' },
+        to: { currency: 'USD', amount: '30' },
+        fees: [],
+        sourceReference: `fx-statement-${randomUUID()}`,
+      }
+      const result = await postAccountFxConversion(f.userId, f.accountId, input)
+      const posting = await prisma.accountCashPosting.findFirstOrThrow({
+        where: { operationId: result.operationId },
+      })
+      await prisma.accountCashPosting.update({
+        where: { id: posting.id },
+        data: { amount: '999' },
+      })
+      await expect(
+        readLiveCapitalOperations(f.userId, f.accountId)
+      ).rejects.toThrow(/FX|postings|inconsistent/i)
+      await expect(
+        postAccountFxConversion(f.userId, f.accountId, input)
+      ).rejects.toThrow(/FX|postings|inconsistent/i)
+    })
+
+    it('audits exact FX correction/reversal legs, preserves retries and blocks unfunded terminal removal', async () => {
+      const {
+        postAccountFxConversion,
+        correctLiveFxConversion,
+        readLiveFxConversionReview,
+        postAccountCapitalFlow,
+        correctLiveCapitalOperation,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, false, [
+        { currency: 'USD', amount: '0' },
+      ])
+      await confirmCashLedger(f.accountId, f.statementId)
+      const postedInput = {
+        idempotencyKey: randomUUID(),
+        effectiveDate: currentSydneyDate(),
+        sequence: 1,
+        from: { currency: 'AUD', amount: '50' },
+        to: { currency: 'USD', amount: '30' },
+        fees: [
+          { currency: 'AUD', amount: '1' },
+          { currency: 'USD', amount: '2' },
+        ],
+        sourceReference: randomUUID(),
+      }
+      const posted = await postAccountFxConversion(
+        f.userId,
+        f.accountId,
+        postedInput
+      )
+      const head = await readLiveFxConversionReview(
+        f.userId,
+        f.accountId,
+        posted.operationId
+      )
+      const correction = {
+        idempotencyKey: randomUUID(),
+        expectedRevisionId: head.expectedRevisionId,
+        expectedAuditNumber: head.auditNumber,
+        expectedSourceFingerprint: head.sourceFingerprint,
+        reason: 'Correct statement amounts and fees',
+        replacement: {
+          effectiveDate: currentSydneyDate(),
+          sequence: 2,
+          fromAmount: '40',
+          toAmount: '25',
+          fees: [
+            { currency: 'USD', amount: '1' },
+            { currency: 'AUD', amount: '2' },
+          ],
+        },
+      }
+      const corrected = await correctLiveFxConversion(
+        f.userId,
+        f.accountId,
+        posted.operationId,
+        correction
+      )
+      expect(corrected.replay.balances).toMatchObject([
+        { currency: 'AUD', endingAmount: '58', netExternalContribution: '0' },
+        { currency: 'USD', endingAmount: '24', netExternalContribution: '0' },
+      ])
+      const revision =
+        await prisma.accountCashOperationRevision.findUniqueOrThrow({
+          where: { id: corrected.revisionId },
+          include: { postings: { orderBy: { legIndex: 'asc' } } },
+        })
+      expect(
+        revision.postings.map((row) => [
+          row.phase,
+          row.currency,
+          row.amount.toFixed(),
+        ])
+      ).toEqual([
+        ['REVERSAL', 'AUD', '50'],
+        ['REVERSAL', 'USD', '-30'],
+        ['REVERSAL', 'AUD', '1'],
+        ['REVERSAL', 'USD', '2'],
+        ['REPLACEMENT', 'AUD', '-40'],
+        ['REPLACEMENT', 'USD', '25'],
+        ['REPLACEMENT', 'AUD', '-2'],
+        ['REPLACEMENT', 'USD', '-1'],
+      ])
+      expect(revision.previousFingerprint).toBe(revision.nextFingerprint)
+      const withdrawal = await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        liveCapitalFlowInput({
+          kind: 'WITHDRAWAL',
+          currency: 'USD',
+          amount: '24',
+          sequence: 3,
+        })
+      )
+      const latest = await readLiveFxConversionReview(
+        f.userId,
+        f.accountId,
+        posted.operationId
+      )
+      const reverse = {
+        idempotencyKey: randomUUID(),
+        expectedRevisionId: latest.expectedRevisionId,
+        expectedAuditNumber: latest.auditNumber,
+        expectedSourceFingerprint: latest.sourceFingerprint,
+        reason: 'Erroneous conversion',
+        replacement: null,
+      }
+      await expect(
+        correctLiveFxConversion(
+          f.userId,
+          f.accountId,
+          posted.operationId,
+          reverse
+        )
+      ).rejects.toMatchObject({ status: 422 })
+      await expect(
+        correctLiveFxConversion(f.userId, f.accountId, posted.operationId, {
+          ...reverse,
+          idempotencyKey: randomUUID(),
+          replacement: { ...correction.replacement, toAmount: '23' },
+        })
+      ).rejects.toMatchObject({ status: 422 })
+      await correctLiveCapitalOperation(
+        f.userId,
+        f.accountId,
+        withdrawal.operationId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: withdrawal.operationId,
+          expectedAuditNumber: latest.auditNumber,
+          expectedSourceFingerprint: latest.sourceFingerprint,
+          reason: 'Erroneous withdrawal',
+          replacement: null,
+        }
+      )
+      const refreshed = await readLiveFxConversionReview(
+        f.userId,
+        f.accountId,
+        posted.operationId
+      )
+      const reversed = await correctLiveFxConversion(
+        f.userId,
+        f.accountId,
+        posted.operationId,
+        { ...reverse, expectedAuditNumber: refreshed.auditNumber }
+      )
+      expect(reversed.replay.balances).toMatchObject([
+        { currency: 'AUD', endingAmount: '100' },
+        { currency: 'USD', endingAmount: '0' },
+      ])
+      expect(
+        (
+          await readLiveFxConversionReview(
+            f.userId,
+            f.accountId,
+            posted.operationId
+          )
+        ).current
+      ).toBeNull()
+      expect(
+        await correctLiveFxConversion(
+          f.userId,
+          f.accountId,
+          posted.operationId,
+          correction
+        )
+      ).toMatchObject({ created: false, revisionId: corrected.revisionId })
+      expect(
+        await postAccountFxConversion(f.userId, f.accountId, postedInput)
+      ).toMatchObject({ created: false, operationId: posted.operationId })
+      await expect(
+        correctLiveFxConversion(f.userId, f.accountId, posted.operationId, {
+          ...correction,
+          idempotencyKey: randomUUID(),
+        })
+      ).rejects.toThrow(/reversed/)
+      expect(
+        await prisma.accountCashOperationRevision.count({
+          where: { operationId: posted.operationId },
+        })
+      ).toBe(2)
+      await prisma.tradingAccount.update({
+        where: { id: f.accountId },
+        data: { status: 'CLOSED' },
+      })
+      const archived = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(
+        archived.auditOperations.find(
+          (row) => row.operationId === posted.operationId
+        )
+      ).toMatchObject({ current: null, revisions: [{}, {}] })
+      await expect(
+        readLiveFxConversionReview(f.userId, f.accountId, posted.operationId)
+      ).rejects.toThrow(/active|closed|archived/i)
+    })
+
+    it('protects FX current heads, reserved slots and complete revision audit replay under competing corrections', async () => {
+      const {
+        postAccountFxConversion,
+        correctLiveFxConversion,
+        readLiveFxConversionReview,
+        postAccountCapitalFlow,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, false, [
+        { currency: 'USD', amount: '0' },
+      ])
+      await confirmCashLedger(f.accountId, f.statementId)
+      const posted = await postAccountFxConversion(f.userId, f.accountId, {
+        idempotencyKey: randomUUID(),
+        effectiveDate: currentSydneyDate(),
+        sequence: 1,
+        from: { currency: 'AUD', amount: '50' },
+        to: { currency: 'USD', amount: '30' },
+        fees: [],
+        sourceReference: randomUUID(),
+      })
+      const head = await readLiveFxConversionReview(
+        f.userId,
+        f.accountId,
+        posted.operationId
+      )
+      const request = {
+        idempotencyKey: randomUUID(),
+        expectedRevisionId: head.expectedRevisionId,
+        expectedAuditNumber: head.auditNumber,
+        expectedSourceFingerprint: head.sourceFingerprint,
+        reason: 'Statement correction',
+        replacement: {
+          effectiveDate: currentSydneyDate(),
+          sequence: 2,
+          fromAmount: '50',
+          toAmount: '30',
+          fees: [],
+        },
+      }
+      await expect(
+        correctLiveFxConversion(f.userId, f.accountId, posted.operationId, {
+          ...request,
+          replacement: { ...request.replacement, sequence: 1 },
+        })
+      ).rejects.toMatchObject({ status: 400 })
+      await expect(
+        correctLiveFxConversion(f.userId, f.accountId, posted.operationId, {
+          ...request,
+          replacement: { ...request.replacement, fromAmount: '101' },
+        })
+      ).rejects.toMatchObject({ status: 422 })
+      await expect(
+        correctLiveFxConversion(f.userId, f.accountId, posted.operationId, {
+          ...request,
+          replacement: { ...request.replacement, effectiveDate: '2026-10-01' },
+        })
+      ).rejects.toThrow(/opening/)
+      const outcomes = await Promise.allSettled([
+        correctLiveFxConversion(
+          f.userId,
+          f.accountId,
+          posted.operationId,
+          request
+        ),
+        correctLiveFxConversion(f.userId, f.accountId, posted.operationId, {
+          ...request,
+          idempotencyKey: randomUUID(),
+          replacement: { ...request.replacement, sequence: 3, toAmount: '31' },
+        }),
+      ])
+      const successful = outcomes.find(
+        (result) => result.status === 'fulfilled'
+      )
+      expect(
+        outcomes.filter((result) => result.status === 'fulfilled')
+      ).toHaveLength(1)
+      expect(
+        outcomes.filter((result) => result.status === 'rejected')
+      ).toHaveLength(1)
+      if (!successful || successful.status !== 'fulfilled')
+        throw new Error('Missing isolated FX correction')
+      await expect(
+        postAccountCapitalFlow(
+          f.userId,
+          f.accountId,
+          liveCapitalFlowInput({ sequence: 1 })
+        )
+      ).rejects.toThrow(/slot|sequence/i)
+      const refreshed = await readLiveFxConversionReview(
+        f.userId,
+        f.accountId,
+        posted.operationId
+      )
+      await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        liveCapitalFlowInput({ sequence: 4 })
+      )
+      await expect(
+        correctLiveFxConversion(f.userId, f.accountId, posted.operationId, {
+          ...request,
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: refreshed.expectedRevisionId,
+          expectedAuditNumber: refreshed.auditNumber,
+          replacement: null,
+        })
+      ).rejects.toThrow(/history changed/i)
+      const leg = await prisma.accountCashRevisionPosting.findFirstOrThrow({
+        where: { revisionId: successful.value.revisionId },
+      })
+      await prisma.accountCashRevisionPosting.update({
+        where: { id: leg.id },
+        data: { amount: '999' },
+      })
+      await expect(
+        readLiveFxConversionReview(f.userId, f.accountId, posted.operationId)
+      ).rejects.toThrow(/revision|postings|inconsistent/i)
+    })
     function liveTradeInput(
       overrides: Record<string, unknown> = {}
     ): Record<string, unknown> {
@@ -2153,6 +3463,20 @@ describe.skipIf(!enabled)(
         quantity: '1',
         price: '20',
         fees: '1',
+        ...overrides,
+      }
+    }
+    function liveCapitalFlowInput(
+      overrides: Record<string, unknown> = {}
+    ): Record<string, unknown> {
+      return {
+        kind: 'DEPOSIT',
+        idempotencyKey: `live-capital-${randomUUID()}`,
+        effectiveDate: currentSydneyDate(),
+        sequence: 1,
+        currency: 'AUD',
+        amount: '100',
+        sourceReference: `bank-ref-${randomUUID()}`,
         ...overrides,
       }
     }
@@ -2332,7 +3656,7 @@ describe.skipIf(!enabled)(
     }
 
     it('audits imported execution corrections atomically and replays immutable retries', async () => {
-      const { correctLiveImportedExecution } =
+      const { correctLiveImportedExecution, readLiveCapitalOperations } =
         await import('./draft-cash-ledger.js')
       const f = await liveImportedExecutionFixture()
       const originalEvent = await prisma.importedEvent.findUniqueOrThrow({
@@ -2355,6 +3679,14 @@ describe.skipIf(!enabled)(
         correctionInput
       )
       expect(first.replay.balances[0].endingAmount).toBe('48')
+      const liveReview = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(liveReview.replay.balances[0]?.endingAmount).toBe('48')
+      expect(liveReview.activity[0]).toMatchObject({
+        kind: 'BUY',
+        sourceOrigin: 'IMPORT',
+        sourceReference: f.externalId,
+      })
+      expect(liveReview.auditOperations[0]?.revisions).toHaveLength(1)
       const firstTransaction = await prisma.transaction.findUniqueOrThrow({
         where: { id: f.transactionId },
       })
@@ -2973,15 +4305,37 @@ describe.skipIf(!enabled)(
       })
       expect(preview.parcels).toHaveLength(0)
       expect(preview.counts.postBoundaryTrades).toBe(0)
-      const { closeTradingAccount } =
+      const { closeTradingAccount, reopenTradingAccount } =
         await import('./trading-account-mutations.js')
+      const accountBeforeClose = await prisma.tradingAccount.findUniqueOrThrow({
+        where: { id: f.accountId },
+      })
       await closeTradingAccount(f.userId, f.accountId)
+      const archivedAccount = await prisma.tradingAccount.findUniqueOrThrow({
+        where: { id: f.accountId },
+      })
+      expect(archivedAccount.status).toBe('CLOSED')
+      expect(archivedAccount.updatedAt).toEqual(accountBeforeClose.updatedAt)
       expect(
         (await readLiveManualTradeVoids(f.userId, f.accountId)).total
       ).toBe(2)
       await expect(
         voidLiveManualTrade(f.userId, f.accountId, f.buy.transactionId, input)
       ).rejects.toMatchObject({ status: 409 })
+      await reopenTradingAccount(f.userId, f.accountId)
+      const reopenedTrade = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: f.assetId,
+          price: '10',
+          fees: '0',
+        })
+      )
+      expect(reopenedTrade).toMatchObject({
+        created: true,
+        transactionId: expect.any(String),
+      })
     })
 
     it('rejects a sale void that would unfund a later purchase without changing any stored state', async () => {
@@ -3563,6 +4917,1942 @@ describe.skipIf(!enabled)(
         })
       ).toBe(0)
     })
+    it('posts cash-only deposits that fund later trades and validates the retained audit on retry', async () => {
+      const { postAccountCapitalFlow, postAccountTrade } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('0')
+      const asset = await prisma.asset.create({
+        data: {
+          symbol: `LIVE-FUNDING-${randomUUID()}`,
+          name: 'Live funding fixture',
+          exchangeId: exchangeId!,
+        },
+      })
+      const input = liveCapitalFlowInput({ amount: '100.000000000001' })
+      await expect(
+        postAccountCapitalFlow(f.userId, f.accountId, input)
+      ).rejects.toMatchObject({
+        status: 409,
+        message: /no active confirmed cash ledger/,
+      })
+      await confirmCashLedger(f.accountId, f.statementId)
+      const result = await postAccountCapitalFlow(f.userId, f.accountId, input)
+      expect(result).toMatchObject({
+        created: true,
+        replay: { funded: true },
+      })
+      expect(result.replay.balances[0].endingAmount).toBe('100.000000000001')
+      const retry = await postAccountCapitalFlow(f.userId, f.accountId, input)
+      expect(retry).toMatchObject({
+        created: false,
+        operationId: result.operationId,
+      })
+      await expect(
+        postAccountCapitalFlow(f.userId, f.accountId, {
+          ...input,
+          amount: '101',
+        })
+      ).rejects.toMatchObject({ status: 409 })
+
+      const operation = await prisma.accountCashOperation.findUniqueOrThrow({
+        where: { id: result.operationId },
+        include: { postings: true },
+      })
+      expect(operation).toMatchObject({
+        transactionId: null,
+        importedEventId: null,
+        kind: 'DEPOSIT',
+        transactionSnapshot: {},
+      })
+      expect(operation.postings.map((row) => row.amount.toFixed())).toEqual([
+        '100.000000000001',
+      ])
+      expect(
+        await prisma.transaction.count({
+          where: { position: { accountId: f.accountId } },
+        })
+      ).toBe(0)
+
+      const trade = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: asset.id,
+          sequence: 2,
+          price: '99',
+          fees: '1',
+        })
+      )
+      expect(trade.replay.funded).toBe(true)
+      expect(trade.replay.balances[0].endingAmount).toBe('0.000000000001')
+    })
+
+    function reinvestmentInput(assetId: string) {
+      return {
+        idempotencyKey: randomUUID(),
+        income: {
+          assetId,
+          entitlementDate: '2026-10-01',
+          paymentDate: '2026-10-15',
+          sequence: 1,
+          currency: 'AUD',
+          grossAmount: '100',
+          withholdingAmount: '15',
+          frankedAmount: '60',
+          unfrankedAmount: '40',
+          frankingCreditAud: '25',
+          sourceReference: `drp-statement-${randomUUID()}`,
+        },
+        acquisition: {
+          effectiveDate: '2026-10-15',
+          sequence: 2,
+          quantity: '4',
+          price: '20',
+          fees: '1',
+        },
+        residualAmount: '4',
+        residualDisposition: 'ACCOUNT_CASH',
+        statementConfirmed: true,
+      }
+    }
+
+    it('posts one linked reinvestment parcel with exact retained income and concurrent retries, then permits sales', async () => {
+      const {
+        postAccountReinvestment,
+        readLiveCapitalOperations,
+        postAccountTrade,
+        correctLiveIncomeReceipt,
+        correctLiveManualAcquisition,
+        voidLiveManualTrade,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('0', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture asset')
+      const input = reinvestmentInput(f.incomeAssetId)
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, input)
+      ).rejects.toThrow(/confirmed|ledger/)
+      await confirmCashLedger(f.accountId, f.statementId)
+      const posted = await Promise.all([
+        postAccountReinvestment(f.userId, f.accountId, input),
+        postAccountReinvestment(f.userId, f.accountId, input),
+      ])
+      expect(posted.map((row) => row.created).sort()).toEqual([false, true])
+      expect(posted[0].positionId).toBe(posted[1].positionId)
+      expect(posted[0].replay.balances[0]).toMatchObject({
+        endingAmount: '4',
+        netExternalContribution: '0',
+      })
+      const review = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(review.auditOperations).toHaveLength(2)
+      expect(
+        review.auditOperations.every((row) => row.reinvestment !== null)
+      ).toBe(true)
+      expect(
+        review.auditOperations.find((row) => row.incomeReceipt)?.incomeReceipt
+      ).toMatchObject({
+        grossAmount: '100',
+        withholdingAmount: '15',
+        netAmount: '85',
+        frankingCreditAud: '25',
+      })
+      const parcel = await prisma.position.findUniqueOrThrow({
+        where: { id: posted[0].positionId },
+        include: { transactions: true },
+      })
+      expect(parcel.transactions).toHaveLength(1)
+      expect(parcel.quantity).toBe(4)
+      expect(parcel.totalBuyValue.toFixed()).toBe('80')
+      expect(parcel.buyFees.toFixed()).toBe('1')
+      const head = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      const correction = {
+        idempotencyKey: randomUUID(),
+        expectedRevisionId: posted[0].acquisitionOperationId,
+        expectedSourceFingerprint: head.acceptedSourceFingerprint,
+        effectiveDate: '2026-10-15',
+        sequence: 2,
+        quantity: '4',
+        price: '19',
+        fees: '1',
+        reason: 'Unsupported independent change',
+      }
+      await expect(
+        correctLiveManualAcquisition(
+          f.userId,
+          f.accountId,
+          parcel.transactions[0].id,
+          correction
+        )
+      ).rejects.toThrow(/paired audited/)
+      await expect(
+        voidLiveManualTrade(f.userId, f.accountId, parcel.transactions[0].id, {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: posted[0].acquisitionOperationId,
+          expectedSourceFingerprint: head.acceptedSourceFingerprint,
+          reason: 'Unsupported independent void',
+        })
+      ).rejects.toThrow(/paired audited/)
+      await expect(
+        correctLiveIncomeReceipt(
+          f.userId,
+          f.accountId,
+          posted[0].incomeOperationId,
+          {}
+        )
+      ).rejects.toThrow(/paired audited/)
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, {
+          ...input,
+          residualAmount: '5',
+          acquisition: { ...input.acquisition, fees: '0' },
+        })
+      ).rejects.toThrow(/Idempotency/)
+      await expect(
+        postAccountTrade(f.userId, f.accountId, {
+          kind: 'SELL',
+          positionId: parcel.id,
+          idempotencyKey: randomUUID(),
+          effectiveDate: '2026-10-15',
+          sequence: 3,
+          quantity: '1',
+          price: '21',
+          fees: '0',
+        })
+      ).resolves.toMatchObject({ replay: { funded: true } })
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, input)
+      ).resolves.toMatchObject({ created: false, positionId: parcel.id })
+    })
+
+    it('rolls back occupied-slot posting, rejects invalid entitlement/currency/ownership and reserves cash for later allotment', async () => {
+      const { postAccountReinvestment, postAccountCapitalFlow } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('0', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture asset')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const input = reinvestmentInput(f.incomeAssetId)
+      await postAccountCapitalFlow(f.userId, f.accountId, {
+        idempotencyKey: randomUUID(),
+        kind: 'DEPOSIT',
+        effectiveDate: '2026-10-15',
+        sequence: 3,
+        currency: 'AUD',
+        amount: '5',
+        sourceReference: 'existing-funding',
+      })
+      const positionsBefore = await prisma.position.count({
+        where: { accountId: f.accountId },
+      })
+      const changed = {
+        ...input,
+        acquisition: { ...input.acquisition, effectiveDate: '2026-10-16' },
+      }
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, {
+          ...input,
+          acquisition: { ...input.acquisition, sequence: 3 },
+        })
+      ).rejects.toThrow(/reserved/)
+      expect(
+        await prisma.position.count({ where: { accountId: f.accountId } })
+      ).toBe(positionsBefore)
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId, kind: 'INCOME' },
+        })
+      ).toBe(0)
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, {
+          ...changed,
+          income: { ...input.income, entitlementDate: '2026-09-01' },
+        })
+      ).rejects.toThrow(/historical holdings/)
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, {
+          ...input,
+          income: {
+            ...input.income,
+            currency: 'USD',
+            frankedAmount: '0',
+            unfrankedAmount: '100',
+            frankingCreditAud: '0',
+          },
+        })
+      ).rejects.toThrow(/same payment/)
+      await expect(
+        postAccountReinvestment('not-the-owner', f.accountId, input)
+      ).rejects.toMatchObject({ status: 401 })
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, changed)
+      ).resolves.toMatchObject({
+        replay: { balances: [{ endingAmount: '9' }] },
+      })
+      await expect(
+        postAccountCapitalFlow(f.userId, f.accountId, {
+          idempotencyKey: randomUUID(),
+          kind: 'WITHDRAWAL',
+          effectiveDate: '2026-10-15',
+          sequence: 4,
+          currency: 'AUD',
+          amount: '10',
+          sourceReference: 'would-spend-allotment-cash',
+        })
+      ).rejects.toThrow(/Insufficient/)
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId, kind: 'WITHDRAWAL' },
+        })
+      ).toBe(0)
+    })
+
+    it('fails closed on a tampered reinvestment link or removed envelope and retains archived history', async () => {
+      const { postAccountReinvestment, readLiveCapitalOperations } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('0', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture asset')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const posted = await postAccountReinvestment(
+        f.userId,
+        f.accountId,
+        reinvestmentInput(f.incomeAssetId)
+      )
+      const operation = await prisma.accountCashOperation.findUniqueOrThrow({
+        where: { id: posted.acquisitionOperationId },
+      })
+      if (
+        !operation.command ||
+        typeof operation.command !== 'object' ||
+        Array.isArray(operation.command)
+      )
+        throw new Error('Missing command')
+      const stored = operation.command
+      await prisma.accountCashOperation.update({
+        where: { id: operation.id },
+        data: {
+          command: { request: stored.request, cashCommand: stored.cashCommand },
+        },
+      })
+      await expect(
+        readLiveCapitalOperations(f.userId, f.accountId)
+      ).rejects.toThrow(/inconsistent/)
+      await prisma.accountCashOperation.update({
+        where: { id: operation.id },
+        data: { command: stored },
+      })
+      await prisma.tradingAccount.update({
+        where: { id: f.accountId },
+        data: { status: 'CLOSED' },
+      })
+      await expect(
+        readLiveCapitalOperations(f.userId, f.accountId)
+      ).resolves.toMatchObject({ replay: { funded: true } })
+      await expect(
+        postAccountReinvestment(
+          f.userId,
+          f.accountId,
+          reinvestmentInput(f.incomeAssetId)
+        )
+      ).rejects.toThrow(/active real/)
+    })
+
+    it('uses historical entitlement holdings after their disposal, not a later current parcel, and prevents duplicate statements', async () => {
+      const { postAccountReinvestment, postAccountTrade } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('0', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture asset')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const holding = await prisma.position.findFirstOrThrow({
+        where: { accountId: f.accountId, assetId: f.incomeAssetId },
+      })
+      await postAccountTrade(f.userId, f.accountId, {
+        kind: 'SELL',
+        positionId: holding.id,
+        idempotencyKey: randomUUID(),
+        effectiveDate: '2026-10-02',
+        sequence: 1,
+        quantity: '1',
+        price: '10',
+        fees: '0',
+      })
+      const input = reinvestmentInput(f.incomeAssetId)
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, input)
+      ).resolves.toMatchObject({
+        replay: {
+          balances: [{ endingAmount: '14', netExternalContribution: '0' }],
+        },
+      })
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, {
+          ...reinvestmentInput(f.incomeAssetId),
+          income: {
+            ...input.income,
+            entitlementDate: '2026-10-03',
+            sourceReference: 'ineligible-entitlement',
+          },
+        })
+      ).rejects.toThrow(/historical holdings/)
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, {
+          ...input,
+          idempotencyKey: randomUUID(),
+          income: { ...input.income, sequence: 3 },
+          acquisition: { ...input.acquisition, sequence: 4 },
+        })
+      ).rejects.toThrow(/Duplicate command key or execution source/)
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId, kind: 'INCOME' },
+        })
+      ).toBe(1)
+      expect(
+        await prisma.position.count({ where: { accountId: f.accountId } })
+      ).toBe(2)
+    })
+
+    it('audits paired reinvestment corrections and terminal reversal with exact retained retries', async () => {
+      const {
+        postAccountReinvestment,
+        readLiveReinvestmentReview,
+        correctLiveReinvestment,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('0', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture asset')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const original = reinvestmentInput(f.incomeAssetId)
+      const posted = await postAccountReinvestment(
+        f.userId,
+        f.accountId,
+        original
+      )
+      const head = await readLiveReinvestmentReview(
+        f.userId,
+        f.accountId,
+        posted.acquisitionOperationId
+      )
+      const request = {
+        idempotencyKey: randomUUID(),
+        expectedIncomeRevisionId: head.expectedIncomeRevisionId,
+        expectedAcquisitionRevisionId: head.expectedAcquisitionRevisionId,
+        expectedAuditNumber: head.expectedAuditNumber,
+        expectedSourceFingerprint: head.expectedSourceFingerprint,
+        reason: 'Correct issuer allotment statement',
+        replacement: {
+          ...head.current!,
+          acquisition: {
+            ...original.acquisition,
+            quantity: '3',
+            price: '25',
+            fees: '2',
+          },
+          residualAmount: '8',
+        },
+      }
+      const results = await Promise.all([
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          request
+        ),
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          request
+        ),
+      ])
+      expect(results.map((row) => row.created).sort()).toEqual([false, true])
+      expect(results[0].replay.balances[0].endingAmount).toBe('8')
+      expect(
+        await prisma.position.findUniqueOrThrow({
+          where: { id: posted.positionId },
+        })
+      ).toMatchObject({ quantity: 3 })
+      const changed = await readLiveReinvestmentReview(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId
+      )
+      expect(changed.current?.acquisition.quantity).toBe('3')
+      const reversal = {
+        idempotencyKey: randomUUID(),
+        expectedIncomeRevisionId: changed.expectedIncomeRevisionId,
+        expectedAcquisitionRevisionId: changed.expectedAcquisitionRevisionId,
+        expectedAuditNumber: changed.expectedAuditNumber,
+        expectedSourceFingerprint: changed.expectedSourceFingerprint,
+        reason: 'Issuer cancelled distribution and allotment',
+        replacement: null,
+      }
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          reversal
+        )
+      ).resolves.toMatchObject({
+        replay: { balances: [{ endingAmount: '0' }] },
+      })
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          request
+        )
+      ).resolves.toMatchObject({ created: false })
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          reversal
+        )
+      ).resolves.toMatchObject({ created: false })
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          { ...reversal, idempotencyKey: randomUUID() }
+        )
+      ).rejects.toThrow(/terminal/)
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, original)
+      ).resolves.toMatchObject({ created: false })
+      const review = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(review.auditOperations.every((row) => row.current === null)).toBe(
+        true
+      )
+      expect(
+        review.auditOperations.every((row) => row.revisions.length === 2)
+      ).toBe(true)
+      expect(
+        (
+          await prisma.position.findUniqueOrThrow({
+            where: { id: posted.positionId },
+          })
+        ).voidedAt
+      ).not.toBeNull()
+    })
+
+    it('rejects no-op, changed identity, stale heads and unfunded paired revisions without partial writes', async () => {
+      const {
+        postAccountReinvestment,
+        readLiveReinvestmentReview,
+        correctLiveReinvestment,
+        postAccountCapitalFlow,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('0', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture asset')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const posted = await postAccountReinvestment(
+        f.userId,
+        f.accountId,
+        reinvestmentInput(f.incomeAssetId)
+      )
+      const head = await readLiveReinvestmentReview(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId
+      )
+      if (!head.current) throw new Error('Missing review')
+      const input = {
+        idempotencyKey: randomUUID(),
+        expectedIncomeRevisionId: head.expectedIncomeRevisionId,
+        expectedAcquisitionRevisionId: head.expectedAcquisitionRevisionId,
+        expectedAuditNumber: head.expectedAuditNumber,
+        expectedSourceFingerprint: head.expectedSourceFingerprint,
+        reason: 'Correct statement',
+        replacement: head.current,
+      }
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          input
+        )
+      ).rejects.toThrow(/must change/)
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          {
+            ...input,
+            replacement: {
+              ...head.current,
+              income: {
+                ...head.current.income,
+                sourceReference: 'other-statement',
+              },
+            },
+          }
+        )
+      ).rejects.toThrow(/fixed/)
+      const taxOnly = {
+        ...input,
+        replacement: {
+          ...head.current,
+          income: {
+            ...head.current.income,
+            grossAmount: '110',
+            withholdingAmount: '25',
+            unfrankedAmount: '50',
+          },
+        },
+      }
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          taxOnly
+        )
+      ).resolves.toMatchObject({
+        replay: { balances: [{ endingAmount: '4' }] },
+      })
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          { ...taxOnly, idempotencyKey: randomUUID() }
+        )
+      ).rejects.toThrow(/changed/)
+      await postAccountCapitalFlow(f.userId, f.accountId, {
+        idempotencyKey: randomUUID(),
+        kind: 'WITHDRAWAL',
+        effectiveDate: '2026-10-16',
+        sequence: 1,
+        currency: 'AUD',
+        amount: '4',
+        sourceReference: 'spend-residual',
+      })
+      const latest = await readLiveReinvestmentReview(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId
+      )
+      if (!latest.current) throw new Error('Missing current review')
+      const failed = {
+        ...input,
+        idempotencyKey: randomUUID(),
+        expectedIncomeRevisionId: latest.expectedIncomeRevisionId,
+        expectedAcquisitionRevisionId: latest.expectedAcquisitionRevisionId,
+        expectedAuditNumber: latest.expectedAuditNumber,
+        expectedSourceFingerprint: latest.expectedSourceFingerprint,
+        replacement: {
+          ...latest.current,
+          acquisition: { ...latest.current.acquisition, fees: '2' },
+          residualAmount: '3',
+        },
+      }
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          failed
+        )
+      ).rejects.toThrow(/Insufficient/)
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          { ...failed, replacement: null }
+        )
+      ).rejects.toThrow(/Insufficient/)
+      expect(
+        await prisma.accountCashOperationRevision.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(2)
+      expect(
+        (
+          await prisma.position.findUniqueOrThrow({
+            where: { id: posted.positionId },
+          })
+        ).buyFees.toFixed()
+      ).toBe('1')
+    })
+
+    it('blocks paired changes after sales, allows reversal after sale void, and rejects one-sided audit tampering', async () => {
+      const {
+        postAccountReinvestment,
+        postAccountTrade,
+        readLiveReinvestmentReview,
+        correctLiveReinvestment,
+        voidLiveManualTrade,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('0', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture asset')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const posted = await postAccountReinvestment(
+        f.userId,
+        f.accountId,
+        reinvestmentInput(f.incomeAssetId)
+      )
+      const sale = await postAccountTrade(f.userId, f.accountId, {
+        kind: 'SELL',
+        positionId: posted.positionId,
+        idempotencyKey: randomUUID(),
+        effectiveDate: '2026-10-16',
+        sequence: 1,
+        quantity: '1',
+        price: '20',
+        fees: '0',
+      })
+      const head = await readLiveReinvestmentReview(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId
+      )
+      expect(head.hasEffectiveSales).toBe(true)
+      const input = {
+        idempotencyKey: randomUUID(),
+        expectedIncomeRevisionId: head.expectedIncomeRevisionId,
+        expectedAcquisitionRevisionId: head.expectedAcquisitionRevisionId,
+        expectedAuditNumber: head.expectedAuditNumber,
+        expectedSourceFingerprint: head.expectedSourceFingerprint,
+        reason: 'Cancelled statement',
+        replacement: null,
+      }
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          input
+        )
+      ).rejects.toThrow(/effective sales/)
+      if (!sale.transactionId) throw new Error('Missing sale')
+      await voidLiveManualTrade(f.userId, f.accountId, sale.transactionId, {
+        idempotencyKey: randomUUID(),
+        expectedRevisionId: sale.operationId,
+        expectedSourceFingerprint: head.expectedSourceFingerprint,
+        reason: 'Void sale before cancelling allotment',
+      })
+      const refreshed = await readLiveReinvestmentReview(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId
+      )
+      const result = await correctLiveReinvestment(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId,
+        {
+          ...input,
+          expectedAuditNumber: refreshed.expectedAuditNumber,
+          expectedSourceFingerprint: refreshed.expectedSourceFingerprint,
+        }
+      )
+      expect(result.replay.balances[0].endingAmount).toBe('0')
+      await prisma.accountCashRevisionPosting.updateMany({
+        where: { revisionId: result.incomeRevisionId },
+        data: { amount: '0' },
+      })
+      await expect(
+        readLiveCapitalOperations(f.userId, f.accountId)
+      ).rejects.toThrow(/inconsistent/)
+    })
+
+    it('serializes competing paired heads, retains both historical slots and permits archived review only', async () => {
+      const {
+        postAccountReinvestment,
+        readLiveReinvestmentReview,
+        correctLiveReinvestment,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('0', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture asset')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const posted = await postAccountReinvestment(
+        f.userId,
+        f.accountId,
+        reinvestmentInput(f.incomeAssetId)
+      )
+      const head = await readLiveReinvestmentReview(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId
+      )
+      if (!head.current) throw new Error('Missing review')
+      const base = {
+        idempotencyKey: randomUUID(),
+        expectedIncomeRevisionId: head.expectedIncomeRevisionId,
+        expectedAcquisitionRevisionId: head.expectedAcquisitionRevisionId,
+        expectedAuditNumber: head.expectedAuditNumber,
+        expectedSourceFingerprint: head.expectedSourceFingerprint,
+        reason: 'Correct dates',
+        replacement: {
+          ...head.current,
+          income: { ...head.current.income, paymentDate: '2026-10-16' },
+          acquisition: {
+            ...head.current.acquisition,
+            effectiveDate: '2026-10-16',
+          },
+        },
+      }
+      const racing = await Promise.allSettled([
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          base
+        ),
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          { ...base, idempotencyKey: randomUUID() }
+        ),
+      ])
+      expect(
+        racing.filter((result) => result.status === 'fulfilled')
+      ).toHaveLength(1)
+      expect(
+        racing.filter((result) => result.status === 'rejected')
+      ).toHaveLength(1)
+      const changed = await readLiveReinvestmentReview(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId
+      )
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          {
+            ...base,
+            idempotencyKey: randomUUID(),
+            expectedIncomeRevisionId: changed.expectedIncomeRevisionId,
+            expectedAcquisitionRevisionId:
+              changed.expectedAcquisitionRevisionId,
+            expectedAuditNumber: changed.expectedAuditNumber,
+            expectedSourceFingerprint: changed.expectedSourceFingerprint,
+            replacement: head.current,
+          }
+        )
+      ).rejects.toThrow(/reserved/)
+      await prisma.tradingAccount.update({
+        where: { id: f.accountId },
+        data: { status: 'CLOSED' },
+      })
+      await expect(
+        readLiveCapitalOperations(f.userId, f.accountId)
+      ).resolves.toMatchObject({ accountStatus: 'CLOSED' })
+      await expect(
+        readLiveReinvestmentReview(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId
+        )
+      ).rejects.toThrow(/active real/)
+    })
+
+    it('does not post income before explicit account confirmation', async () => {
+      const { postAccountIncomeReceipt } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture income asset')
+      await expect(
+        postAccountIncomeReceipt(f.userId, f.accountId, {
+          idempotencyKey: `income-unconfirmed-${randomUUID()}`,
+          assetId: f.incomeAssetId,
+          entitlementDate: '2026-10-01',
+          paymentDate: '2026-10-15',
+          sequence: 1,
+          currency: 'AUD',
+          grossAmount: '100',
+          withholdingAmount: '15',
+          frankedAmount: '60',
+          unfrankedAmount: '40',
+          frankingCreditAud: '25',
+          sourceReference: 'broker-income-statement',
+        })
+      ).rejects.toThrow(/confirmed|ledger/i)
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(0)
+    })
+
+    it('posts statement-supported income as net cash and retains its tax attributes', async () => {
+      const {
+        postAccountIncomeReceipt,
+        correctLiveIncomeReceipt,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture income asset')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const input = {
+        idempotencyKey: `income-${randomUUID()}`,
+        assetId: f.incomeAssetId,
+        entitlementDate: '2026-10-01',
+        paymentDate: '2026-10-15',
+        sequence: 1,
+        currency: 'AUD',
+        grossAmount: '100',
+        withholdingAmount: '15',
+        frankedAmount: '60',
+        unfrankedAmount: '40',
+        frankingCreditAud: '25.714285714286',
+        sourceReference: 'broker-income-statement',
+      }
+
+      const posted = await postAccountIncomeReceipt(
+        f.userId,
+        f.accountId,
+        input
+      )
+      expect(posted).toMatchObject({
+        created: true,
+        replay: {
+          funded: true,
+          balances: [
+            {
+              currency: 'AUD',
+              endingAmount: '185',
+              netExternalContribution: '0',
+            },
+          ],
+        },
+      })
+      const retry = await postAccountIncomeReceipt(f.userId, f.accountId, input)
+      expect(retry).toMatchObject({
+        created: false,
+        operationId: posted.operationId,
+      })
+      const operation = await prisma.accountCashOperation.findUniqueOrThrow({
+        where: { id: posted.operationId },
+        include: { postings: true, incomeReceipt: true },
+      })
+      expect(operation).toMatchObject({
+        kind: 'INCOME',
+        transactionId: null,
+        importedEventId: null,
+        incomeReceipt: {
+          accountId: f.accountId,
+          assetId: f.incomeAssetId,
+          currency: 'AUD',
+        },
+      })
+      expect(operation.incomeReceipt?.grossAmount.toFixed()).toBe('100')
+      expect(operation.incomeReceipt?.withholdingAmount.toFixed()).toBe('15')
+      expect(operation.incomeReceipt?.frankedAmount.toFixed()).toBe('60')
+      expect(operation.incomeReceipt?.unfrankedAmount.toFixed()).toBe('40')
+      expect(operation.postings.map((row) => row.amount.toFixed())).toEqual([
+        '85',
+      ])
+      const review = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(review.activity[0]).toMatchObject({
+        kind: 'INCOME',
+        changes: [{ currency: 'AUD', amount: '85', balanceAfter: '185' }],
+      })
+      expect(review.auditOperations[0]?.incomeReceipt).toMatchObject({
+        assetId: f.incomeAssetId,
+        assetSymbol: expect.stringMatching(/^INCOME-/),
+        grossAmount: '100',
+        withholdingAmount: '15',
+        netAmount: '85',
+        frankedAmount: '60',
+        unfrankedAmount: '40',
+      })
+      const recorded = review.auditOperations[0]
+      if (!recorded) throw new Error('Missing income audit record')
+      const correction = {
+        idempotencyKey: `income-fix-${randomUUID()}`,
+        expectedRevisionId: recorded.expectedRevisionId,
+        expectedAuditNumber: review.auditNumber,
+        expectedSourceFingerprint: review.sourceFingerprint,
+        reason: 'Correct withholding from issuer statement',
+        replacement: {
+          entitlementDate: '2026-10-01',
+          paymentDate: '2026-10-16',
+          sequence: 2,
+          grossAmount: '100',
+          withholdingAmount: '20',
+          frankedAmount: '60',
+          unfrankedAmount: '40',
+          frankingCreditAud: '25.714285714286',
+        },
+      }
+      const corrected = await correctLiveIncomeReceipt(
+        f.userId,
+        f.accountId,
+        posted.operationId,
+        correction
+      )
+      expect(corrected).toMatchObject({
+        created: true,
+        replay: {
+          funded: true,
+          balances: [
+            {
+              currency: 'AUD',
+              endingAmount: '180',
+              netExternalContribution: '0',
+            },
+          ],
+        },
+      })
+      const correctionRetry = await correctLiveIncomeReceipt(
+        f.userId,
+        f.accountId,
+        posted.operationId,
+        correction
+      )
+      expect(correctionRetry).toMatchObject({
+        created: false,
+        revisionId: corrected.revisionId,
+      })
+      const correctedReview = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      expect(
+        correctedReview.auditOperations[0]?.currentIncomeReceipt
+      ).toMatchObject({
+        paymentDate: '2026-10-16',
+        withholdingAmount: '20',
+        netAmount: '80',
+      })
+      expect(correctedReview.auditOperations[0]?.revisions[0]).toMatchObject({
+        reason: correction.reason,
+        incomeBefore: { cash: { amount: '85' } },
+        incomeReplacement: { cash: { amount: '80' } },
+      })
+      const terminalReversal = await correctLiveIncomeReceipt(
+        f.userId,
+        f.accountId,
+        posted.operationId,
+        {
+          idempotencyKey: `income-reversal-${randomUUID()}`,
+          expectedRevisionId:
+            correctedReview.auditOperations[0]?.expectedRevisionId,
+          expectedAuditNumber: correctedReview.auditNumber,
+          expectedSourceFingerprint: correctedReview.sourceFingerprint,
+          reason: 'Issuer confirmed duplicate payment',
+          replacement: null,
+        }
+      )
+      expect(terminalReversal.replay.balances[0]?.endingAmount).toBe('100')
+      const reversedReview = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      expect(reversedReview.auditOperations[0]?.currentIncomeReceipt).toBeNull()
+      const oldRevisionRetry = await correctLiveIncomeReceipt(
+        f.userId,
+        f.accountId,
+        posted.operationId,
+        correction
+      )
+      expect(oldRevisionRetry).toMatchObject({
+        created: false,
+        revisionId: corrected.revisionId,
+      })
+      await expect(
+        correctLiveIncomeReceipt(f.userId, f.accountId, posted.operationId, {
+          ...correction,
+          idempotencyKey: `income-after-reversal-${randomUUID()}`,
+          expectedRevisionId:
+            reversedReview.auditOperations[0]?.expectedRevisionId,
+          expectedAuditNumber: reversedReview.auditNumber,
+        })
+      ).rejects.toThrow('reversed income receipt')
+    })
+
+    it('revises and terminally reverses live funding with retained legs and safe retries', async () => {
+      const {
+        postAccountCapitalFlow,
+        correctLiveCapitalOperation,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('0')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const original = liveCapitalFlowInput({ amount: '100' })
+      const posted = await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        original
+      )
+      const initial = await readLiveCapitalOperations(f.userId, f.accountId)
+      const operation = initial.items[0]
+      if (!operation) throw new Error('Missing posted live funding operation')
+      const correction = {
+        idempotencyKey: `capital-fix-${randomUUID()}`,
+        expectedRevisionId: operation.expectedRevisionId,
+        expectedAuditNumber: initial.auditNumber,
+        expectedSourceFingerprint: initial.sourceFingerprint,
+        reason: 'Corrected from the bank statement',
+        replacement: {
+          effectiveDate: original.effectiveDate,
+          sequence: 2,
+          amount: '90',
+        },
+      }
+      const corrected = await correctLiveCapitalOperation(
+        f.userId,
+        f.accountId,
+        posted.operationId,
+        correction
+      )
+      expect(corrected).toMatchObject({
+        operationId: posted.operationId,
+        created: true,
+        replay: { funded: true, balances: [{ endingAmount: '90' }] },
+      })
+      const revision =
+        await prisma.accountCashOperationRevision.findUniqueOrThrow({
+          where: { id: corrected.revisionId },
+          include: { postings: { orderBy: { legIndex: 'asc' } } },
+        })
+      expect(
+        revision.postings.map((row) => [row.phase, row.amount.toFixed()])
+      ).toEqual([
+        ['REVERSAL', '-100'],
+        ['REPLACEMENT', '90'],
+      ])
+      expect(revision.previousFingerprint).toBe(initial.sourceFingerprint)
+      expect(revision.nextFingerprint).toBe(initial.sourceFingerprint)
+
+      const secondView = await readLiveCapitalOperations(f.userId, f.accountId)
+      const current = secondView.items[0]
+      if (!current) throw new Error('Missing corrected live funding operation')
+      const secondCorrection = {
+        ...correction,
+        idempotencyKey: `capital-fix-again-${randomUUID()}`,
+        expectedRevisionId: current.expectedRevisionId,
+        expectedAuditNumber: secondView.auditNumber,
+        replacement: { ...correction.replacement, amount: '80' },
+      }
+      const correctedAgain = await correctLiveCapitalOperation(
+        f.userId,
+        f.accountId,
+        posted.operationId,
+        secondCorrection
+      )
+      const retryOld = await correctLiveCapitalOperation(
+        f.userId,
+        f.accountId,
+        posted.operationId,
+        correction
+      )
+      expect(retryOld).toMatchObject({
+        created: false,
+        revisionId: corrected.revisionId,
+        replay: { balances: [{ endingAmount: '80' }] },
+      })
+
+      const beforeReversal = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      const reversal = await correctLiveCapitalOperation(
+        f.userId,
+        f.accountId,
+        posted.operationId,
+        {
+          idempotencyKey: `capital-reversal-${randomUUID()}`,
+          expectedRevisionId: correctedAgain.revisionId,
+          expectedAuditNumber: beforeReversal.auditNumber,
+          expectedSourceFingerprint: beforeReversal.sourceFingerprint,
+          reason: 'Bank confirmed the original entry was duplicated',
+          replacement: null,
+        }
+      )
+      expect(reversal).toMatchObject({
+        created: true,
+        replay: { funded: true, balances: [{ endingAmount: '0' }] },
+      })
+      const finalView = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(finalView.items[0]).toMatchObject({
+        operationId: posted.operationId,
+        original: { amount: '100' },
+        current: null,
+        revisions: [
+          {},
+          {},
+          {
+            replacement: null,
+            postings: [{ phase: 'REVERSAL', amount: '-80' }],
+          },
+        ],
+      })
+      await expect(
+        correctLiveCapitalOperation(f.userId, f.accountId, posted.operationId, {
+          idempotencyKey: `capital-after-reversal-${randomUUID()}`,
+          expectedRevisionId: reversal.revisionId,
+          expectedAuditNumber: finalView.auditNumber,
+          expectedSourceFingerprint: finalView.sourceFingerprint,
+          reason: 'Attempt to revive a reversed deposit',
+          replacement: {
+            effectiveDate: original.effectiveDate,
+            sequence: 3,
+            amount: '80',
+          },
+        })
+      ).rejects.toMatchObject({ status: 409 })
+      expect(finalView.sourceFingerprint).toBe(initial.sourceFingerprint)
+    })
+
+    it('reviews exact balances, effective activity, retained audits, evidence variances and archived access', async () => {
+      const {
+        postAccountCapitalFlow,
+        readLiveCapitalOperations,
+        recordDraftCashEvidence,
+      } = await import('./draft-cash-ledger.js')
+      const { closeTradingAccount } =
+        await import('./trading-account-mutations.js')
+      const f = await fixture('100')
+      const asOfDate = currentSydneyDate()
+      await recordDraftCashEvidence(
+        f.userId,
+        f.statementId,
+        {
+          idempotencyKey: `review-evidence-${randomUUID()}`,
+          asOfDate,
+          source: 'Broker statement',
+          reference: 'Cash page',
+          attested: true,
+          cashBalances: [{ currency: 'AUD', amount: '100' }],
+          decisions: [],
+        },
+        f.accountId
+      )
+      await confirmCashLedger(f.accountId, f.statementId)
+      await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        liveCapitalFlowInput({
+          effectiveDate: asOfDate,
+          amount: '25',
+          sequence: 1,
+        })
+      )
+
+      const active = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(active).toMatchObject({
+        accountStatus: 'ACTIVE',
+        openingBoundary: {
+          date: '2026-10-01',
+          timezone: 'Australia/Sydney',
+          type: 'END_OF_DAY',
+        },
+        sourceFreshness: { status: 'CURRENT' },
+        cashCompleteness: 'COMPLETE',
+        evidenceStatus: 'VARIANCE',
+        replay: { balances: [{ currency: 'AUD', endingAmount: '125' }] },
+        activity: [
+          {
+            kind: 'DEPOSIT',
+            sourceOrigin: 'MANUAL',
+            changes: [{ currency: 'AUD', amount: '25', balanceAfter: '125' }],
+          },
+        ],
+        evidence: [
+          {
+            attested: true,
+            currentComparison: {
+              variances: [
+                {
+                  currency: 'AUD',
+                  expectedAmount: '125',
+                  statementAmount: '100',
+                  difference: '-25',
+                },
+              ],
+            },
+          },
+        ],
+        auditOperations: [
+          {
+            original: { kind: 'DEPOSIT' },
+            current: { kind: 'DEPOSIT' },
+          },
+        ],
+      })
+
+      await closeTradingAccount(f.userId, f.accountId)
+      const archived = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(archived.accountStatus).toBe('CLOSED')
+      expect(archived.sourceFreshness).toMatchObject({
+        status: 'NOT_REVALIDATED',
+        currentFingerprint: null,
+      })
+      expect(archived.replay.balances[0]?.endingAmount).toBe('125')
+    })
+
+    it('replays manual trades once and excludes a terminally voided sale from reviewed cash', async () => {
+      const {
+        postAccountTrade,
+        readLiveCapitalOperations,
+        voidLiveManualTrade,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('1000')
+      const asset = await prisma.asset.create({
+        data: {
+          symbol: `REVIEW-${randomUUID()}`,
+          name: 'Cash review fixture',
+          exchangeId: exchangeId!,
+        },
+      })
+      await confirmCashLedger(f.accountId, f.statementId)
+      const buy = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: asset.id,
+          quantity: '1',
+          price: '20',
+          fees: '1',
+          sequence: 1,
+        })
+      )
+      const bought = await prisma.transaction.findUniqueOrThrow({
+        where: { id: buy.transactionId },
+      })
+      const sale = await postAccountTrade(f.userId, f.accountId, {
+        kind: 'SELL',
+        positionId: bought.positionId,
+        idempotencyKey: `review-sale-${randomUUID()}`,
+        effectiveDate: currentSydneyDate(),
+        sequence: 2,
+        quantity: '1',
+        price: '30',
+        fees: '1',
+      })
+      const beforeVoid = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(beforeVoid.replay.balances[0]?.endingAmount).toBe('1008')
+      expect(beforeVoid.activity).toHaveLength(2)
+
+      await voidLiveManualTrade(f.userId, f.accountId, sale.transactionId, {
+        idempotencyKey: `review-void-${randomUUID()}`,
+        expectedRevisionId: sale.operationId,
+        expectedSourceFingerprint: beforeVoid.sourceFingerprint,
+        reason: 'Corrected duplicate sale',
+      })
+      const afterVoid = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(afterVoid.replay.balances[0]?.endingAmount).toBe('979')
+      expect(afterVoid.activity).toHaveLength(1)
+      expect(afterVoid.activity[0]?.kind).toBe('BUY')
+      expect(
+        afterVoid.auditOperations.find(
+          (operation) => operation.operationId === sale.operationId
+        )
+      ).toMatchObject({ current: null, revisions: [{ replacement: null }] })
+    })
+
+    it('flags stale source history and unlinked post-opening trades without claiming complete cash', async () => {
+      const { readLiveCapitalOperations } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('100', true)
+      if (!f.transactionId)
+        throw new Error('Missing fixture trade for source review')
+      await confirmCashLedger(f.accountId, f.statementId)
+      await prisma.transaction.update({
+        where: { id: f.transactionId },
+        data: { totalValue: '59' },
+      })
+
+      const review = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(review.sourceFreshness.status).toBe('STALE')
+      expect(review.cashCompleteness).toBe('INCOMPLETE')
+      expect(review.unsupportedEvents).toContainEqual({
+        code: 'UNLINKED_POST_OPENING_TRADE',
+        sourceId: f.transactionId,
+        effectiveDate: '2026-10-02',
+      })
+    })
+
+    it('fails visibly rather than returning balances from a tampered live posting audit', async () => {
+      const { postAccountCapitalFlow, readLiveCapitalOperations } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('0')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const posted = await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        liveCapitalFlowInput({ amount: '25' })
+      )
+      await prisma.accountCashPosting.update({
+        where: {
+          operationId_legIndex: {
+            operationId: posted.operationId,
+            legIndex: 0,
+          },
+        },
+        data: { amount: '24' },
+      })
+
+      await expect(
+        readLiveCapitalOperations(f.userId, f.accountId)
+      ).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringContaining('inconsistent'),
+      })
+    })
+
+    it('rejects stale capital revisions and corrections that would unfund a later purchase', async () => {
+      const {
+        postAccountCapitalFlow,
+        correctLiveCapitalOperation,
+        readLiveCapitalOperations,
+        postAccountTrade,
+      } = await import('./draft-cash-ledger.js')
+      const stale = await fixture('0')
+      await confirmCashLedger(stale.accountId, stale.statementId)
+      const first = await postAccountCapitalFlow(
+        stale.userId,
+        stale.accountId,
+        liveCapitalFlowInput({ amount: '100', sequence: 1 })
+      )
+      const view = await readLiveCapitalOperations(
+        stale.userId,
+        stale.accountId
+      )
+      await postAccountCapitalFlow(
+        stale.userId,
+        stale.accountId,
+        liveCapitalFlowInput({ amount: '50', sequence: 2 })
+      )
+      await expect(
+        correctLiveCapitalOperation(
+          stale.userId,
+          stale.accountId,
+          first.operationId,
+          {
+            idempotencyKey: `stale-capital-${randomUUID()}`,
+            expectedRevisionId: first.operationId,
+            expectedAuditNumber: view.auditNumber,
+            expectedSourceFingerprint: view.sourceFingerprint,
+            reason: 'Correct stale funding information',
+            replacement: {
+              effectiveDate: view.items[0]!.original.effectiveDate,
+              sequence: 3,
+              amount: '90',
+            },
+          }
+        )
+      ).rejects.toMatchObject({ status: 409 })
+
+      const f = await fixture('0')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const depositInput = liveCapitalFlowInput({ amount: '100', sequence: 1 })
+      const deposit = await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        depositInput
+      )
+      const asset = await prisma.asset.create({
+        data: {
+          symbol: `LIVE-CAPITAL-CORRECTION-${randomUUID()}`,
+          name: 'Capital correction funding fixture',
+          exchangeId: exchangeId!,
+        },
+      })
+      await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: asset.id,
+          effectiveDate: depositInput.effectiveDate,
+          sequence: 2,
+          price: '90',
+          fees: '0',
+        })
+      )
+      const current = await readLiveCapitalOperations(f.userId, f.accountId)
+      const operation = current.items.find(
+        (row) => row.operationId === deposit.operationId
+      )
+      if (!operation)
+        throw new Error('Missing funding operation for correction')
+      await expect(
+        correctLiveCapitalOperation(
+          f.userId,
+          f.accountId,
+          deposit.operationId,
+          {
+            idempotencyKey: `unfunded-capital-fix-${randomUUID()}`,
+            expectedRevisionId: operation.expectedRevisionId,
+            expectedAuditNumber: current.auditNumber,
+            expectedSourceFingerprint: current.sourceFingerprint,
+            reason: 'Incorrect deposit amount',
+            replacement: {
+              effectiveDate: depositInput.effectiveDate,
+              sequence: 1,
+              amount: '80',
+            },
+          }
+        )
+      ).rejects.toMatchObject({ status: 422 })
+      expect(
+        await prisma.accountCashOperationRevision.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(0)
+    })
+
+    it('rolls back a live capital correction when revision persistence fails', async () => {
+      const {
+        postAccountCapitalFlow,
+        correctLiveCapitalOperation,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('0')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const posted = await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        liveCapitalFlowInput({ amount: '100' })
+      )
+      const current = await readLiveCapitalOperations(f.userId, f.accountId)
+      const operation = current.items[0]
+      if (!operation) throw new Error('Missing funding operation')
+      const input = {
+        idempotencyKey: `capital-rollback-${randomUUID()}`,
+        expectedRevisionId: operation.expectedRevisionId,
+        expectedAuditNumber: current.auditNumber,
+        expectedSourceFingerprint: current.sourceFingerprint,
+        reason: 'Correct the recorded statement',
+        replacement: {
+          effectiveDate: operation.original.effectiveDate,
+          sequence: 2,
+          amount: '90',
+        },
+      }
+      const originalTransaction = prisma.$transaction.bind(prisma)
+      const injected = vi
+        .spyOn(prisma, '$transaction')
+        .mockImplementationOnce(async (callback) =>
+          originalTransaction(async (db) => {
+            vi.spyOn(
+              db.accountCashOperationRevision,
+              'create'
+            ).mockRejectedValueOnce(
+              new Error('Injected live capital revision failure')
+            )
+            if (typeof callback !== 'function')
+              throw new Error('Expected transaction callback')
+            return callback(db)
+          })
+        )
+      try {
+        await expect(
+          correctLiveCapitalOperation(
+            f.userId,
+            f.accountId,
+            posted.operationId,
+            input
+          )
+        ).rejects.toThrow('Injected live capital revision failure')
+      } finally {
+        injected.mockRestore()
+      }
+      expect(
+        await prisma.accountCashOperationRevision.count({
+          where: { operationId: posted.operationId },
+        })
+      ).toBe(0)
+      expect(
+        (await readLiveCapitalOperations(f.userId, f.accountId)).items[0]
+          ?.current?.amount
+      ).toBe('100')
+    })
+
+    it('rejects withdrawals that cause a dated funding gap, including backdated flows', async () => {
+      const { postAccountCapitalFlow, postAccountTrade } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('1000')
+      const asset = await prisma.asset.create({
+        data: {
+          symbol: `LIVE-WITHDRAW-${randomUUID()}`,
+          name: 'Live withdrawal fixture',
+          exchangeId: exchangeId!,
+        },
+      })
+      await confirmCashLedger(f.accountId, f.statementId)
+      await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: asset.id,
+          effectiveDate: '2026-10-02',
+          price: '400',
+          fees: '0',
+        })
+      )
+      const unaffordable = liveCapitalFlowInput({
+        kind: 'WITHDRAWAL',
+        effectiveDate: '2026-10-03',
+        amount: '601',
+      })
+      await expect(
+        postAccountCapitalFlow(f.userId, f.accountId, unaffordable)
+      ).rejects.toMatchObject({ status: 422 })
+      const withdrawal = await postAccountCapitalFlow(f.userId, f.accountId, {
+        ...unaffordable,
+        amount: '600',
+      })
+      expect(withdrawal.replay.funded).toBe(true)
+      expect(withdrawal.replay.balances[0].endingAmount).toBe('0')
+      await expect(
+        postAccountCapitalFlow(f.userId, f.accountId, {
+          ...liveCapitalFlowInput({
+            kind: 'WITHDRAWAL',
+            effectiveDate: '2026-10-02',
+            sequence: 2,
+            amount: '1',
+          }),
+        })
+      ).rejects.toMatchObject({ status: 422 })
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(2)
+    })
+
+    it('serializes competing withdrawals so their combined value cannot overdraw cash', async () => {
+      const { postAccountCapitalFlow } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const attempts = [1, 2].map((sequence) =>
+        postAccountCapitalFlow(
+          f.userId,
+          f.accountId,
+          liveCapitalFlowInput({
+            kind: 'WITHDRAWAL',
+            idempotencyKey: `live-withdraw-race-${sequence}`,
+            sequence,
+            amount: '70',
+          })
+        )
+      )
+      const results = await Promise.allSettled(attempts)
+      expect(results.filter((row) => row.status === 'fulfilled')).toHaveLength(
+        1
+      )
+      expect(results.filter((row) => row.status === 'rejected')).toHaveLength(1)
+      const successful = results.find((row) => row.status === 'fulfilled')
+      if (!successful || successful.status !== 'fulfilled')
+        throw new Error('Expected one successful withdrawal')
+      expect(successful.value.replay.balances[0].endingAmount).toBe('30')
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(1)
+      const state = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      expect(state.acceptedSourceFingerprint).toBe(
+        (
+          await prisma.accountOpeningStatement.findUniqueOrThrow({
+            where: { id: f.statementId },
+          })
+        ).sourceFingerprint
+      )
+    })
+
+    it('rejects foreign, archived and source-drifted capital writes without persisting an operation', async () => {
+      const { postAccountCapitalFlow } = await import('./draft-cash-ledger.js')
+      const { closeTradingAccount } =
+        await import('./trading-account-mutations.js')
+      const archived = await fixture('100')
+      await confirmCashLedger(archived.accountId, archived.statementId)
+      const archivedInput = liveCapitalFlowInput()
+      await closeTradingAccount(archived.userId, archived.accountId)
+      await expect(
+        postAccountCapitalFlow(
+          archived.userId,
+          archived.accountId,
+          archivedInput
+        )
+      ).rejects.toMatchObject({ status: 409 })
+
+      const changed = await fixture('100', true)
+      if (!changed.transactionId)
+        throw new Error('Missing fixture trade for source-drift test')
+      await confirmCashLedger(changed.accountId, changed.statementId)
+      const input = liveCapitalFlowInput()
+      const foreignUser = await prisma.user.create({
+        data: {
+          email: `cash-foreign-${randomUUID()}@example.invalid`,
+          passwordHash: 'test-fixture-not-a-login',
+        },
+      })
+      const foreignAccount = await prisma.tradingAccount.create({
+        data: {
+          userId: foreignUser.id,
+          name: `Foreign cash fixture ${randomUUID()}`,
+        },
+      })
+      try {
+        await expect(
+          postAccountCapitalFlow(changed.userId, foreignAccount.id, input)
+        ).rejects.toMatchObject({ status: 404 })
+      } finally {
+        await prisma.user.delete({ where: { id: foreignUser.id } })
+      }
+      await prisma.transaction.update({
+        where: { id: changed.transactionId },
+        data: { price: '99' },
+      })
+      await expect(
+        postAccountCapitalFlow(changed.userId, changed.accountId, input)
+      ).rejects.toMatchObject({
+        status: 409,
+        message: /source changed outside its audited live cash history/,
+      })
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: archived.accountId },
+        })
+      ).toBe(0)
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: changed.accountId },
+        })
+      ).toBe(0)
+    })
+
+    it('rolls back the operation and postings when the final live capital write fails', async () => {
+      const { postAccountCapitalFlow } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const ledger = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      const input = liveCapitalFlowInput({ amount: '10' })
+      const originalTransaction = prisma.$transaction.bind(prisma)
+      const injected = vi
+        .spyOn(prisma, '$transaction')
+        .mockImplementationOnce(async (callback) =>
+          originalTransaction(async (db) => {
+            vi.spyOn(db.accountCashOperation, 'create').mockRejectedValueOnce(
+              new Error('Injected live capital write failure')
+            )
+            if (typeof callback !== 'function')
+              throw new Error('Expected transaction callback')
+            return callback(db)
+          })
+        )
+      try {
+        await expect(
+          postAccountCapitalFlow(f.userId, f.accountId, input)
+        ).rejects.toThrow('Injected live capital write failure')
+      } finally {
+        injected.mockRestore()
+      }
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(0)
+      expect(
+        await prisma.accountCashPosting.count({
+          where: { operation: { accountId: f.accountId } },
+        })
+      ).toBe(0)
+      expect(
+        await prisma.accountCashLedger.findUniqueOrThrow({
+          where: { accountId: f.accountId },
+        })
+      ).toEqual(ledger)
+      expect(
+        await postAccountCapitalFlow(f.userId, f.accountId, input)
+      ).toMatchObject({ created: true })
+    })
+
+    it('confirms a reviewed opening statement atomically and deduplicates competing retries', async () => {
+      const { confirmOpeningStatement, recordDraftCashEvidence } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('100')
+      const statement = await prisma.accountOpeningStatement.findUniqueOrThrow({
+        where: { id: f.statementId },
+      })
+      await recordDraftCashEvidence(
+        f.userId,
+        f.statementId,
+        {
+          idempotencyKey: randomUUID(),
+          asOfDate: currentSydneyDate(),
+          source: 'Disposable confirmation statement',
+          reference: randomUUID(),
+          attested: true,
+          cashBalances: [{ currency: 'AUD', amount: '100' }],
+          decisions: [],
+        },
+        f.accountId
+      )
+      const input = {
+        idempotencyKey: randomUUID(),
+        expectedSourceFingerprint: statement.sourceFingerprint,
+        acknowledgements: {
+          openingBalancesReviewed: true,
+          cashEvidenceUserAttested: true,
+          priorDraftActivityExcluded: true,
+          returnsUnavailableWithoutValuations: true,
+        },
+      }
+
+      const results = await Promise.all([
+        confirmOpeningStatement(f.userId, f.accountId, f.statementId, input),
+        confirmOpeningStatement(f.userId, f.accountId, f.statementId, input),
+      ])
+      expect(results.map((result) => result.created).sort()).toEqual([
+        false,
+        true,
+      ])
+      expect(results[0].statementId).toBe(results[1].statementId)
+      expect(
+        await prisma.accountOpeningStatement.findUniqueOrThrow({
+          where: { id: f.statementId },
+        })
+      ).toMatchObject({ state: 'CONFIRMED' })
+      expect(
+        await prisma.accountCashLedger.findUniqueOrThrow({
+          where: { accountId: f.accountId },
+        })
+      ).toMatchObject({
+        openingStatementId: f.statementId,
+        state: 'ACTIVE',
+        confirmedByUserId: f.userId,
+        confirmationIdempotencyKey: input.idempotencyKey,
+      })
+    })
+
+    it('blocks confirmation when the selected draft contains staged activity', async () => {
+      const { confirmOpeningStatement, saveDraftCashOperation } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('100')
+      const statement = await prisma.accountOpeningStatement.findUniqueOrThrow({
+        where: { id: f.statementId },
+      })
+      await saveDraftCashOperation(f.userId, f.statementId, {
+        ...capital(f.accountId),
+        idempotencyKey: randomUUID(),
+      })
+
+      await expect(
+        confirmOpeningStatement(f.userId, f.accountId, f.statementId, {
+          idempotencyKey: randomUUID(),
+          expectedSourceFingerprint: statement.sourceFingerprint,
+          acknowledgements: {
+            openingBalancesReviewed: true,
+            cashEvidenceUserAttested: true,
+            priorDraftActivityExcluded: true,
+            returnsUnavailableWithoutValuations: true,
+          },
+        })
+      ).rejects.toMatchObject({
+        status: 409,
+        message: /contains saved activity/,
+      })
+      expect(
+        await prisma.accountCashLedger.findUnique({
+          where: { accountId: f.accountId },
+        })
+      ).toBeNull()
+      expect(
+        await prisma.accountOpeningStatement.findUniqueOrThrow({
+          where: { id: f.statementId },
+        })
+      ).toMatchObject({ state: 'DRAFT' })
+    })
+
+    it('serializes confirmation against account closure and user deletion without partial activation', async () => {
+      const { confirmOpeningStatement, recordDraftCashEvidence } =
+        await import('./draft-cash-ledger.js')
+      const { closeTradingAccount } =
+        await import('./trading-account-mutations.js')
+      const { scheduleUserDeletion } = await import('./account-deletion.js')
+      const f = await fixture('100')
+      const statement = await prisma.accountOpeningStatement.findUniqueOrThrow({
+        where: { id: f.statementId },
+      })
+      await recordDraftCashEvidence(
+        f.userId,
+        f.statementId,
+        {
+          idempotencyKey: randomUUID(),
+          asOfDate: currentSydneyDate(),
+          source: 'Disposable lifecycle statement',
+          reference: randomUUID(),
+          attested: true,
+          cashBalances: [{ currency: 'AUD', amount: '100' }],
+          decisions: [],
+        },
+        f.accountId
+      )
+      const input = {
+        idempotencyKey: randomUUID(),
+        expectedSourceFingerprint: statement.sourceFingerprint,
+        acknowledgements: {
+          openingBalancesReviewed: true,
+          cashEvidenceUserAttested: true,
+          priorDraftActivityExcluded: true,
+          returnsUnavailableWithoutValuations: true,
+        },
+      }
+      const closeRace = await Promise.allSettled([
+        confirmOpeningStatement(f.userId, f.accountId, f.statementId, input),
+        closeTradingAccount(f.userId, f.accountId),
+      ])
+      expect(closeRace[1].status).toBe('fulfilled')
+      const afterCloseStatement =
+        await prisma.accountOpeningStatement.findUniqueOrThrow({
+          where: { id: f.statementId },
+        })
+      const afterCloseLedger = await prisma.accountCashLedger.findUnique({
+        where: { accountId: f.accountId },
+      })
+      expect(afterCloseStatement.state === 'CONFIRMED').toBe(
+        afterCloseLedger !== null
+      )
+
+      await prisma.user.update({
+        where: { id: f.userId },
+        data: { deletedAt: null, purgeAfter: null },
+      })
+      const userDeleteRace = await Promise.allSettled([
+        confirmOpeningStatement(f.userId, f.accountId, f.statementId, {
+          ...input,
+          idempotencyKey: randomUUID(),
+        }),
+        scheduleUserDeletion(f.userId, 'test-fixture-not-a-login', new Date()),
+      ])
+      expect(userDeleteRace[1].status).toBe('fulfilled')
+      const afterDeleteStatement =
+        await prisma.accountOpeningStatement.findUniqueOrThrow({
+          where: { id: f.statementId },
+        })
+      const afterDeleteLedger = await prisma.accountCashLedger.findUnique({
+        where: { accountId: f.accountId },
+      })
+      expect(afterDeleteStatement.state === 'CONFIRMED').toBe(
+        afterDeleteLedger !== null
+      )
+      await prisma.user.update({
+        where: { id: f.userId },
+        data: { deletedAt: null, purgeAfter: null },
+      })
+    })
+
     it('requires an explicitly confirmed live ledger and atomically posts a retry-safe BUY', async () => {
       const { postAccountTrade } = await import('./draft-cash-ledger.js')
       const f = await fixture('100')
@@ -3656,6 +6946,92 @@ describe.skipIf(!enabled)(
           where: { accountId: f.accountId },
         })
       ).toBe(1)
+    })
+    it('reports explicit trade capability and preserves ordinary trade metadata', async () => {
+      const { postAccountTrade, readAccountTradeCapability } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('100')
+      const effectiveDate = currentSydneyDate()
+      if (!exchangeId) throw new Error('Missing fixture exchange')
+      const fixtureExchange = await prisma.exchange.findUniqueOrThrow({
+        where: { id: exchangeId },
+      })
+
+      expect(
+        await readAccountTradeCapability(f.userId, f.accountId, effectiveDate)
+      ).toMatchObject({ mode: 'LEGACY', nextSequence: null })
+      await confirmCashLedger(f.accountId, f.statementId)
+      expect(
+        await readAccountTradeCapability(f.userId, f.accountId, effectiveDate)
+      ).toMatchObject({
+        mode: 'LIVE_LEDGER',
+        openingDate: '2026-10-01',
+        nextSequence: 1,
+      })
+
+      const buy = await postAccountTrade(f.userId, f.accountId, {
+        kind: 'BUY',
+        symbol: `META${randomUUID().slice(0, 8)}`,
+        exchangeCode: fixtureExchange.code,
+        assetName: 'Trade metadata fixture',
+        assetType: 'EQUITY',
+        industry: 'Technology',
+        openReason: 'Long-term investment',
+        stopLossPrice: '15',
+        idempotencyKey: randomUUID(),
+        effectiveDate,
+        sequence: 1,
+        quantity: '1',
+        price: '20',
+        fees: '1',
+      })
+      const position = await prisma.position.findFirstOrThrow({
+        where: { accountId: f.accountId },
+        include: { asset: { include: { exchange: true } } },
+      })
+      expect(position).toMatchObject({
+        openReason: 'Long-term investment',
+        asset: {
+          name: 'Trade metadata fixture',
+          industry: 'Technology',
+        },
+      })
+      expect(Number(position.stopLossPrice)).toBe(15)
+      const capability = await readAccountTradeCapability(
+        f.userId,
+        f.accountId,
+        effectiveDate
+      )
+      if (capability.nextSequence === null)
+        throw new Error('Missing next trade sequence')
+      expect(capability).toMatchObject({
+        mode: 'LIVE_LEDGER',
+        nextSequence: 2,
+      })
+
+      const sale = await postAccountTrade(f.userId, f.accountId, {
+        kind: 'SELL',
+        positionId: position.id,
+        idempotencyKey: randomUUID(),
+        effectiveDate,
+        sequence: capability.nextSequence,
+        quantity: '1',
+        price: '25',
+        fees: '0.5',
+        closeReason: 'TARGET',
+        notes: 'Target reached',
+      })
+      const transaction = await prisma.transaction.findUniqueOrThrow({
+        where: { id: sale.transactionId },
+      })
+      expect(transaction).toMatchObject({
+        closeReason: 'TARGET',
+        notes: 'Target reached',
+      })
+      await expect(
+        readAccountTradeCapability(f.userId, f.accountId, effectiveDate)
+      ).resolves.toMatchObject({ mode: 'LIVE_LEDGER', nextSequence: 3 })
+      expect(buy.created).toBe(true)
     })
     it('posts a funded manual SELL against one owned parcel and rejects overselling without writes', async () => {
       const { correctLiveManualSale, postAccountTrade } =

@@ -1,13 +1,27 @@
 # Portfolio accounting foundation
 
-Status: increment 1 specification delivered; increment 2 is partially implemented.
+Status: increment 1 specification delivered; increment 2 implementation is complete.
 Opening previews, inactive drafts, cash replay/reconciliation, gated manual and supported
-Kraken trade posting, audited execution corrections, and terminal manual trade voids are
-implemented. **Next: live funding and cash review, before controlled account activation.**
-No user-facing confirmation/provisioning flow exists. Imported voids, financial moves and
-deletion remain explicitly blocked, not required to become unrestricted before launch.
+Kraken trade posting, cash-only live deposits/withdrawals, audited execution corrections,
+terminal manual trade voids, live funding corrections/reversals, and capability-aware ordinary
+BUY/SELL routing are implemented.
+**Reviewed per-account confirmation (2F) is implemented.** Only an explicit user confirmation
+can enable one eligible real account; saving/reviewing a draft and ordinary capability lookup
+never activate accounts. No real account has been activated during development. Imported voids,
+financial moves and deletion remain explicitly blocked, not required to become unrestricted
+before launch.
+**Increment 3 remains in progress; 3A, manual statement-supported cash income, is complete.**
+Equity/ETF cash distributions support audited replacements and terminal reversals. Complex AMIT,
+automated estimates and crypto staking remain unsupported. **3B, same-currency paired cash-transfer
+posting/history, and 3C, paired transfer corrections/reversals, are complete.** Direct edits,
+one-sided transfer revisions and holdings transfers remain blocked. **3D, explicit same-account
+FX posting/history, and audited fixed-identity FX revisions (3E), are implemented and verified.**
+**3F, statement-supported dividend-reinvestment posting/history, is complete.** One atomic
+command records income once and creates a new parcel, with account-paid residual cash only.
+**3G, paired audited reinvestment corrections/reversal, is complete.** Independent financial
+edits remain blocked, and effective parcel sales must be voided before paired changes.
 Legacy accounts retain their existing behavior.
-Date: 7 November 2026.
+Date: 14 November 2026.
 Scope: piggy-api and sibling piggy-fe.
 
 ## Start here when resuming
@@ -18,15 +32,15 @@ Backend [generated context](../context/README.md) and [API surface](../context/a
 describe implemented code, not planned capabilities. The [frontend README](../../piggy-fe/README.md)
 describes available UI entry points.
 
-| Milestone                              | Current state           | Resume guidance                                                                             |
-| -------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------- |
-| 1. Accounting contract/reference cases | Delivered specification | Reference cases are not proof of production income, transfers, valuations or returns        |
-| 2. Opening/cash-backed trades          | Partial                 | Follow steps 2A-2F below; activation stays disabled until all cutover gates pass            |
-| 3. Income/transfers/adjustments        | Planned                 | Requires reconciled accounting; no ordinary portfolio mutation may invent these records     |
-| 4. Sourced valuations                  | Planned                 | Replace synthetic value series only with explicit provenance and completeness               |
-| 5. TWR/XIRR/risk                       | Planned                 | Depends on verified flows and valuations; existing trading statistics are not these returns |
-| 6. Broader ingestion/tax readiness     | Planned                 | Demand-driven adapters and reviewed tax cases, not a prerequisite to support every broker   |
-| 7. Decision tools                      | Planned                 | Follow verified accounting/performance, not ahead of it                                     |
+| Milestone                              | Current state            | Resume guidance                                                                                |
+| -------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------- |
+| 1. Accounting contract/reference cases | Delivered specification  | Reference cases are not proof of production income, transfers, valuations or returns           |
+| 2. Opening/cash-backed trades          | Implemented              | Steps 2A-2F are delivered; real-account activation remains an explicit per-account user action |
+| 3. Income/transfers/adjustments        | In progress (3A-3G done) | Next: agree a narrow corporate-action/adjustment policy and implement it as a separate slice   |
+| 4. Sourced valuations                  | Planned                  | Replace synthetic value series only with explicit provenance and completeness                  |
+| 5. TWR/XIRR/risk                       | Planned                  | Depends on verified flows and valuations; existing trading statistics are not these returns    |
+| 6. Broader ingestion/tax readiness     | Planned                  | Demand-driven adapters and reviewed tax cases, not a prerequisite to support every broker      |
+| 7. Decision tools                      | Planned                  | Follow verified accounting/performance, not ahead of it                                        |
 
 ### Increment 2 delivery checklist
 
@@ -37,12 +51,12 @@ describes available UI entry points.
 - [x] Gated live manual BUY/SELL and supported Kraken execution posting.
 - [x] Audited live manual BUY/SELL and restricted imported execution corrections.
 - [x] Terminal manual SELL voids and unsold BUY voids, effective-reader filtering and retained audit UI.
-- [ ] 2A. Publish the supported cutover operation/lifecycle matrix.
-- [ ] 2B. Deliver live deposits/withdrawals.
-- [ ] 2C. Deliver audited live funding corrections/reversals.
-- [ ] 2D. Deliver live balance/activity/evidence review.
-- [ ] 2E. Route ordinary trade entry for ledger-backed accounts.
-- [ ] 2F. Deliver reviewed per-account confirmation and prove the release gate.
+- [x] 2A. Publish and verify the supported cutover operation/lifecycle matrix.
+- [x] 2B. Deliver live deposits/withdrawals.
+- [x] 2C. Deliver audited live funding corrections/reversals.
+- [x] 2D. Deliver live balance/activity/evidence review.
+- [x] 2E. Route ordinary trade entry for ledger-backed accounts.
+- [x] 2F. Deliver reviewed per-account confirmation and prove the release gate.
 
 Checked items describe implementation, not production activation or broker verification.
 Earlier narrative progress notes below are historical; this checklist and the remaining-step
@@ -50,18 +64,30 @@ section are the current handoff.
 
 ### Step status register
 
-Last updated: 7 November 2026. No implementation step is currently in progress.
-Next action: finish the unresolved launch policy in 2A, then begin 2B.
+Last updated: 14 November 2026. Steps 2A-2F and 3A-3G are implemented and verified; no
+real account has been activated. The user selected same-currency cash transfers as slice 3B.
+Posting/history and paired transfer revisions (3C) are implemented and verified;
+explicit same-account FX posting/history is implemented and verified. Audited FX revisions
+are implemented and verified. Statement-supported dividend-reinvestment posting/history is
+implemented and verified, as are paired audited reinvestment revisions. Next: define a narrow
+corporate-action/adjustment slice. Preserve per-account confirmation as an explicit cutover gate.
 
-| Step                           | Status  | Prerequisites                                           | Remaining work / evidence                                                                                                                                                     |
-| ------------------------------ | ------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Manual trade voids             | Done    | Gated live writer and execution revisions               | Implemented with backend/frontend tests, localhost replay/rollback/concurrency tests, effective CGT/preview checks and retained audit access; see the delivered section below |
-| 2A. Supported lifecycle policy | Partial | Delivered mutation guards and current capability matrix | Current matrix documented; launch closure/reopening, source-drift recovery and cutover operation policy still require decisions                                               |
-| 2B. Live funding               | Pending | 2A                                                      | Live deposit/withdrawal API, UI and atomic funding/retry tests not implemented                                                                                                |
-| 2C. Funding revisions          | Pending | 2B                                                      | Live correction/reversal audit integration and UI not implemented                                                                                                             |
-| 2D. Cash review                | Pending | 2B, 2C                                                  | Live balances/activity/evidence and archived/stale read surfaces not implemented                                                                                              |
-| 2E. Trade-entry routing        | Pending | 2B, 2D                                                  | Explicit ledger capability and ordinary BUY/SELL routing not implemented                                                                                                      |
-| 2F. Controlled activation      | Pending | 2A-2E                                                   | Draft-history cutover decisions, reviewed confirmation and release/concurrency proof not implemented                                                                          |
+| Step                                          | Status | Prerequisites                                           | Remaining work / evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------------------------------- | ------ | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Manual trade voids                            | Done   | Gated live writer and execution revisions               | Implemented with backend/frontend tests, localhost replay/rollback/concurrency tests, effective CGT/preview checks and retained audit access; see the delivered section below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 2A. Supported lifecycle policy                | Done   | Delivered mutation guards and current capability matrix | User-selected residual-cash archival policy documented; source drift is fail-closed; close/reopen preserves source fingerprint; lifecycle unit and localhost replay/write tests pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 2B. Live funding                              | Done   | 2A                                                      | Cash-only schema/migration, dated replay, Swagger endpoint, frontend hook/form and atomic retry/rollback coverage delivered. Backend/frontend focused tests, builds, lint, context and contract checks pass. No account is activated                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 2C. Funding revisions                         | Done   | 2B                                                      | Immutable live correction/reversal revisions, cash-only postings, full-timeline funding validation, global audit ordering, retained history UI and retry/stale-head/rollback tests pass; source fingerprint remains unchanged because no trade source changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 2D. Cash review                               | Done   | 2B, 2C                                                  | Read-only `GET /api/accounts/:id/cash-operations` now returns exact replayed balances, paginated dated activity/audits, source freshness, explicit unsupported events and recomputed statement-evidence variances. Active stale history is marked incomplete; archived views explicitly say freshness is not revalidated. Dashboard review works offline from cached data, visibly marked stale. Manual/imported replay, sale void, evidence variance, archive, source drift and tampered posting tests pass; no activation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2E. Trade-entry routing                       | Done   | 2B, 2D                                                  | Authenticated effective-date capability distinguishes live, legacy, demo, archived and blocked accounts; ordinary BUY/SELL routes through the coordinated writer only for live ledgers. Unknown, blocked, archived and offline live writes fail closed; legacy/demo flows remain supported. Backend 49 focused tests and 79 localhost integration tests, frontend 137 focused tests, builds, lint, both context checks and frontend contract check pass. No account is activated                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 2F. Controlled activation                     | Done   | 2A-2E                                                   | User selected block-unresolved cutover policy. The authenticated online confirmation route and explicit four-acknowledgement UI confirm only the latest clean draft for one active real account. Server checks source fingerprint at the saved observation date, blocking preview issues, no post-boundary trades, funded replay, latest exactly matching attested evidence, and no selected-draft activity under the account lock. Other draft activity remains retained and is listed/audited as excluded. Same-key retries are idempotent; competing confirmations and races with close/user deletion are covered by localhost tests. Backend full suite 1,193 passed / 187 skipped, 82 localhost integration tests, build, lint and context check pass; frontend full suite 595 passed, lint, contract and context checks pass. Frontend production build remains blocked by a pre-existing duplicate `busy` JSX prop in `src/components/HoldingsTable.tsx`; no real account is activated                                                                                                                                                                                                                                                                                                                                     |
+| 3A. Manual cash income                        | Done   | 2F                                                      | Additive statement-based equity/ETF receipts post net cash only and retain tax attributes. Immutable replacement and terminal reversal preserve the audit chain, reserve date/sequence slots, require funded replay, and keep asset/currency/source identity fixed; reverse and re-record to change identity. Backend 1,205 tests passed / 189 skipped, 84 disposable-localhost integration tests passed, build/lint/context checks passed; frontend 606 tests passed, lint/contract/context checks passed. Frontend production build remains blocked by the pre-existing duplicate `busy` JSX prop in `src/components/HoldingsTable.tsx`. No real account is activated                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 3B. Paired cash-transfer posting/history      | Done   | 2F, 2B, 2D                                              | Same-currency, same-date principal between two owned active real ledgers; exact sender-only fee, deterministic dual-account locking, shared immutable command identity and atomic postings. Full replay verifies counterpart ownership/content/postings; direct edits and one-sided revisions are blocked. Backend full suite 1,219 passed / 192 skipped; all 87 disposable-localhost ledger tests pass, including transfer conservation, backdated funding, rollback, stale sources, endpoints, slots, archival reads, missing/tampered counterparts, competing writes and retries. Frontend full suite 617 passed. Both builds/lints, frontend type-check, both context checks and contract check pass; contract drift is zero. Existing frontend duplicate busy prop/type-check blockers were resolved, with pending-sale submission coverage. No new schema or real-account activation                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 3C. Paired transfer revisions                 | Done   | 3B                                                      | Fixed accounts/currency/source; editable principal, sender fee, shared date and both sequences. Both current review heads, immutable paired audits, terminal reversal, exact retries and funded replay are implemented end-to-end. Backend full suite 1,221 passed / 194 skipped; all 89 disposable-localhost ledger tests pass, including revisions, terminal state, funding rollback, stale heads, reserved slots, competing corrections and tampered paired audits. Frontend full suite 629 passed, including sender action, exact retry, offline/privacy/pending/terminal guards and error/refreshed-head form reset. Both builds/lints, frontend type-check, contract check and both context checks pass; contract drift is zero. No new schema or real-account activation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 3D. Explicit same-account FX posting/history  | Done   | 3C                                                      | Manual posting/history with one shared date/sequence, exact positive exchanged amounts before fees, explicit fees in either exchanged currency and retained statement reference. Existing cash-operation storage; no new schema. Explicit currency openings, atomic postings, unchanged cash-only source fingerprint, exact canonical retries and funded dated replay are enforced. Backend full suite 1,236 passed / 198 skipped; all 93 disposable-localhost ledger tests pass, including concurrent retries, competing FX spending, backdated/source/received-fee funding rollback, occupied slots, opening boundaries, missing currency balances, archived retained reads and tampered signed postings. Frontend full suite 642 passed, including exact amounts/fees/retry identity, dashboard legacy gating, privacy/offline/pending/stale capability guards and masked history. Both builds/lints, frontend type-check, contract check and both context checks pass; contract drift is zero. No automatic exchange, market-rate inference, holdings change, activation or FX revisions                                                                                                                                                                                                                                      |
+| 3E. Audited FX revisions                      | Done   | 3D                                                      | Fixed account/currency pair/direction/source; editable exchanged amounts, fees, date and sequence. Current revision/audit/fingerprint and reason protect immutable inverse/replacement legs, reserved historical slots and funded replay in both currencies. Reversal is terminal; identity changes require reversal plus a new record. Backend full suite 1,240 passed / 200 skipped; all 95 disposable-localhost ledger tests pass, including exact FX correction/reversal legs, old retries after later activity/terminal reversal, funding rollback in either currency, no-op/opening guards, concurrent/stale heads, reserved slots, archived audits and tampered revision postings. Frontend full suite 656 passed, including exact fees/amounts/retry keys, reason/acknowledgement, privacy/offline/pending/error/terminal guards, conflict refresh, keyed form reset, encoded review API and account-scoped invalidation. Both builds/lints, frontend type-check, contract check and both context checks pass; contract drift is zero. No new schema or real-account activation                                                                                                                                                                                                                                           |
+| 3F. Statement-supported dividend reinvestment | Done   | 3A, 3E                                                  | User-approved posting/history first, account-paid residual only. Atomic new equity/ETF income and a separate BUY parcel share statement identity, retained counterpart IDs and full dated replay. Net income exactly funds consideration, fees and residual; no issuer-held credits, extra funding, relinking existing receipts or independent income/acquisition revisions/voids. Historical entitlement and statement tax figures are retained; current quantities do not determine income. Backend full suite 1,244 passed / 204 skipped; all 99 disposable-localhost ledger tests pass, including concurrent exact retries, separate new parcel/tax attributes, ordinary subsequent sales, one-sided revision guards, occupied-slot rollback, later-allotment funding, historical entitlement after disposal, duplicate statement rejection and removed-link tampering. Frontend full suite 669 passed, including exact fractional tax/residual amounts, identical ambiguous-error retry keys, acknowledgement, privacy/offline/pending/stale/error/legacy guards, dashboard entry, masked linked history, encoded API transport and cash/holdings/review invalidation. Both builds/lints, frontend type-check, contract check and both context checks pass; contract drift is zero. No new schema or real-account activation |
+| 3G. Paired audited reinvestment revisions     | Done   | 3F                                                      | Fixed account/asset/currency/source identity; editable statement/tax figures, acquisition units/price/fees, dates/sequences and account-cash residual. Corrections and terminal paired reversals require both current revision heads, account audit/fingerprint, reason, no effective parcel SELLs, reserved historical slots and full funded replay. Exact inverse/replacement postings and source/parcel updates commit atomically; both original and revision retries remain idempotent. Backend full suite 1,254 passed / 207 skipped before the final additional integration case; all 103 localhost ledger tests pass, including competing revisions, reserved slots, archived history, concurrent retries, tax-only changes, terminal reversal, effective-sale/void guard, stale heads, identity/no-op guards, unfunded rollback and tampered postings. Frontend full suite 683 passed, including paired-head submission, exact retry, terminal acknowledgement, sale/offline/privacy/pending/error guards, conflict refresh/reset, encoded API and mock parity. Both builds/lints, frontend type-check, contract check and both context checks pass; contract drift zero. No schema change or activation                                                                                                                  |
 
 Status meanings: **Pending** = not started; **In progress** = actively being implemented;
 **Partial** = some deliverables exist but exit criteria remain; **Blocked** = an explicit
@@ -69,6 +95,11 @@ decision or prerequisite prevents progress; **Done** = all scoped deliverables a
 criteria verified. Checked checklist items denote Done; any corresponding register entry
 must agree. Unchecked items can be Pending, In progress, Partial or Blocked.
 Implementation completion is separate from commit, deployment and account activation.
+The historical frontend build blockers recorded for 2F/3A above are resolved in 3B: the
+misplaced sale `busy` flag now belongs on the close dialog, and unsupported test-only `exact`
+options were removed without changing matching behavior. Current frontend production build and
+type-check both pass. Worktrees remain uncommitted; contract metadata names the current backend
+HEAD until the tested backend milestone is committed and the frontend contract is pulled again.
 
 Before starting a step, read this register and its acceptance criteria, then check the
 relevant code/tests and repository state. Reuse delivered work; do not restart it from
@@ -85,16 +116,19 @@ than maintaining a competing task list.
 
 ### Current capability matrix (not the final launch policy)
 
-| Operation                                             | Legacy / inactive draft                                                                                                 | Active real ledger                                                      | Archived real ledger                           |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------- |
-| Opening preview, saved draft, evidence/reconciliation | Available; draft cash is not spendable                                                                                  | Not an activation or balancing shortcut                                 | Retained history does not permit new spending  |
-| Manual BUY/SELL entry                                 | Existing eligible legacy flow; proposed draft trades are scenarios only                                                 | Coordinated backend writer implemented; ordinary UI routing pending     | New live writes rejected                       |
-| Manual execution correction                           | Eligible recorded trade + draft cash corrections are coordinated; cash-linked financial edits cannot use legacy writers | Dedicated audited BUY/SELL corrections                                  | New live corrections rejected                  |
-| Imported Kraken execution correction                  | Source-linked draft cash supports sequence-only edits, not financial import overrides                                   | Date/sequence/price/fees only; fixed quantity, allocations and currency | New live corrections rejected                  |
-| Manual trade void                                     | No dedicated live void without confirmed ledger                                                                         | SELL or unsold BUY only; terminal retained audit                        | No new void; retained audit read supported     |
-| Deposit/withdrawal and capital revision               | Inactive draft funding/revisions available                                                                              | Planned in 2B-2C                                                        | Live read/reconciliation surface planned in 2D |
-| Imported void, financial move or protected deletion   | Imported/cash-linked records guarded                                                                                    | Explicitly blocked                                                      | Ledger deletion blocked; preserve history      |
-| User-facing confirmation/provisioning                 | Planned in 2F; saving a draft is not confirmation                                                                       | No automatic enablement                                                 | No automatic legacy fallback                   |
+| Operation                                             | Legacy / inactive draft                                                                                                 | Active real ledger                                                                                                                            | Archived real ledger                                                                                          |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Opening preview, saved draft, evidence/reconciliation | Available; draft cash is not spendable                                                                                  | Explicit 2F confirmation enables one eligible account only                                                                                    | Retained history does not permit new spending                                                                 |
+| Manual BUY/SELL entry                                 | Existing eligible legacy flow; proposed draft trades are scenarios only                                                 | Coordinated backend writer and capability-aware ordinary UI routing delivered (2E)                                                            | New live writes rejected                                                                                      |
+| Manual execution correction                           | Eligible recorded trade + draft cash corrections are coordinated; cash-linked financial edits cannot use legacy writers | Dedicated audited BUY/SELL corrections                                                                                                        | New live corrections rejected                                                                                 |
+| Imported Kraken execution correction                  | Source-linked draft cash supports sequence-only edits, not financial import overrides                                   | Date/sequence/price/fees only; fixed quantity, allocations and currency                                                                       | New live corrections rejected                                                                                 |
+| Manual trade void                                     | No dedicated live void without confirmed ledger                                                                         | SELL or unsold BUY only; terminal retained audit                                                                                              | No new void; retained audit read supported                                                                    |
+| Deposit/withdrawal and capital revision               | Inactive draft funding/revisions available                                                                              | Live deposit/withdrawal posting (2B) and audited live revisions (2C) delivered                                                                | Retain residual cash/history; live read/reconciliation delivered (2D); explicit reopening required for writes |
+| Imported void, financial move or protected deletion   | Imported/cash-linked records guarded                                                                                    | Explicitly blocked                                                                                                                            | Ledger deletion blocked; preserve history                                                                     |
+| Same-currency cash transfer                           | No paired draft transfer or implicit activation                                                                         | Paired posting/history (3B), fixed-identity audited replacement and terminal reversal (3C); sender fee only                                   | Retained audit only; both endpoints must be active for posting or revision                                    |
+| Explicit same-account FX                              | No draft conversion or implicit activation                                                                              | Linked postings/history (3D) and audited fixed-identity corrections/terminal reversal (3E); fees in either exchanged currency                 | Retained audit only; new postings/revisions rejected                                                          |
+| Statement-supported dividend reinvestment             | No draft reinvestment or implicit activation                                                                            | Atomic income plus new equity/ETF BUY parcel (3F), account-paid residual; paired audited corrections/reversal (3G) require no effective sales | Retained audit only; new postings/revisions rejected                                                          |
+| User-facing confirmation/provisioning                 | Explicit per-account 2F confirmation is implemented; saving a draft is not confirmation                                 | No automatic enablement                                                                                                                       | No automatic legacy fallback                                                                                  |
 
 Draft cash inactivity does not mean all draft workflows are read-only: dedicated recorded
 manual execution corrections can update the actual transaction/parcel and its linked draft
@@ -231,14 +265,96 @@ duplicate postings or regressions to existing trade history and tax report downl
 
 Prerequisite: increment 2.
 
-Deliver in small slices:
+Deliver in small slices. The first slice (3A) is manual, statement-supported equity/ETF
+cash distributions only: gross, withholding, franked/unfranked split, non-cash AUD franking
+credit, entitlement/payment dates, currency and source reference are retained. The cash ledger
+posts only `gross - withholding`; income is not an external contribution. Users enter source
+figures rather than deriving entitlement from current quantities. The first implementation supports audited replacement and terminal reversal without changing
+asset, currency or source reference; reverse and record a new receipt to correct those identity
+fields. Do not directly edit or delete a posted income event. AMIT components, automated estimates
+and crypto staking remain unsupported.
 
-1. Manual dividend/distribution receipts with gross amount, withholding, net cash,
-   franked/unfranked components and franking credits. Retain supporting provenance.
-2. Transfers between tracked accounts and explicit FX conversions, including fees.
-3. Dividend reinvestment: linked income and acquisition of a new parcel, including
-   residual cash. Entitlement is based on eligible holdings, not current quantities.
-4. Stock splits/consolidations and explicit cost-base adjustments with historical
+Remaining slices:
+
+1. **3B (delivered):** manual same-currency cash transfers between two owned active,
+   confirmed real ledgers on one shared effective date, with independently attested intraday
+   sequences and an explicit sender-paid fee in the principal currency. Existing cash-operation
+   records retain the shared normalized request/hash and opposite endpoint identities; no
+   second editable transfer ledger or schema migration is needed. Both account rows are locked
+   in sorted ID order, both dated timelines must remain funded, and both legs commit or roll
+   back together. No missing currency opening is inferred. Principal counts as external capital
+   at either individual account and cancels when both accounts are selected; fees remain costs.
+   The cash review exposes both endpoint IDs and fees, and validates the paired source/postings.
+   The UI requires online capability checks and acknowledgement of the paired audited workflow.
+   Same-key retries reuse both operation IDs; collisions, stale sources, demo/legacy/archived/
+   unowned endpoints and occupied date/sequence slots fail closed. No holdings move or FX occurs.
+2. **3C (delivered):** paired transfer corrections/reversals preserve accounts, currency
+   and source reference while allowing principal, sender-paid fee, shared effective date and
+   both account sequences to change. Both current audit heads and fresh active source ledgers
+   are required. Sorted account locks, immutable paired revision chains and full-timeline funding
+   ensure atomic replacement or terminal reversal; reversal removes the original economic
+   effect including fees, rather than recording a new return transfer. All original/replacement
+   slots stay reserved. Exact retained retries remain valid after subsequent activity.
+   Sender-side cash review exposes the online-only paired form, reason, acknowledgement and
+   explicit refresh of both heads; privacy, stale/error review and pending writes block submission.
+   Direct edits/deletions and one-sided funding revisions remain rejected. Cross-date
+   settlement/in-transit cash, recipient-side or third-currency fees, external untracked
+   endpoints and holdings transfers need separate policy.
+3. **3D (delivered):** manual same-account FX records one atomic cash operation with
+   positive source and received amounts before separately charged fees, a shared effective
+   date/sequence and statement reference. Both exchanged currencies require explicit opening
+   balances. Fees may be aggregated in either exchanged currency, not a third currency.
+   Full dated replay must stay funded, including source principal/fees and received-currency
+   fees. Both principal legs use `FX_PRINCIPAL`, never external capital; no parcel transactions
+   or reporting-FX valuations are created. Exact amounts are authoritative; market rates and
+   spreads are not inferred. This records a broker conversion; it never executes one or
+   silently funds a purchase. Immutable history and source fingerprints are retained, with
+   exact retries and fail-closed source/posting validation. Dashboard entry is online-only,
+   capability-gated and privacy/pending protected; live cash review shows both amounts and fees.
+   Third-currency fees and cross-date settlement remain unsupported.
+   **3E (delivered):** dedicated audited corrections retain the account, ordered currency
+   pair and source reference while allowing exchanged amounts, fees, date and sequence to change.
+   Current revision/audit/fingerprint and reason are required under the account/user lock.
+   Exact inverse/replacement legs restate the dated currency timeline atomically; all original
+   and replacement slots remain reserved. Reversal is terminal and removes the effective
+   conversion including fees, not a new reverse exchange. Both currencies must remain funded.
+   Original records and full audits remain retained; identical old requests can be retried after
+   later activity or terminal reversal. Live cash review opens a fresh operation-specific review
+   regardless of history pagination. The form blocks offline/privacy/pending/stale/error review;
+   conflicts require explicit refresh, and refreshed heads reset reason/acknowledgement/fields.
+   To change currency direction or source, reverse and record a new conversion. Generic funding
+   revisions, direct edits/deletions and implicit deposits cannot alter FX history.
+4. **3F (delivered):** one statement-supported equity/ETF command atomically records income
+   once and acquires a new parcel in the same account/currency. Existing income and BUY writers
+   are reused inside one account/user-locked transaction; there is no append-units flow or
+   relinking of an existing receipt/BUY. Exact net income equals consideration plus explicit
+   acquisition fees plus residual cash paid into the account. Issuer-held carry-forward, prior
+   plan credits, external top-ups, cross-currency purchases and complex AMIT components remain
+   unsupported. Consideration must fit existing cent-precision storage without rounding.
+   Statement tax figures and entitlement/payment/acquisition dates are retained with explicit
+   acknowledgement. Historical eligible long holdings are required on the entitlement date,
+   even when sold before payment; current quantities never determine the dividend.
+   Acquisition cannot precede payment, and same-day income must have the earlier sequence.
+   Full dated replay prevents intervening spending from leaving a later allotment unfunded.
+   Both immutable envelopes share the complete normalized request/hash and retain counterpart
+   operation IDs and the new parcel ID. Replay verifies links, snapshots, postings and consecutive
+   fingerprint audits; removing a link cannot bypass mutation guards. Identical retries return
+   the original IDs after later ordinary sales. Online entry is capability-, privacy-, pending-
+   and stale/error-gated for both dates; live cash review retains linked provenance and masks
+   quantities/residuals in privacy mode. Original income/BUY corrections and BUY voids reject
+   independent changes. Archived retained history remains readable without enabling writes.
+   **3G (delivered):** fixed identity paired corrections and terminal reversal require both
+   reviewed revision heads, global audit/fingerprint, a reason and no effective parcel sales.
+   Void effective sales first. Statement tax figures, income/acquisition dates/sequences,
+   units, price, fees and account-cash residual can change together; corrected historical
+   entitlement excludes the reinvestment parcel. Immutable paired revision audits retain
+   inverse/replacement postings, prior heads, historical slots and source fingerprints; full
+   dated cash replay must remain funded. Reversal removes both effective effects without
+   recording a disposal. Exact old retries remain valid after later activity or reversal.
+   The online review blocks privacy, pending, stale/error state and effective sales; conflicts
+   require explicit review refresh and refreshed heads reset reason/acknowledgement. Independent
+   income or BUY revisions/voids remain blocked.
+5. Stock splits/consolidations and explicit cost-base adjustments with historical
    effective dates, provenance and preserved acquisition dates.
 
 Income is an account/asset event with any necessary parcel allocation, not one full
@@ -765,13 +881,16 @@ coherent, tested milestone; no step implicitly activates existing accounts.
 
 Document the launch matrix for legacy, inactive-draft, active real-ledger and archived
 accounts. Keep imported voids, cross-account financial moves, deletion and unsupported
-currencies/shorts blocked. Define how source drift blocks new writes, how users recover,
-and how account closure/reopening interacts with retained balances and audit access.
-Current closure checks effective open inventory; it does **not** yet enforce a cash
-reconciliation/zero-balance gate. Confirm the launch closure policy before changing it.
+currencies/shorts blocked. Source drift blocks new writes without automatically accepting
+changed holdings or history; supported audited corrections/voids are the recovery path for
+covered manual changes, while unsupported drift requires reviewed reconciliation before a
+future confirmation/recovery workflow. Closure is allowed after effective holdings are closed,
+even with residual cash or statement variance. The closed account retains cash/history read-only;
+explicit reopening is required before new financial writes and does not reset accounting state.
 
 Exit: no legacy writer can bypass a supported ledger mutation; each unsupported action has
-an explicit error and documented recovery path. Demo ledgers remain a separate decision.
+an explicit error and documented recovery path. Demo ledgers remain ineligible for real-ledger
+operations; no demo ledger is provisioned.
 
 #### 2B. Live deposits and withdrawals
 
@@ -786,59 +905,125 @@ Same retries have one effect; changed retries conflict. Concurrent spends, forei
 source drift and injected final-write failures leave no partial operation/postings/head.
 Provide UI entry and failure feedback without offline queues.
 
+Delivered and verified 8 November 2026: `POST /api/accounts/:id/cash-operations` stores
+cash-only audited operations with no synthetic transaction, and the frontend provides an
+online-only deposit/withdrawal form. Backend unit/controller tests passed (63 tests), the
+localhost cash-ledger integration suite passed (71 tests), and the frontend feature tests
+passed (68 tests). Backend/frontend builds and lint passed; backend context, frontend context,
+and vendored OpenAPI contract checks are current. The dashboard can show the form before an
+account is ledger-enabled; the server remains authoritative and rejects ineligible accounts.
+Capability-aware entry is still part of the later routing/readiness work; no accounts were
+activated.
+
 #### 2C. Live funding corrections and reversals
 
 Reuse immutable capital revision rules: preserve source/kind/currency, expected revision,
 audit reason and original postings; replacement changes only supported date/sequence/amount.
 Reversal is terminal. Reserve historical slots, replay the complete dated timeline and
-recompute evidence variances without rewriting attestations. Decide how capital revisions
-participate in the live audit ordering without pretending they changed trade source data.
+recompute evidence variances without rewriting attestations. Capital revisions take a slot
+in the account-wide audit-number chain and bind to the expected audit head and source
+fingerprint. Their previous/next source fingerprints are identical: cash-only changes must not
+pretend they changed trade or holdings sources.
 
 Exit: corrected/reversed funding that would unfund a purchase is rejected atomically;
 old retries remain safe after later revisions. The UI shows current effective capital
 separately from original and reversal/replacement audit legs.
 
+Delivered and verified 8 November 2026: `GET /api/accounts/:id/cash-operations` exposes the
+current effective funding alongside original records and retained revision postings.
+`POST /api/accounts/:id/cash-operations/:operationId/corrections` appends amount/date/sequence
+replacements or a terminal reversal. Every correction requires the current operation revision,
+account audit number and accepted source fingerprint; stale requests fail closed. Original and
+prior replacement date/sequence slots remain reserved, and each replacement or reversal is
+accepted only if exact dated replay remains funded. Revisions use the shared audit order while
+leaving the accepted trade-source fingerprint unchanged. The frontend displays original versus
+effective values, signed reversal/replacement legs and reason; mutations are online-only and
+reversal requires explicit acknowledgement. Backend focused unit/controller tests passed
+(196 tests), localhost ledger integration tests passed (74 tests), and focused frontend tests
+passed (51 tests). Backend/frontend builds and lint passed; generated context and vendored
+contract checks pass in both repositories. No accounts were activated.
+
 #### 2D. Live balances, activity and reconciliation
 
-Expose exact balances by currency, effective-dated activity and retained operation revisions
-for a selected account. Carry opening boundary, reviewed as-of date, source freshness,
-funding gaps, unsupported events and statement-evidence variances explicitly.
-Reuse evidence semantics where possible, but do not label a draft report as live.
-Provide read-only archived access and cached/stale offline display, not offline writes.
+Delivered and verified 8 November 2026: `GET /api/accounts/:id/cash-operations` now returns
+the exact replayed balances, paginated effective-dated activity, retained original/current
+operation summaries and revision postings/reasons, opening boundary, reviewed as-of date,
+source freshness, unsupported/unlinked events, and up to 20 retained user-attested evidence
+comparisons. Evidence variance is recomputed against the full effective ledger timeline at its
+attested date; decisions and original statements are not rewritten. Unsupported source
+operations are explicit, and active stale source history makes the result incomplete. A closed
+account remains readable but is clearly marked `NOT_REVALIDATED` and read-only.
 
-Exit: displayed balances equal replay after trades, imports, corrections and voids;
-no duplicated execution cash or gain added separately. Tampered audits fail visibly.
-Matching user-attested evidence is not broker verification or proof of complete performance.
+The dashboard review shows cached last-successful data offline with a stale warning and never
+queues writes. It explicitly distinguishes user attestation from broker verification. Manual and
+imported trade replay, sale void, evidence variance, archive, source drift, unlinked trades and
+tampered postings are covered by localhost integration cases. Targeted backend unit/controller
+tests passed (172), localhost accounting integration tests passed (78), frontend feature/API
+tests passed (31), backend/frontend builds and lint passed, and both context builds/checks plus
+the vendored contract check passed. The first integration run caught a fixture mutation that did
+not alter the source fingerprint; the fixture was corrected to mutate the transaction amount
+that feeds the fingerprint, and the complete 78-test suite then passed. No activation occurred.
 
-#### 2E. Ordinary manual trade-entry routing
+Exit met for the scoped read surface: balances match one replay of trades, imports, corrections
+and voids, without adding gains separately; tampered audits fail visibly. The larger accounting
+system remains incomplete by design—attested evidence is not broker verification or proof of
+complete performance.
 
-Expose an explicit backend-owned ledger capability/readiness signal; do not infer activation
-from the existence of correction metadata or a non-empty holding. Route BUY/partial/full SELL
-entry through the coordinated writer only for ledger-enabled accounts; legacy/demo accounts
-keep their existing supported flows. Handle empty accounts, exact full acquisition metadata,
-explicit funding prompts, stale heads and post-boundary dates.
+#### 2E. Ordinary manual trade-entry routing — Done
 
-Exit: ordinary entry works on an empty funded live account, closing/reopening inventory remains
-correct, and unavailable/offline ledger writes cannot fall through to the legacy/offline queue.
+`GET /api/accounts/:id/trade-capability` returns the backend-owned effective-date capability
+(`LIVE_LEDGER`, `LEGACY`, `DEMO`, `ARCHIVED` or `BLOCKED`), the opening boundary and the next
+available same-day sequence. It validates account ownership, active confirmed-ledger state,
+source freshness and unsupported history without activating or provisioning the account.
+Ordinary BUY and partial/full SELL forms route through the coordinated writer only for
+`LIVE_LEDGER`; legacy/demo flows remain unchanged. Live entry preserves acquisition and close
+metadata, enforces the post-opening boundary, and reports funding failures explicitly.
+Unknown/unavailable capability, blocked/archived state, and offline live writes fail closed;
+live writes are never queued. Existing legacy/demo offline behavior is unchanged; for
+non-demo API-backed accounts, offline queueing requires cached capability to explicitly
+identify `LEGACY` or `DEMO`.
+
+Exit verified: the empty-account BUY and full SELL integration case preserves metadata and
+advances the dated sequence; backend focused tests (49), the localhost accounting integration
+suite (79), frontend focused tests (137), both builds, both linters, both context checks and
+the frontend contract check pass. No account is activated.
 
 #### 2F. Reviewed confirmation, controlled enablement and release proof
 
-Agree the treatment of saved draft operations/proposals/revisions before cutover: either
-carry eligible reviewed history forward atomically or block it pending explicit resolution.
-Never discard it, post it twice, or promote speculative proposed trades into real holdings.
-Specify current source/evidence review, opening valuation completeness, unsupported event
-policy and retry-safe confirmation before implementing provisioning.
+**Cutover policy:** saved draft operations, proposals and revisions are never carried into the
+live ledger automatically. A selected opening statement containing any such operation cannot
+be confirmed. Existing activity on other inactive statement revisions remains immutable and
+inactive; confirmation requires the user to explicitly acknowledge that those drafts are
+excluded, not posted or promoted into real holdings. The confirmed statement's immutable
+confirmation audit records that choice. No draft is deleted or modified.
+
+Confirmation is per-account and requires an explicit user action. The service revalidates the
+selected saved statement under the owned account lock and inside the same transaction that
+creates its active ledger. Source fingerprints must still match at the reviewed observation
+date; current opening inventory must have no blocking preview issues; dated cash must replay
+without a funding gap; the latest user-attested cash evidence must be funded and exactly match
+replay; and no post-boundary trades may remain. Users must select an opening boundary after
+their existing trade history, because saved activity on the selected draft blocks confirmation.
+Unsupported import, income, short, currency or audit states block confirmation rather than being
+inferred or discarded. Evidence remains user-attested, not broker-verified. Unknown opening
+valuations do not block cash/trade accounting, but confirmation explicitly acknowledges that
+performance returns remain unavailable until sourced valuations exist.
 
 Under the owned account lock, revalidate the reviewed Sydney end-of-day opening inventory,
-cash and accepted source, record explicit user confirmation and atomically provision the
-confirmed statement and ledger. Test concurrent trades/imports/corrections/voids, competing
-confirmation, account close/delete and user deletion. Rehearse migrations and per-account
-enable/disable procedures; disabling must not unlock a divergent legacy financial writer.
+cash, statement version and accepted source; record the actor, acknowledgements, cash evidence
+identity and excluded draft activity; then atomically confirm the statement and create its
+active ledger. Activity on other inactive drafts is shown with statement/version/count and stays
+retained but excluded; it is never promoted or posted. Retries with the original idempotency key
+and payload return the same confirmation; conflicting keys/payloads cannot create another
+ledger. Unit and disposable-localhost tests cover stale source, selected-draft activity,
+idempotency, competing confirmation, account close and user-deletion races. The only activation
+path is this explicit authenticated action; saving/reviewing a draft, capability lookup and
+ordinary trade entry do not activate accounts.
 
-Exit: an eligible account can be enabled deliberately, never in bulk; rejected/stale/failed
-confirmation has no partial effects. Steps 2A-2E are verified, retained tax PDFs still download,
-and all unresolved source/funding/operation blockers prevent release. Unknown valuations keep
-returns unavailable even if cash/trade tracking can be enabled.
+Exit: one eligible account can be enabled deliberately, never in bulk; rejected/stale/failed
+confirmation has no partial effects. Unknown valuations keep returns unavailable even if
+cash/trade tracking can be enabled. The feature is implemented and tested on disposable
+localhost fixtures only; no real account has been activated.
 
 ### Handoff and commit discipline
 
@@ -868,6 +1053,12 @@ After these gates, deliver income/transfers/adjustments, sourced valuations, cas
 returns and risk metrics, then broader ingestion and tax readiness as described in increments
 3–6. Ledger-backed demo accounts remain a separate proving-ground decision, not a shortcut to
 real-account activation.
+
+The 8 November 2026 2D context build, frontend contract pull, and both repositories' context and
+contract freshness checks passed. The frontend contract metadata still names backend HEAD
+`6d2566b28103` because the backend milestone is uncommitted; after committing backend 2D, pull the
+contract again and regenerate frontend context so the recorded source commit matches that backend
+commit. Worktrees remain uncommitted; do not activate accounts.
 
 Ledger-backed demo accounts are a subsequent controlled proving ground, not enabled by this
 increment. They should share the accounting engine and audit/funding rules with real accounts,

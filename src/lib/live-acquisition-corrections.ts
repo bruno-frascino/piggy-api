@@ -67,6 +67,7 @@ export async function readLiveAcquisitionCorrections(
     },
   })
   for (const operation of operations) {
+    if (!operation.transaction) continue
     const trade = operation.transaction
     if (trade.position.transactions.length !== 1) continue
     const latest = operation.revisions.at(-1)

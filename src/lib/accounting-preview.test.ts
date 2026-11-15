@@ -307,6 +307,20 @@ describe('opening inventory and trade-only cash', () => {
       ])
     )
   })
+  it('does not treat account archival status as a source change', () => {
+    const active = preview([])
+    const archived = buildOpeningPreview(
+      { ...account, status: 'CLOSED' },
+      [],
+      input,
+      [],
+      now
+    )
+    expect(
+      archived.issues.some((issue) => issue.code === 'CLOSED_ACCOUNT')
+    ).toBe(true)
+    expect(archived.sourceFingerprint).toBe(active.sourceFingerprint)
+  })
   it('retains crypto dust and fingerprints request and source changes deterministically', () => {
     const p = position(
       [tx('b', 'BUY', '2026-09-01', '0.000000000001', '0')],

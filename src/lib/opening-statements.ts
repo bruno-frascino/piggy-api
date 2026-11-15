@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
 import { prisma } from './prisma.js'
-import { lockActiveUser } from './user-lock.js'
+import { lockOwnedTradingAccount } from './account-lock.js'
 import { parseOpeningPreviewInput } from './accounting-preview.js'
 import { readAccountOpeningPreview } from './accounting-preview-service.js'
+import { isConcurrentConflict } from './transaction-conflict.js'
 
 const statementSelect = {
   id: true,
@@ -18,7 +19,14 @@ const statementSelect = {
     orderBy: { currency: 'asc' },
     select: { currency: true, amount: true },
   },
-  _count: { select: { parcels: true } },
+  cashLedger: {
+    select: {
+      confirmedByUserId: true,
+      confirmedAt: true,
+      confirmationAudit: true,
+    },
+  },
+  _count: { select: { parcels: true, cashOperations: true } },
 } as const
 
 type StatementDb = Pick<typeof prisma, 'accountOpeningStatement'>
@@ -37,7 +45,10 @@ type StatementRow = NonNullable<
 >
 
 function statementSummary(row: StatementRow) {
-  if (row.state !== 'DRAFT' || row.timezone !== 'Australia/Sydney')
+  if (
+    (row.state !== 'DRAFT' && row.state !== 'CONFIRMED') ||
+    row.timezone !== 'Australia/Sydney'
+  )
     throw new Error('Unsupported opening statement state or timezone')
   return {
     id: row.id,
@@ -45,7 +56,7 @@ function statementSummary(row: StatementRow) {
     version: row.version,
     openingDate: row.openingDate.toISOString().slice(0, 10),
     timezone: 'Australia/Sydney' as const,
-    state: 'DRAFT' as const,
+    state: row.state,
     sourceFingerprint: row.sourceFingerprint,
     createdAt: row.createdAt.toISOString(),
     cashBalances: row.cashBalances.map((balance) => ({
@@ -53,29 +64,19 @@ function statementSummary(row: StatementRow) {
       amount: balance.amount.toFixed(),
     })),
     parcelCount: row._count.parcels,
+    draftOperationCount: row._count.cashOperations,
+    confirmation: row.cashLedger
+      ? {
+          confirmedByUserId: row.cashLedger.confirmedByUserId,
+          confirmedAt: row.cashLedger.confirmedAt?.toISOString() ?? null,
+          audit: row.cashLedger.confirmationAudit,
+        }
+      : null,
   }
 }
 
 function clientError(status: number, name: string, message: string): never {
   throw Object.assign(new Error(message), { status, name })
-}
-
-function isConcurrentConflict(error: unknown) {
-  if (!error || typeof error !== 'object') return false
-  if ('code' in error && (error.code === 'P2034' || error.code === 'P2002'))
-    return true
-  // PostgreSQL serialization failures at COMMIT can escape Prisma's P2034 mapping.
-  return (
-    'name' in error &&
-    error.name === 'DriverAdapterError' &&
-    'cause' in error &&
-    error.cause !== null &&
-    typeof error.cause === 'object' &&
-    'kind' in error.cause &&
-    error.cause.kind === 'TransactionWriteConflict' &&
-    'originalCode' in error.cause &&
-    error.cause.originalCode === '40001'
-  )
 }
 
 export async function saveOpeningStatement(
@@ -105,7 +106,7 @@ export async function saveOpeningStatement(
     try {
       return await prisma.$transaction(
         async (db) => {
-          await lockActiveUser(db, userId)
+          await lockOwnedTradingAccount(db, userId, accountId)
           const account = await db.tradingAccount.findFirst({
             where: { id: accountId, userId },
             select: { id: true, isDemo: true, status: true },
@@ -124,6 +125,12 @@ export async function saveOpeningStatement(
             sourceFingerprint
           )
           if (existing) {
+            if (existing.state !== 'DRAFT')
+              clientError(
+                409,
+                'Conflict',
+                'This opening statement is confirmed and cannot be saved as an inactive draft'
+              )
             if (existing.inputHash !== inputHash)
               clientError(
                 409,

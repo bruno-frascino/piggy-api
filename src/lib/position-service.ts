@@ -1,5 +1,9 @@
 import { prisma } from './prisma.js'
 import { normalizeInstrument } from './crypto/instrument.js'
+import {
+  getKrakenMarkets,
+  KrakenMarketsUnavailable,
+} from './crypto/kraken-markets.js'
 
 // Business-logic helpers extracted from the positions controller so they can
 // be unit-tested independently of Express/route wiring and are no longer
@@ -12,7 +16,8 @@ export async function findOrCreateAsset(
   assetType?: string,
   industry?: string,
   sector?: string,
-  marketCap?: number
+  marketCap?: number,
+  db: Pick<typeof prisma, 'asset'> = prisma
 ) {
   const normalizedExchange = exchangeCode.trim().toUpperCase()
   const instrument = normalizeInstrument(symbol, normalizedExchange, assetType)
@@ -29,7 +34,7 @@ export async function findOrCreateAsset(
     throw err
   }
 
-  const existing = await prisma.asset.findUnique({
+  const existing = await db.asset.findUnique({
     where: {
       symbol_exchangeId: { symbol: normalizedSymbol, exchangeId: exchange.id },
     },
@@ -60,7 +65,7 @@ export async function findOrCreateAsset(
       updateData.marketCap = marketCap
     }
     if (Object.keys(updateData).length > 0) {
-      return prisma.asset.update({
+      return db.asset.update({
         where: { id: existing.id },
         data: updateData,
       })
@@ -68,7 +73,7 @@ export async function findOrCreateAsset(
     return existing
   }
 
-  return prisma.asset.create({
+  return db.asset.create({
     data: {
       symbol: normalizedSymbol,
       name: name?.trim() || normalizedSymbol,
@@ -79,6 +84,43 @@ export async function findOrCreateAsset(
       exchangeId: exchange.id,
     },
   })
+}
+
+export async function validateKrakenMarket(
+  symbol: string,
+  exchangeCode: string,
+  assetType?: string
+) {
+  const instrument = normalizeInstrument(symbol, exchangeCode, assetType)
+  if (exchangeCode === 'KRAKEN' || exchangeCode === 'KRAKEN_USD') {
+    try {
+      const markets = await getKrakenMarkets()
+      if (
+        !markets.some(
+          (market) =>
+            market.symbol === instrument.symbol &&
+            market.exchangeCode === exchangeCode
+        )
+      ) {
+        throw Object.assign(
+          new Error(
+            "This coin is not listed in Kraken's catalogue for the selected currency. Choose another coin or import historical trades."
+          ),
+          { status: 400 }
+        )
+      }
+    } catch (error) {
+      if (!(error instanceof KrakenMarketsUnavailable)) throw error
+      console.error('Kraken position validation failed:', error.message)
+      throw Object.assign(
+        new Error(
+          'Kraken market validation is temporarily unavailable. Please try again.'
+        ),
+        { status: 503 }
+      )
+    }
+  }
+  return instrument
 }
 
 export async function resolveTradingAccount(

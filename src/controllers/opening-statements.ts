@@ -23,6 +23,7 @@ import {
   saveDraftManualExecutionCash,
   correctDraftRecordedSale,
   correctDraftRecordedAcquisition,
+  confirmOpeningStatement,
   previewDraftCashEvidence,
 } from '../lib/draft-cash-ledger.js'
 
@@ -35,17 +36,26 @@ router.use(authenticateToken)
  *   schemas:
  *     OpeningStatement:
  *       type: object
- *       required: [id, accountId, version, openingDate, timezone, state, sourceFingerprint, createdAt, cashBalances, parcelCount]
+ *       required: [id, accountId, version, openingDate, timezone, state, sourceFingerprint, createdAt, cashBalances, parcelCount, draftOperationCount, confirmation]
  *       properties:
  *         id: { type: string }
  *         accountId: { type: string }
  *         version: { type: integer, minimum: 1 }
  *         openingDate: { type: string, format: date }
  *         timezone: { type: string, enum: [Australia/Sydney] }
- *         state: { type: string, enum: [DRAFT], description: Inactive statement; never spendable cash or confirmed accounting. }
+ *         state: { type: string, enum: [DRAFT, CONFIRMED], description: DRAFT is inactive; CONFIRMED is linked atomically to the account's active cash ledger. }
  *         sourceFingerprint: { type: string }
  *         createdAt: { type: string, format: date-time }
  *         parcelCount: { type: integer }
+ *         draftOperationCount: { type: integer, description: Inactive operations retained on this statement; any non-zero count blocks confirmation. }
+ *         confirmation:
+ *           type: object
+ *           nullable: true
+ *           required: [confirmedByUserId, confirmedAt, audit]
+ *           properties:
+ *             confirmedByUserId: { type: string, nullable: true }
+ *             confirmedAt: { type: string, format: date-time, nullable: true }
+ *             audit: { type: object, nullable: true, additionalProperties: true }
  *         cashBalances:
  *           type: array
  *           items:
@@ -54,6 +64,18 @@ router.use(authenticateToken)
  *             properties:
  *               currency: { type: string }
  *               amount: { type: string, description: Explicit opening cash as a decimal string. }
+ *     OpeningConfirmationResult:
+ *       type: object
+ *       required: [accountId, statementId, openingDate, ledgerState, confirmedAt, confirmedByUserId, confirmationAudit, created]
+ *       properties:
+ *         accountId: { type: string }
+ *         statementId: { type: string }
+ *         openingDate: { type: string, format: date }
+ *         ledgerState: { type: string, enum: [ACTIVE] }
+ *         confirmedAt: { type: string, format: date-time, nullable: true }
+ *         confirmedByUserId: { type: string, nullable: true }
+ *         confirmationAudit: { type: object, nullable: true, additionalProperties: true }
+ *         created: { type: boolean, description: False for an identical idempotent retry. }
  * /api/accounts/{id}/opening-statements:
  *   post:
  *     summary: Save a reviewed opening preview as an immutable inactive draft
@@ -134,8 +156,8 @@ router.post(
  * @swagger
  * /api/accounts/{id}/opening-statements:
  *   get:
- *     summary: List inactive opening draft revisions newest first
- *     description: Returns up to 20 revisions with explicit cash balances and parcel counts. Saved snapshots are not current account valuations. Closed accounts retain access; drafts are removed with account/user deletion.
+ *     summary: List opening statement revisions newest first
+ *     description: Returns up to 20 inactive drafts or confirmed statements with explicit cash balances, parcel counts, operation counts and confirmation audit metadata. Saved snapshots are not current account valuations. Closed accounts retain access; drafts are removed with account/user deletion.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -150,7 +172,7 @@ router.post(
  *         description: Exclusive cursor from nextBeforeVersion.
  *     responses:
  *       200:
- *         description: Inactive statement revision page.
+ *         description: Opening statement revision page.
  *         content:
  *           application/json:
  *             schema:
@@ -212,7 +234,7 @@ router.get(
  *         required: true
  *         schema: { type: string }
  *     responses:
- *       200: { description: 'Read-only draft reconciliation including cash evidence/variances, source savedFingerprint/acceptedFingerprint/currentFingerprint/correctionCount/changed, cash-operation currentRevisionId/capital cash/revisions (revisionId, reason, replacement boolean, nullable executionAudit containing number, previousFingerprint, nextFingerprint, reviewed input and before/after transaction snapshots; acquisition audits have kind BUY and input quantity, historical sale audits are untagged), effective or reversed sources, imported execution eligibility with duplicate transaction-link detection and cashManualExecutions (transactionId, positionId, kind, quantity, effectiveDate, occurredAt, currency, price, grossValue, fee, stageable, reason, operationId). Audit snapshots include transactionId, positionId, ISO date, quantity, price, totalValue, fees and currency. Manual eligibility excludes broker-linked allocations, imported/short parcels, unsupported money, boundary/future dates, stale snapshots, unavailable accounts and incompatible opening-sale proposals.' }
+ *       200: { description: 'Read-only draft reconciliation including cash evidence/variances, source savedFingerprint/acceptedFingerprint/currentFingerprint/correctionCount/changed, confirmationReview (eligible, blockers, excludedDraftActivity with statementId/version/operationCount), cash-operation currentRevisionId/capital cash/revisions (revisionId, reason, replacement boolean, nullable executionAudit containing number, previousFingerprint, nextFingerprint, reviewed input and before/after transaction snapshots; acquisition audits have kind BUY and input quantity, historical sale audits are untagged), effective or reversed sources, imported execution eligibility with duplicate transaction-link detection and cashManualExecutions (transactionId, positionId, kind, quantity, effectiveDate, occurredAt, currency, price, grossValue, fee, stageable, reason, operationId). Audit snapshots include transactionId, positionId, ISO date, quantity, price, totalValue, fees and currency. Manual eligibility excludes broker-linked allocations, imported/short parcels, unsupported money, boundary/future dates, stale snapshots, unavailable accounts and incompatible opening-sale proposals.' }
  *       401: { description: Authentication required. }
  *       404: { description: Account or opening statement not found. }
  *       409: { description: Stored draft audit history is inconsistent. }
@@ -233,6 +255,113 @@ router.get(
     )
     res.set('Cache-Control', 'no-store')
     res.json({ success: true, data: result })
+  })
+)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/opening-statements/{statementId}/confirm:
+ *   post:
+ *     summary: Confirm one reviewed opening statement and atomically enable its cash ledger
+ *     description: Per-account and retry-safe. Requires the latest clean draft, matching source records at the reviewed observation date, issue-free supported inventory, no post-boundary trades, funded replay, exact latest user-attested cash evidence and explicit acknowledgements. Saved activity on the selected draft blocks confirmation; activity on other inactive drafts is retained and explicitly excluded, never posted or promoted. Confirmation creates no valuation or performance return. This endpoint enables only the selected account and is never called implicitly.
+ *     tags: [Accounts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: statementId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [idempotencyKey, expectedSourceFingerprint, acknowledgements]
+ *             properties:
+ *               idempotencyKey: { type: string, minLength: 1, maxLength: 200 }
+ *               expectedSourceFingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+ *               acknowledgements:
+ *                 type: object
+ *                 required: [openingBalancesReviewed, cashEvidenceUserAttested, priorDraftActivityExcluded, returnsUnavailableWithoutValuations]
+ *                 properties:
+ *                   openingBalancesReviewed: { type: boolean, enum: [true] }
+ *                   cashEvidenceUserAttested: { type: boolean, enum: [true] }
+ *                   priorDraftActivityExcluded: { type: boolean, enum: [true] }
+ *                   returnsUnavailableWithoutValuations: { type: boolean, enum: [true] }
+ *     responses:
+ *       201:
+ *         description: Opening statement confirmation and active ledger committed atomically.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, data]
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data: { $ref: '#/components/schemas/OpeningConfirmationResult' }
+ *       200:
+ *         description: Idempotent retry of the original confirmation.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, data]
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data: { $ref: '#/components/schemas/OpeningConfirmationResult' }
+ *       400: { description: Invalid confirmation command or incomplete acknowledgement. }
+ *       401: { description: Authentication required. }
+ *       404: { description: Account or opening statement not found. }
+ *       409: { description: Source/evidence drift, unresolved history, ineligible account or competing confirmation. }
+ *       422: { description: Reconciliation exceeds supported confirmation limits. }
+ */
+router.post(
+  '/:id/opening-statements/:statementId/confirm',
+  [
+    param('id').isString().trim().isLength({ min: 1, max: 100 }),
+    param('statementId').isString().trim().isLength({ min: 1, max: 100 }),
+    body().isObject(),
+    body('idempotencyKey').isString().trim().isLength({ min: 1, max: 200 }),
+    body('expectedSourceFingerprint')
+      .isString()
+      .matches(/^[a-f0-9]{64}$/),
+    body('acknowledgements')
+      .isObject()
+      .custom((value: unknown) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value))
+          return false
+        const keys = Object.keys(value)
+        return (
+          keys.length === 4 &&
+          [
+            'openingBalancesReviewed',
+            'cashEvidenceUserAttested',
+            'priorDraftActivityExcluded',
+            'returnsUnavailableWithoutValuations',
+          ].every((key) => keys.includes(key))
+        )
+      }),
+    body('acknowledgements.openingBalancesReviewed').equals('true'),
+    body('acknowledgements.cashEvidenceUserAttested').equals('true'),
+    body('acknowledgements.priorDraftActivityExcluded').equals('true'),
+    body('acknowledgements.returnsUnavailableWithoutValuations').equals('true'),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await confirmOpeningStatement(
+      req.user!.userId,
+      String(req.params.id),
+      String(req.params.statementId),
+      req.body
+    )
+    res.set('Cache-Control', 'no-store')
+    res.status(result.created ? 201 : 200).json({ success: true, data: result })
   })
 )
 

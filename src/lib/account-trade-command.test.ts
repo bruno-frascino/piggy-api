@@ -38,7 +38,51 @@ describe('account trade command', () => {
     { ...buy, effectiveDate: '2026-02-30' },
     { ...buy, positionId: 'unexpected' },
     { ...buy, kind: 'SELL' },
+    { ...buy, assetId: undefined, symbol: 'AAPL' },
+    {
+      ...buy,
+      assetId: 'asset-1',
+      openReason: 'Unexpected metadata with asset ID',
+    },
   ])('rejects malformed or ambiguous commands %#', (input) => {
     expect(() => parseAccountTradeInput(input)).toThrow()
+  })
+
+  it('preserves symbol-based acquisition metadata and sale close metadata', () => {
+    expect(
+      parseAccountTradeInput({
+        ...buy,
+        assetId: undefined,
+        symbol: 'aapl',
+        exchangeCode: 'nasdaq',
+        assetName: 'Apple',
+        assetType: 'EQUITY',
+        industry: 'Technology',
+        openReason: 'Long-term holding',
+        stopLossPrice: '150',
+      })
+    ).toMatchObject({
+      kind: 'BUY',
+      symbol: 'AAPL',
+      exchangeCode: 'NASDAQ',
+      assetName: 'Apple',
+      industry: 'Technology',
+      openReason: 'Long-term holding',
+      stopLossPrice: '150',
+    })
+    expect(
+      parseAccountTradeInput({
+        kind: 'SELL',
+        positionId: 'position-1',
+        idempotencyKey: 'sell-1',
+        effectiveDate: '2026-10-02',
+        sequence: 2,
+        quantity: '1',
+        price: '12',
+        fees: '0',
+        closeReason: 'TARGET',
+        notes: 'Target reached',
+      })
+    ).toMatchObject({ closeReason: 'TARGET', notes: 'Target reached' })
   })
 })

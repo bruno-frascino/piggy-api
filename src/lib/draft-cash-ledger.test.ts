@@ -34,6 +34,8 @@ const mocks = vi.hoisted(() => ({
   evidencePreview: vi.fn(),
   importedEvents: vi.fn(),
   importedEvent: vi.fn(),
+  ledgerFindUnique: vi.fn(),
+  statementActivityFindMany: vi.fn(),
 }))
 vi.mock('./prisma.js', () => ({
   prisma: {
@@ -161,8 +163,11 @@ beforeEach(() => {
     exchange: { currency: 'AUD' },
   })
   mocks.preview.mockResolvedValue({
+    asOfDate: '2026-10-31',
     sourceFingerprint: fingerprint,
     parcels: [],
+    issues: [],
+    counts: { postBoundaryTrades: 0 },
   })
   mocks.position.mockResolvedValue({
     assetId: 'asset1',
@@ -172,6 +177,8 @@ beforeEach(() => {
   mocks.evidenceFindUnique.mockResolvedValue(null)
   mocks.evidenceCreate.mockResolvedValue({ id: 'evidence-1' })
   mocks.evidencePreview.mockResolvedValue({})
+  mocks.ledgerFindUnique.mockResolvedValue(null)
+  mocks.statementActivityFindMany.mockResolvedValue([])
   mocks.importedEvents.mockResolvedValue([])
   mocks.importedEvent.mockResolvedValue(null)
   mocks.transactions.mockResolvedValue([trade])
@@ -179,7 +186,11 @@ beforeEach(() => {
   mocks.transaction.mockImplementation(
     async (callback: (db: unknown) => Promise<unknown>) =>
       callback({
-        accountOpeningStatement: { findFirst: mocks.statement },
+        accountOpeningStatement: {
+          findFirst: mocks.statement,
+          findMany: mocks.statementActivityFindMany,
+        },
+        accountCashLedger: { findUnique: mocks.ledgerFindUnique },
         draftCashOperation: { findMany: mocks.rows, create: mocks.create },
         draftOperationTradeLink: { count: mocks.linkCount },
         draftCashPosting: { count: mocks.postingCount },
@@ -1299,6 +1310,7 @@ describe('read-only opening reconciliation', () => {
     asOfDate: '2026-10-31',
     parcels: [liveParcel],
     issues: [],
+    counts: { postBoundaryTrades: 1 },
   }
   const recordedSell = {
     id: 'recorded-sell',
@@ -1743,7 +1755,7 @@ describe('read-only opening reconciliation', () => {
     expect(mocks.create).not.toHaveBeenCalled()
     expect(mocks.createRevision).not.toHaveBeenCalled()
     expect(mocks.position).not.toHaveBeenCalled()
-    expect(mocks.statement).toHaveBeenCalledTimes(2)
+    expect(mocks.statement).toHaveBeenCalledTimes(3)
     expect(mocks.transactions.mock.calls[0][0].where).toEqual({
       position: { accountId: 'a1', userId: 'u1' },
     })

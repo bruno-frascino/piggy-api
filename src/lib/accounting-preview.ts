@@ -344,7 +344,10 @@ export function buildOpeningPreview(
   const sourceFingerprint = createHash('sha256')
     .update(
       JSON.stringify({
-        account,
+        account: {
+          ...account,
+          status: account.status === 'CLOSED' ? 'ACTIVE' : account.status,
+        },
         positions: sourcePositions.map((p) => ({
           ...p,
           transactions: [...p.transactions].sort((a, b) =>

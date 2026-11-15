@@ -28,12 +28,43 @@ export type CashCommand = CommandBase &
         transactionIds: string[]
       }
     | { kind: 'DEPOSIT' | 'WITHDRAWAL'; cash: CashAmount }
+    | {
+        kind: 'FX_CONVERSION'
+        from: CashAmount
+        to: CashAmount
+        fees: CashAmount[]
+      }
+    | {
+        kind: 'TRANSFER_OUT' | 'TRANSFER_IN'
+        cash: CashAmount
+        fee: string
+        transfer: { fromAccountId: string; toAccountId: string }
+      }
+    | {
+        kind: 'INCOME'
+        cash: CashAmount
+        income: {
+          assetId: string
+          entitlementDate: string
+          grossAmount: string
+          withholdingAmount: string
+          frankedAmount: string
+          unfrankedAmount: string
+          frankingCreditAud: string
+        }
+      }
   )
 
 export interface CashLeg {
   currency: string
   amount: string
-  role: 'TRADE_CONSIDERATION' | 'CASH_FEE' | 'EXTERNAL_CAPITAL'
+  role:
+    | 'TRADE_CONSIDERATION'
+    | 'CASH_FEE'
+    | 'EXTERNAL_CAPITAL'
+    | 'INCOME_RECEIPT'
+    | 'TRANSFER_PRINCIPAL'
+    | 'FX_PRINCIPAL'
 }
 
 export interface PreparedCashCommand {
@@ -220,6 +251,47 @@ export function prepareCashCommand(
         role: 'CASH_FEE' as const,
       })),
     ]
+  } else if (row.kind === 'FX_CONVERSION') {
+    fields(row, [...baseFields, 'from', 'to', 'fees'])
+    const from = money(row.from, true)
+    const to = money(row.to, true)
+    if (
+      source.origin !== 'MANUAL' ||
+      from.currency === to.currency ||
+      !Array.isArray(row.fees) ||
+      row.fees.length > 2
+    )
+      fail(
+        400,
+        'FX requires a manual source, two distinct currencies and an explicit fee list'
+      )
+    const fees = Array.from(row.fees, (fee) => money(fee, false)).sort((a, b) =>
+      a.currency.localeCompare(b.currency)
+    )
+    if (
+      new Set(fees.map((fee) => fee.currency)).size !== fees.length ||
+      fees.some(
+        (fee) => fee.currency !== from.currency && fee.currency !== to.currency
+      )
+    )
+      fail(
+        400,
+        'FX fees must be aggregated in the exchanged currencies; third-currency fees are unsupported'
+      )
+    command = { ...base, kind: 'FX_CONVERSION', from, to, fees }
+    legs = [
+      {
+        currency: from.currency,
+        amount: new AccountingDecimal(from.amount).negated().toFixed(),
+        role: 'FX_PRINCIPAL',
+      },
+      { currency: to.currency, amount: to.amount, role: 'FX_PRINCIPAL' },
+      ...fees.map((fee) => ({
+        currency: fee.currency,
+        amount: new AccountingDecimal(fee.amount).negated().toFixed(),
+        role: 'CASH_FEE' as const,
+      })),
+    ]
   } else if (row.kind === 'DEPOSIT' || row.kind === 'WITHDRAWAL') {
     fields(row, [...baseFields, 'cash'])
     const cash = money(row.cash, true)
@@ -235,11 +307,106 @@ export function prepareCashCommand(
         role: 'EXTERNAL_CAPITAL',
       },
     ]
-  } else
-    fail(
-      400,
-      'Only BUY, SELL, DEPOSIT and WITHDRAWAL cash commands are currently supported'
+  } else if (row.kind === 'TRANSFER_OUT' || row.kind === 'TRANSFER_IN') {
+    fields(row, [...baseFields, 'cash', 'fee', 'transfer'])
+    const cash = money(row.cash, true)
+    const fee = money(
+      { currency: cash.currency, amount: row.fee },
+      false
+    ).amount
+    const transfer = record(row.transfer)
+    fields(transfer, ['fromAccountId', 'toAccountId'])
+    const fromAccountId = identifier(transfer.fromAccountId)
+    const toAccountId = identifier(transfer.toAccountId)
+    if (
+      source.origin !== 'MANUAL' ||
+      fromAccountId === toAccountId ||
+      base.accountId !==
+        (row.kind === 'TRANSFER_OUT' ? fromAccountId : toAccountId) ||
+      (row.kind === 'TRANSFER_IN' && fee !== '0')
     )
+      fail(
+        400,
+        'Transfers require distinct paired accounts and a sender-only fee'
+      )
+    command = {
+      ...base,
+      kind: row.kind,
+      cash,
+      fee,
+      transfer: { fromAccountId, toAccountId },
+    }
+    legs = [
+      {
+        currency: cash.currency,
+        amount:
+          row.kind === 'TRANSFER_OUT'
+            ? new AccountingDecimal(cash.amount).negated().toFixed()
+            : cash.amount,
+        role: 'TRANSFER_PRINCIPAL',
+      },
+    ]
+    if (fee !== '0')
+      legs.push({
+        currency: cash.currency,
+        amount: new AccountingDecimal(fee).negated().toFixed(),
+        role: 'CASH_FEE',
+      })
+  } else if (row.kind === 'INCOME') {
+    fields(row, [...baseFields, 'cash', 'income'])
+    const cash = money(row.cash, false)
+    const income = record(row.income)
+    fields(income, [
+      'assetId',
+      'entitlementDate',
+      'grossAmount',
+      'withholdingAmount',
+      'frankedAmount',
+      'unfrankedAmount',
+      'frankingCreditAud',
+    ])
+    if (
+      !isAccountingDate(income.entitlementDate) ||
+      income.entitlementDate > base.effectiveDate ||
+      !isAccountingAmount(income.grossAmount) ||
+      !isAccountingAmount(income.withholdingAmount) ||
+      !isAccountingAmount(income.frankedAmount) ||
+      !isAccountingAmount(income.unfrankedAmount) ||
+      !isAccountingAmount(income.frankingCreditAud) ||
+      !isAccountingCurrency(cash.currency)
+    )
+      fail(400, 'Income receipt contains invalid dates, currency or amounts')
+    const gross = new AccountingDecimal(income.grossAmount)
+    const withholding = new AccountingDecimal(income.withholdingAmount)
+    const franked = new AccountingDecimal(income.frankedAmount)
+    const unfranked = new AccountingDecimal(income.unfrankedAmount)
+    const frankingCreditAud = new AccountingDecimal(income.frankingCreditAud)
+    if (
+      !gross.gt(0) ||
+      withholding.gt(gross) ||
+      !franked.plus(unfranked).eq(gross) ||
+      !gross.minus(withholding).eq(cash.amount) ||
+      ((franked.gt(0) || frankingCreditAud.gt(0)) && cash.currency !== 'AUD')
+    )
+      fail(400, 'Income receipt amounts are inconsistent')
+    command = {
+      ...base,
+      kind: 'INCOME',
+      cash,
+      income: {
+        assetId: identifier(income.assetId),
+        entitlementDate: income.entitlementDate,
+        grossAmount: gross.toFixed(),
+        withholdingAmount: withholding.toFixed(),
+        frankedAmount: franked.toFixed(),
+        unfrankedAmount: unfranked.toFixed(),
+        frankingCreditAud: frankingCreditAud.toFixed(),
+      },
+    }
+    legs = [
+      { currency: cash.currency, amount: cash.amount, role: 'INCOME_RECEIPT' },
+    ]
+  } else fail(400, 'Unsupported cash command kind')
   return {
     methodology: 'cash-ledger-v1',
     command,
@@ -373,7 +540,7 @@ export function replayCashLedger(
         leg.currency,
         (changes.get(leg.currency) ?? new AccountingDecimal(0)).plus(leg.amount)
       )
-      if (leg.role === 'EXTERNAL_CAPITAL')
+      if (leg.role === 'EXTERNAL_CAPITAL' || leg.role === 'TRANSFER_PRINCIPAL')
         balance.external = balance.external.plus(leg.amount)
     }
     const entries: CashReplay['activity'][number]['changes'] = []
@@ -422,7 +589,7 @@ export function requireFundedCashLedger(replay: CashReplay): void {
   if (!replay.funded || replay.fundingIssues.length)
     throw Object.assign(
       new Error(
-        'Insufficient recorded cash in the effective-dated timeline; no deposit was created'
+        'Insufficient recorded cash in the effective-dated timeline. Record a deposit or correct dated activity before retrying; no deposit was created.'
       ),
       {
         status: 422,

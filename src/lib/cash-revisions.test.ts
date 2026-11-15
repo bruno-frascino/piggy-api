@@ -6,7 +6,10 @@ import {
   prepareCashRevision,
   prepareRevisionLegs,
   prepareDraftTradeRevision,
+  prepareLiveCapitalCashRevision,
+  prepareLiveIncomeCashRevision,
 } from './cash-revisions.js'
+import { prepareAccountIncomeReceipt } from './account-income-command.js'
 
 const now = new Date('2026-10-31T12:00:00Z')
 const original = prepareCashCommand(
@@ -32,8 +35,124 @@ const request = {
   reason: 'Correct bank statement amount',
   replacement,
 }
+const incomeOriginal = prepareAccountIncomeReceipt(
+  {
+    idempotencyKey: 'income-original',
+    assetId: 'asset-1',
+    entitlementDate: '2026-10-01',
+    paymentDate: '2026-10-02',
+    sequence: 1,
+    currency: 'AUD',
+    grossAmount: '100',
+    withholdingAmount: '10',
+    frankedAmount: '60',
+    unfrankedAmount: '40',
+    frankingCreditAud: '25',
+    sourceReference: 'statement-1',
+  },
+  'a1',
+  now
+).cash.command
 
 describe('cash revision contract', () => {
+  it('prepares audited income replacements and terminal reversals without changing receipt identity', () => {
+    const raw = {
+      idempotencyKey: 'income-correction',
+      expectedRevisionId: 'income-operation',
+      expectedAuditNumber: 4,
+      expectedSourceFingerprint: 'a'.repeat(64),
+      reason: 'Correct withholding from the statement',
+      replacement: {
+        entitlementDate: '2026-10-01',
+        paymentDate: '2026-10-03',
+        sequence: 2,
+        grossAmount: '100',
+        withholdingAmount: '20',
+        frankedAmount: '60',
+        unfrankedAmount: '40',
+        frankingCreditAud: '25',
+      },
+    }
+    const prepared = prepareLiveIncomeCashRevision(raw, incomeOriginal, now)
+    expect(prepared.request.replacement).toMatchObject({
+      kind: 'INCOME',
+      idempotencyKey: 'income-correction',
+      effectiveDate: '2026-10-03',
+      sequence: 2,
+      cash: { currency: 'AUD', amount: '80' },
+      income: { withholdingAmount: '20' },
+      source: { origin: 'MANUAL', reference: 'statement-1' },
+    })
+    const audited = prepareCashRevision(
+      {
+        ...prepared.request,
+        incomeAudit: {
+          number: 5,
+          previousFingerprint: 'a'.repeat(64),
+          nextFingerprint: 'a'.repeat(64),
+          before: incomeOriginal,
+          after: prepared.request.replacement,
+        },
+      },
+      now
+    )
+    expect(audited.request.incomeAudit?.before).toEqual(incomeOriginal)
+
+    const reversal = prepareLiveIncomeCashRevision(
+      { ...raw, idempotencyKey: 'income-reversal', replacement: null },
+      incomeOriginal,
+      now
+    )
+    expect(reversal.request.replacement).toBeNull()
+    expect(() =>
+      prepareCashRevision(
+        {
+          ...reversal.request,
+          incomeAudit: {
+            number: 5,
+            previousFingerprint: 'a'.repeat(64),
+            nextFingerprint: 'a'.repeat(64),
+            before: incomeOriginal,
+            after: null,
+          },
+        },
+        now
+      )
+    ).not.toThrow()
+
+    for (const invalid of [
+      null,
+      { ...raw, expectedAuditNumber: -1 },
+      { ...raw, expectedSourceFingerprint: 'invalid' },
+      {
+        ...raw,
+        replacement: { ...raw.replacement, assetId: 'asset-2' },
+      },
+      {
+        ...raw,
+        replacement: { ...raw.replacement, currency: 'USD' },
+      },
+      {
+        ...raw,
+        replacement: { ...raw.replacement, paymentDate: '2026-02-30' },
+      },
+      {
+        ...raw,
+        replacement: { ...raw.replacement, withholdingAmount: '101' },
+      },
+      {
+        ...raw,
+        replacement: { ...raw.replacement, unfrankedAmount: '39' },
+      },
+    ])
+      expect(() =>
+        prepareLiveIncomeCashRevision(invalid, incomeOriginal, now)
+      ).toThrow()
+    expect(() => prepareLiveIncomeCashRevision(raw, original, now)).toThrow(
+      'Only manual income'
+    )
+  })
+
   it('only resequences imported execution cash, retaining all persisted financial and source fields', () => {
     const execution = prepareCashCommand(
       {
@@ -150,6 +269,87 @@ describe('cash revision contract', () => {
     expect(() => prepareCapitalCashRevision(raw, trade, now)).toThrow(
       'Only manual'
     )
+  })
+  it('binds live capital revisions to the current audit head and preserves a verifiable cash-only audit', () => {
+    const fingerprint = 'a'.repeat(64)
+    const input = {
+      idempotencyKey: 'live-capital-correction',
+      expectedRevisionId: 'operation-1',
+      expectedAuditNumber: 3,
+      expectedSourceFingerprint: fingerprint,
+      reason: 'Correct bank statement amount',
+      replacement: {
+        effectiveDate: '2026-10-03',
+        sequence: 2,
+        amount: '90',
+      },
+    }
+    const prepared = prepareLiveCapitalCashRevision(input, original, now)
+    const audited = prepareCashRevision(
+      {
+        ...prepared.request,
+        capitalAudit: {
+          number: 4,
+          previousFingerprint: fingerprint,
+          nextFingerprint: fingerprint,
+          before: original,
+          after: prepared.request.replacement,
+        },
+      },
+      now
+    )
+    expect(audited.payloadHash).toBe(prepared.payloadHash)
+    expect(audited.request.capitalAudit).toMatchObject({
+      number: 4,
+      before: original,
+      after: prepared.request.replacement,
+    })
+    expect(
+      prepareLiveCapitalCashRevision(
+        { ...input, replacement: null },
+        original,
+        now
+      ).request.replacement
+    ).toBeNull()
+    for (const invalid of [
+      { ...input, expectedAuditNumber: -1 },
+      { ...input, expectedAuditNumber: 1.5 },
+      { ...input, expectedSourceFingerprint: 'bad' },
+      { ...input, replacement: { ...input.replacement, currency: 'USD' } },
+      { ...input, replacement: { ...input.replacement, sequence: 0 } },
+    ])
+      expect(() =>
+        prepareLiveCapitalCashRevision(invalid, original, now)
+      ).toThrow()
+    for (const invalidAudit of [
+      {
+        number: 5,
+        previousFingerprint: fingerprint,
+        nextFingerprint: fingerprint,
+        before: original,
+        after: prepared.request.replacement,
+      },
+      {
+        number: 4,
+        previousFingerprint: 'b'.repeat(64),
+        nextFingerprint: fingerprint,
+        before: original,
+        after: prepared.request.replacement,
+      },
+      {
+        number: 4,
+        previousFingerprint: fingerprint,
+        nextFingerprint: fingerprint,
+        before: original,
+        after: original,
+      },
+    ])
+      expect(() =>
+        prepareCashRevision(
+          { ...prepared.request, capitalAudit: invalidAudit },
+          now
+        )
+      ).toThrow()
   })
   it('binds quantity and price independently of equal trade consideration in revision hashes', () => {
     const trade = {

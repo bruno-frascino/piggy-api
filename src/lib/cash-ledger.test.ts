@@ -70,6 +70,36 @@ describe('cash command preparation', () => {
       ])
     }
   )
+  it('posts income net cash without classifying it as an external capital flow', () => {
+    const income: CashCommand = {
+      accountId: 'a1',
+      idempotencyKey: 'income-1',
+      source: { origin: 'MANUAL', reference: 'dividend statement' },
+      effectiveDate: '2026-10-15',
+      sequence: 1,
+      kind: 'INCOME',
+      cash: { currency: 'AUD', amount: '85' },
+      income: {
+        assetId: 'asset-1',
+        entitlementDate: '2026-10-01',
+        grossAmount: '100',
+        withholdingAmount: '15',
+        frankedAmount: '60',
+        unfrankedAmount: '40',
+        frankingCreditAud: '25',
+      },
+    }
+    const prepared = prepare(income)
+    expect(prepared.legs).toEqual([
+      { currency: 'AUD', amount: '85', role: 'INCOME_RECEIPT' },
+    ])
+    const replayed = replay([income])
+    expect(replayed.balances[0]).toMatchObject({
+      endingAmount: '10085',
+      netExternalContribution: '0',
+    })
+    expect(replayed.activity[0]?.kind).toBe('INCOME')
+  })
   it('groups one imported sale execution across parcels without multiplying receipts or fees', () => {
     const command = trade({
       kind: 'SELL',

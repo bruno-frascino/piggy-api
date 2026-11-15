@@ -16,6 +16,7 @@ const {
   manualExecution,
   saleCorrection,
   acquisitionCorrection,
+  confirm,
 } = vi.hoisted(() => ({
   save: vi.fn(),
   list: vi.fn(),
@@ -29,6 +30,7 @@ const {
   manualExecution: vi.fn(),
   saleCorrection: vi.fn(),
   acquisitionCorrection: vi.fn(),
+  confirm: vi.fn(),
 }))
 vi.mock('../lib/opening-statements.js', () => ({
   saveOpeningStatement: save,
@@ -45,6 +47,7 @@ vi.mock('../lib/draft-cash-ledger.js', () => ({
   saveDraftManualExecutionCash: manualExecution,
   correctDraftRecordedSale: saleCorrection,
   correctDraftRecordedAcquisition: acquisitionCorrection,
+  confirmOpeningStatement: confirm,
 }))
 vi.mock('../middleware/auth.js', () => ({
   authenticateToken: (req: Request, res: Response, next: NextFunction) => {
@@ -88,6 +91,12 @@ beforeEach(() => {
     operationId: 'op1',
     revisionId: 'rev1',
     state: 'DRAFT',
+    created: true,
+  })
+  confirm.mockResolvedValue({
+    accountId: 'a1',
+    statementId: 's1',
+    ledgerState: 'ACTIVE',
     created: true,
   })
 })
@@ -484,6 +493,53 @@ describe('opening statement endpoints', () => {
     expect(response.body.data.accountingActive).toBe(false)
     expect(response.headers['cache-control']).toBe('no-store')
     expect(reconcile).toHaveBeenCalledWith('u1', 's1', 'a1')
+  })
+
+  it('authenticates, validates acknowledgements and posts one reviewed confirmation', async () => {
+    const path = '/api/accounts/a1/opening-statements/s1/confirm'
+    const confirmation = {
+      idempotencyKey: 'confirm-1',
+      expectedSourceFingerprint: 'a'.repeat(64),
+      acknowledgements: {
+        openingBalancesReviewed: true,
+        cashEvidenceUserAttested: true,
+        priorDraftActivityExcluded: true,
+        returnsUnavailableWithoutValuations: true,
+      },
+    }
+    await request(app()).post(path).send(confirmation).expect(401)
+    for (const invalid of [
+      {},
+      { ...confirmation, expectedSourceFingerprint: 'invalid' },
+      {
+        ...confirmation,
+        acknowledgements: {
+          ...confirmation.acknowledgements,
+          openingBalancesReviewed: false,
+        },
+      },
+      {
+        ...confirmation,
+        acknowledgements: {
+          ...confirmation.acknowledgements,
+          extra: true,
+        },
+      },
+    ]) {
+      await request(app())
+        .post(path)
+        .set('Authorization', '******')
+        .send(invalid)
+        .expect(400)
+    }
+    expect(confirm).not.toHaveBeenCalled()
+    const response = await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(confirmation)
+      .expect(201)
+    expect(response.headers['cache-control']).toBe('no-store')
+    expect(confirm).toHaveBeenCalledWith('u1', 'a1', 's1', confirmation)
   })
 
   it('validates and stores manual statement evidence with explicit attestation', async () => {

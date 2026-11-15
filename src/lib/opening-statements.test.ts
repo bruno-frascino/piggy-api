@@ -20,7 +20,9 @@ vi.mock('./prisma.js', () => ({
 vi.mock('./accounting-preview-service.js', () => ({
   readAccountOpeningPreview: mocks.preview,
 }))
-vi.mock('./user-lock.js', () => ({ lockActiveUser: vi.fn() }))
+vi.mock('./account-lock.js', () => ({
+  lockOwnedTradingAccount: vi.fn(),
+}))
 import {
   listOpeningStatements,
   saveOpeningStatement,
@@ -73,7 +75,8 @@ const row = {
   inputHash,
   createdAt: new Date('2026-10-31T00:00:00Z'),
   cashBalances: [{ currency: 'AUD', amount: { toFixed: () => '1000' } }],
-  _count: { parcels: 1 },
+  cashLedger: null,
+  _count: { parcels: 1, cashOperations: 0 },
 }
 const db = {
   tradingAccount: { findFirst: mocks.account },
@@ -291,10 +294,10 @@ describe('inactive opening statement revisions', () => {
     })
     expect(mocks.list).not.toHaveBeenCalled()
   })
-  it('fails explicitly on unsupported stored state or timezone', async () => {
+  it('refuses to reuse a confirmed statement as a new inactive draft', async () => {
     mocks.unique.mockResolvedValue({ ...row, state: 'CONFIRMED' })
-    await expect(saveOpeningStatement('u1', 'a1', request)).rejects.toThrow(
-      'Unsupported opening statement'
-    )
+    await expect(
+      saveOpeningStatement('u1', 'a1', request)
+    ).rejects.toMatchObject({ status: 409 })
   })
 })

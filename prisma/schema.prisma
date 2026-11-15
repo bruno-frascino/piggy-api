@@ -326,6 +326,11 @@ model AccountCashLedger {
   state                     String   @default("ACTIVE")
   openingSourceFingerprint  String
   acceptedSourceFingerprint String
+  confirmedByUserId         String?
+  confirmedAt               DateTime?
+  confirmationIdempotencyKey String?  @unique
+  confirmationPayloadHash    String?
+  confirmationAudit          Json?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
@@ -341,7 +346,7 @@ model AccountCashOperation {
   accountId           String
   idempotencyKey      String
   payloadHash         String
-  transactionId       String   @unique
+  transactionId       String?  @unique
   importedEventId     String?  @unique
   kind                String
   effectiveDate       DateTime @db.Date
@@ -354,10 +359,11 @@ model AccountCashOperation {
   recordedAt          DateTime @default(now())
 
   ledger        AccountCashLedger              @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
-  transaction   Transaction                    @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  transaction   Transaction?                   @relation(fields: [transactionId], references: [id], onDelete: Restrict)
   importedEvent ImportedEvent?                 @relation(fields: [importedEventId], references: [id], onDelete: Restrict)
   postings      AccountCashPosting[]
   revisions     AccountCashOperationRevision[]
+  incomeReceipt AccountIncomeReceipt?
 
   @@unique([accountId, id])
   @@unique([accountId, idempotencyKey])
@@ -378,6 +384,28 @@ model AccountCashPosting {
 
   @@unique([operationId, legIndex])
   @@map("account_cash_postings")
+}
+
+model AccountIncomeReceipt {
+  id                    String   @id @default(cuid())
+  accountId             String
+  operationId           String   @unique
+  assetId               String
+  entitlementDate       DateTime @db.Date
+  currency              String
+  grossAmount           Decimal  @db.Decimal(38, 12)
+  withholdingAmount     Decimal  @db.Decimal(38, 12)
+  frankedAmount         Decimal  @db.Decimal(38, 12)
+  unfrankedAmount       Decimal  @db.Decimal(38, 12)
+  frankingCreditAud     Decimal  @db.Decimal(38, 12)
+  recordedAt            DateTime @default(now())
+
+  operation AccountCashOperation @relation(fields: [accountId, operationId], references: [accountId, id], onDelete: Cascade)
+  asset     Asset                @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, operationId])
+  @@unique([accountId, id])
+  @@map("account_income_receipts")
 }
 
 model AccountCashOperationRevision {
@@ -446,6 +474,7 @@ model Asset {
 
   exchange       Exchange        @relation(fields: [exchangeId], references: [id])
   positions      Position[]
+  incomeReceipts AccountIncomeReceipt[]
   priceHistory   PriceHistory[]
   watchlistItems WatchlistItem[]
 

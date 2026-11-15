@@ -21,6 +21,7 @@ import {
 import {
   findOrCreateAsset,
   resolveTradingAccount,
+  validateKrakenMarket,
 } from '../lib/position-service.js'
 import { normalizeInstrument } from '../lib/crypto/instrument.js'
 import {
@@ -30,10 +31,6 @@ import {
   createPosition,
   updatePositionAcquisition,
 } from '../lib/position-mutations.js'
-import {
-  getKrakenMarkets,
-  KrakenMarketsUnavailable,
-} from '../lib/crypto/kraken-markets.js'
 
 const router = Router()
 router.use(authenticateToken)
@@ -44,41 +41,6 @@ function jsonRecord(value: unknown): Record<string, unknown> | null {
     : null
 }
 
-async function validateKrakenMarket(
-  symbol: string,
-  exchangeCode: string,
-  assetType?: string
-) {
-  const instrument = normalizeInstrument(symbol, exchangeCode, assetType)
-  if (exchangeCode === 'KRAKEN' || exchangeCode === 'KRAKEN_USD') {
-    try {
-      const markets = await getKrakenMarkets()
-      if (
-        !markets.some(
-          (m) =>
-            m.symbol === instrument.symbol && m.exchangeCode === exchangeCode
-        )
-      ) {
-        throw Object.assign(
-          new Error(
-            "This coin is not listed in Kraken's catalogue for the selected currency. Choose another coin or import historical trades."
-          ),
-          { status: 400 }
-        )
-      }
-    } catch (error) {
-      if (!(error instanceof KrakenMarketsUnavailable)) throw error
-      console.error('Kraken position validation failed:', error.message)
-      throw Object.assign(
-        new Error(
-          'Kraken market validation is temporarily unavailable. Please try again.'
-        ),
-        { status: 503 }
-      )
-    }
-  }
-  return instrument
-}
 // Mirrors the Prisma `CloseReason` enum (only lib/prisma.ts may import @prisma/client).
 const CLOSE_REASONS = ['STOP_LOSS', 'TARGET', 'MANUAL', 'OTHER']
 

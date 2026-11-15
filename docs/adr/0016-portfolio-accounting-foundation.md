@@ -1,16 +1,24 @@
 # 0016. Confirmed opening statements and source-linked portfolio accounting
 
 - **Status**: Proposed overall architecture; implemented slices include gated manual/supported
-  Kraken posting, audited manual/imported execution corrections and terminal manual trade voids.
-  No user-facing account activation exists. Imported voids, financial moves/deletion and
-  unsupported currencies remain blocked. The delivery plan owns remaining-step status.
+  Kraken posting, audited manual/imported execution corrections, terminal manual trade voids,
+  live funding revisions, capability-aware ordinary BUY/SELL routing and explicit reviewed
+  per-account confirmation. Statement-supported manual equity/ETF income receipts now have
+  audited replacement and terminal reversal; AMIT, holdings transfers, imported voids, financial
+  moves/deletion and unsupported currencies remain blocked. Paired same-currency cash-transfer
+  posting/history and fixed-identity paired corrections/terminal reversals are implemented;
+  manual same-account FX posting/history and audited fixed-identity corrections/terminal
+  reversals are implemented. The delivery plan owns remaining-step
+  status.
 - **Date**: 2026-10-31
-- **Last reviewed**: 2026-11-07
+- **Last reviewed**: 2026-11-14
 - **Implementation**: executable reference specification, read-only opening preview, persistent
-  inactive drafts, a gated atomic trade/cash writer, and audited manual/imported BUY/SELL
-  corrections and manual voids with retained audit access. The writer requires an explicitly provisioned confirmed opening statement and
-  active cash ledger; there is no user-facing confirmation, account provisioning, or activation
-  workflow.
+  inactive drafts, a gated atomic trade/cash writer, audited manual/imported BUY/SELL
+  corrections, manual voids with retained audit access, capability-aware ordinary trade-entry
+  routing, user-triggered per-account confirmation, and statement-based manual income posting
+  with immutable correction/reversal revisions. Confirmation atomically marks the latest eligible
+  opening statement confirmed and creates its active ledger; no account is provisioned or
+  activated implicitly or by the implementation process.
 
 ## Context
 
@@ -35,12 +43,15 @@ delivered work or skipping unfinished gates. This ADR records policy, not a sepa
 These sections describe the target accounting contract unless an implementation section
 explicitly states otherwise. `LEGACY`, `CONFIRMED` and `RECONCILIATION_REQUIRED` below are
 product readiness concepts, not a claim that all are persisted account states or exposed
-in a provisioning API. Existing draft funding is inactive; live funding, live review and
-controlled confirmation remain planned. See delivery steps 2A-2F in the
-[plan](../portfolio-foundation-plan.md#remaining-increment-2-steps-implement-in-this-order).
+in a provisioning API. Existing draft funding remains inactive; live deposit/withdrawal
+posting, audited funding corrections/reversals, live review and ordinary trade-entry routing
+and controlled confirmation are implemented. See delivery steps 2A-2F in the
+[plan](../portfolio-foundation-plan.md#remaining-increment-2-steps-implement-in-this-order)
+and current income scope 3A in its status register.
 Implementation notes record successive milestones; older statements about unavailable
-corrections/reversals are historical. The final delivery-boundary section and current plan
-take precedence when determining what is now implemented.
+capital corrections/reversals and trade-entry routing are historical. The final
+delivery-boundary section and current plan take precedence when determining what is now
+implemented.
 
 ### Opening boundary and account readiness
 
@@ -102,8 +113,79 @@ effective dates; correction time remains separately recorded.
 
 ### Funding, ordering and ownership
 
+The first transfer slice is same-currency cash only between two owned active real ledgers.
+It uses existing immutable cash operations: a shared normalized request/hash and command key
+link `TRANSFER_OUT` and `TRANSFER_IN`, with both endpoint IDs retained. Posting is atomic under
+sorted account locks; each endpoint has its own stable intraday sequence on the same effective
+date, after both opening boundaries. Both currencies must have explicit opening balances.
+Only the sender pays the explicit fee, in that currency. Transfer principal alone affects
+account-level external capital and cancels across a scope containing both endpoints; the fee
+is a cost. Replay verifies the counterpart's ownership, request, economics and stored postings
+without requiring that a subsequently archived counterpart be reopened to read retained history.
+There is no transfer of positions, automatic FX or account activation. Direct edits/deletion
+and one-sided revisions are blocked. Paired corrections preserve both account IDs, currency
+and source reference; principal, sender-paid fee, shared effective date and both sequences may
+change. Both reviewed audit heads and fresh active ledgers are required under sorted account
+locks. Immutable paired revision chains retain original/replacement postings and reserve all
+historical date/sequence slots. Both effective-dated timelines must remain funded. Reversal is
+terminal and removes the original economic effect including its fee, not a new return transfer.
+Identical retained requests can be retried after later activity; altered payloads or stale heads
+fail closed. Sender-side online review manages both histories; do not simulate corrections with
+unrelated deposits/withdrawals. Settlement across different dates/in-transit
+balances and recipient/third-currency fees remain unsupported.
+
 Do not create implicit deposits or convert currencies automatically. A BUY requires recorded
 cash in its payment currency including fees. Net-negative SELL receipts also require funding.
+
+Explicit same-account FX records an already executed broker conversion, not a live exchange.
+One immutable cash operation links positive source and gross received amounts before explicit
+fees on a shared date/sequence. Fees may be aggregated in either exchanged currency; third-currency
+fees and cross-date settlement remain unsupported. Both opening currency balances must be
+explicit, and full effective-dated replay including fees must stay funded. Source-currency fees
+debit in addition to exchanged principal; received-currency fees reduce the gross credit.
+Principal uses `FX_PRINCIPAL`, not external capital, and fees remain costs. Actual exchanged
+amounts and statement reference are authoritative; no market rate, spread, parcel transaction,
+reporting-currency valuation or account activation is inferred. Account/user locking and retained
+canonical command identity protect atomic posting and exact retries. Cash-only source fingerprints
+remain unchanged. Dedicated FX revisions keep the account, currency pair/direction and source
+reference fixed while allowing exchanged amounts, fees, date and sequence to change. The
+current revision/audit/fingerprint and reason must match under the account/user lock. Immutable
+inverse/replacement legs restate the effective timeline, reserve every original/replacement
+slot and require funded replay in both currencies. Reversal is terminal and removes the
+effective conversion including fees; it is not a new reverse exchange. Identical retained
+requests can be retried after later activity or reversal. Generic funding or one-sided revisions
+cannot alter FX postings. Currency/source mistakes require reversal and a new conversion.
+Archived audit reads remain supported, but new revisions require a fresh active ledger.
+
+Statement-supported dividend reinvestment is one atomic command linking an equity/ETF income
+receipt and a new BUY parcel in the same account and currency. It reuses the ordinary income
+and acquisition writers inside one locked transaction, never appends units or adopts an
+already recorded receipt/BUY. Exact net income must equal acquisition consideration plus
+explicit fees and residual cash paid into the account. Existing cent-precision consideration
+storage must represent the exact product without rounding. Issuer-held carry-forward, prior
+plan credits, external top-ups, cross-currency acquisitions and complex AMIT components remain
+unsupported; users explicitly confirm the statement and residual disposition.
+Eligible historical long holdings on the entitlement date are required, including parcels
+disposed of after that date; current quantities are not an entitlement estimate. Statement
+gross/withholding/franked/unfranked/franking figures remain authoritative. Payment and
+acquisition retain their own dates/sequences; acquisition cannot precede payment, and
+same-day acquisition follows the income sequence. Full dated replay includes both operations,
+so intervening spending cannot leave a later allotment unfunded.
+Both immutable operation envelopes retain the complete normalized request, counterpart IDs and
+new parcel ID, bound by one account-scoped payload hash. Replay validates both links, original
+request/transaction snapshots, consecutive audit numbers, source fingerprints and postings;
+removing a link cannot turn either half into an ordinary editable operation. Exact retries
+return the retained IDs even after subsequent sales. Independent income revisions and BUY
+corrections/voids are blocked; the dedicated paired audited workflow replaces both effects
+with both revision heads, account audit/fingerprint and a reason. Account, asset, currency
+and statement reference remain fixed. Corrections can change tax figures, dates/sequences,
+units, price, fees and account-cash residual. Corrected entitlement is checked against
+historical holdings excluding the new parcel. Effective sales must be voided before correction
+or terminal reversal. Reversal removes income and acquisition without creating a disposal.
+Immutable paired inverse/replacement postings, source snapshots, funded dated replay and
+reserved historical slots are validated atomically; exact retries remain valid after later
+changes. Ordinary sales of the new parcel remain supported. No new schema, external capital, valuation or activation
+is introduced. Archived history remains readable without enabling new posting.
 
 Replay the effective-dated timeline when accepting backdated changes; a non-negative current
 balance is insufficient. Date-only operations use a persisted stable sequence within a day.
@@ -116,12 +198,17 @@ source/idempotency constraints complement locks. Tests must demonstrate concurre
 cannot overdraw balances. Test-only arithmetic does not establish those guarantees.
 
 Ownership/authentication checks cover every account, parcel, source and transfer endpoint.
-Only supported active accounts accept new spending; closed accounts retain balances and
-history, and cannot close with undisposed holdings or unexplained residual cash. Existing
-deletion guards, demo exclusions and soft-delete/purge rules continue to apply.
-The current closure writer checks effective open/partial inventory and retains ledger records;
-it does not check residual cash or statement variance. The launch closure/reopening policy must
-be confirmed and enforced before cutover; archived audit access is already implemented.
+Only supported active accounts accept new spending. Closure requires no effective open or
+partial holdings, but residual cash and statement variance do not prevent closure: the account
+and its cash/history remain retained and read-only. Reopening is explicit and required before
+new financial writes; it does not reset cash, opening evidence or audit history. Archival status
+does not change the accounting source fingerprint, and close/reopen preserves the account
+timestamp used by that fingerprint. Source drift blocks writes without silently advancing the
+accepted fingerprint; supported audited correction/void workflows cover eligible manual
+changes, while unsupported drift requires reviewed reconciliation before a future recovery
+workflow can resolve it. Metadata-only account renames do not alter the accounting source
+timestamp. Existing deletion guards, demo exclusions and soft-delete/purge rules continue to
+apply; archived audit access remains available.
 
 ### Decimal precision and reporting
 
@@ -387,7 +474,10 @@ an already-closed legacy account. Real-account deletion rereads position and tax
 guards under lock; demo deletion preserves its existing full cascade policy. Inactive statements,
 draft operations and import batches cascade with account deletion, never becoming live cash.
 
-The user-selected archival policy requires reopening before adding open holdings. Manual BUY
+The user-selected archival policy permits residual cash/history to remain read-only after closing,
+and requires explicit reopening before new financial writes. Close/reopen and metadata-only
+renames preserve the account source timestamp; archival status is normalized out of the opening
+source fingerprint. This keeps lifecycle changes from creating false source drift. Manual BUY
 creation rereads account status after locking; acquisition edits/moves that leave open holdings
 in a closed account fail with 409 and roll back BUY/parcel/recomputation changes. Historical
 cost/metadata corrections and movements of fully closed parcels remain permitted. Missing explicit
@@ -662,9 +752,10 @@ Imported financial adjustments, execution reversals, and coordinated move/deleti
 remain cutover blockers. Existing preview ordering stays deliberately unverified; it cannot be
 promoted into stable ledger order automatically.
 
-Persisted user-facing opening confirmation, account activation, cutover invalidation, production
-XIRR, corporate-action tax treatment and scheduling remain unimplemented. The current live
-trade writer is gated behind manually provisioned confirmed-ledger state and has integration
+At this earlier milestone, persisted user-facing opening confirmation and account activation
+were not yet implemented; step 2F below subsequently delivered the controlled per-account flow.
+Production XIRR, corporate-action tax treatment and scheduling remain unimplemented. The live
+trade writer is gated behind confirmed-ledger state and has integration
 coverage for atomic BUY/SELL posting, retries, source drift, funding and concurrent spending.
 Kraken imports for ledger-backed accounts require one complete batch containing only supported
 BUY/SELL executions. The writer derives Sydney-date sequence from execution timestamps, rejects
@@ -822,11 +913,26 @@ cannot bypass the ledger: they are rejected for ledger-backed accounts until coo
 corrections exist. Kraken imports are supported only as complete BUY/SELL batches with
 timestamp-derived sequencing and same-day ambiguity blocks; import records and cash postings
 commit atomically. Closing an account retains its ledger and history. Legacy accounts without a
-ledger retain their previous behavior. The frontend exposes manual-trade transport and a
-non-retrying React Query hook, but does not route the existing trade-entry UI to this endpoint.
-There is no confirmation, activation, balance-read or performance surface in this increment;
-live posting is not available to ordinary users until a separate reviewed activation flow
-provisions the ledger.
+ledger retain their previous behavior. Ordinary BUY and partial/full SELL forms now resolve
+the server-owned capability and route through this writer only for `LIVE_LEDGER`; legacy/demo
+accounts retain their existing supported flows.
+
+### Capability-aware ordinary trade-entry routing
+
+`GET /api/accounts/:id/trade-capability` resolves the server-owned write mode for an
+effective date: `LIVE_LEDGER`, `LEGACY`, `DEMO`, `ARCHIVED` or `BLOCKED`. It checks account
+ownership, confirmed active-ledger state, source freshness and unsupported history, and
+returns the opening boundary and next available same-day sequence. It is read-only and never
+provisions or activates an account.
+
+The ordinary BUY and partial/full SELL forms use the coordinated writer only for
+`LIVE_LEDGER`; legacy/demo accounts retain their existing supported flows. Live forms preserve
+acquisition/close metadata, require a date after the opening boundary and submit exact decimal
+strings with a stable retry identity. Unknown or blocked capability, stale source history,
+archived accounts and offline live submissions fail closed rather than falling through to a
+legacy mutation or offline queue. A cached capability permits offline queueing only when it
+explicitly identifies `LEGACY` or `DEMO` for non-demo API-backed accounts; existing local
+demo practice behavior is unchanged. This routing does not enable account activation.
 
 ### Audited corrections for live manual sales
 
@@ -890,6 +996,90 @@ parcels) and SELLs; holdings provide controls for imported BUYs. The UI requires
 and acknowledgement and rejects offline/stale writes. This does not activate accounts or enable
 execution reversals, arbitrary import adjustments, moves or deletion.
 
+### Live deposits and withdrawals
+
+`POST /api/accounts/{id}/cash-operations` records a manual deposit or withdrawal only for an
+already confirmed active real ledger. The command requires an exact positive amount, supported
+currency, effective Sydney date, stable sequence, explicit source reference and account-scoped
+idempotency key. Under the account lock, the writer validates stored audit/posting consistency,
+checks source freshness, reserves the date/sequence slot and replays the full dated timeline.
+Any withdrawal or backdated flow that leaves a later balance negative is rejected atomically.
+The response includes the resulting cash replay; it does not create a transaction, position or
+opening statement and does not change the accepted holdings-source fingerprint.
+
+`AccountCashOperation.transactionId` is nullable for these cash-only records; the command and
+cash postings remain the immutable source of truth. No synthetic BUY/SELL is created. The
+frontend form preserves retry identity for unchanged requests and never queues offline writes.
+
+### Live funding corrections and reversals
+
+`GET /api/accounts/{id}/cash-operations` presents each original cash-only funding operation,
+its current effective command, and retained correction/reversal posting legs. The endpoint
+replays the complete live cash history and fails visibly if the source or audit chain is
+invalid.
+
+`POST /api/accounts/{id}/cash-operations/{operationId}/corrections` appends an immutable
+revision. A replacement can change only effective date, stable sequence and exact amount;
+kind, source reference, account and currency come from the original operation. A reversal is
+terminal. Original and superseded replacement slots remain reserved. Every command validates
+the current operation revision, account-wide audit number and accepted source fingerprint
+under the account lock, then replays the full dated timeline before persistence. A correction
+that would make any later balance negative is rejected atomically. Same-command retries return
+the prior revision, including after later revisions; changed retries conflict.
+
+Capital revisions participate in the account-wide audit-number chain, but do not modify the
+accepted holdings-source fingerprint: their `previousFingerprint` and `nextFingerprint` are
+equal. The revision audit records exact before/after commands and reversal/replacement postings,
+without rewriting the original operation or any evidence attestations. The frontend provides
+an online-only review and correction panel and requires an explicit acknowledgement for
+terminal reversal. This is not a full live balance/evidence reconciliation surface (2D), and
+does not introduce account activation or provisioning.
+
+### Live balances, activity and evidence review
+
+`GET /api/accounts/{id}/cash-operations` also serves as the read-only live cash review for
+ledger-backed real accounts. It reports exact replayed balances by currency, effective-dated
+cash activity, the Sydney end-of-day opening boundary, source freshness, funding gaps,
+unsupported/unlinked events, and retained operation/revision summaries. A stale active source
+or unsupported event marks the replay incomplete; the last validated ledger replay is not
+presented as a complete current balance. Invalid audit chains or postings fail visibly rather
+than returning partial/success-shaped balances.
+
+The read surface also works after account closure. Archived accounts are explicitly marked
+read-only and their current source freshness is reported as not revalidated; their retained
+replay remains available for history, not as a current broker balance. Saved cash evidence is
+compared to the effective dated replay at its attested date, with original decisions retained.
+Exact agreement remains user-attested evidence, not broker verification or proof of complete
+performance. The frontend can display cached last-successful read data offline with a stale
+indicator; it does not queue or retry writes.
+
+### Manual cash income receipts (increment 3A first slice)
+
+`POST /api/accounts/{id}/income-receipts` accepts only statement-entered equity/ETF
+distributions for an asset already present in the account's non-voided holdings history.
+Entitlement date, payment/effective date, stable sequence, settlement currency, gross,
+withholding, franked and unfranked amounts, non-cash AUD franking credit, and source reference
+are retained in an income receipt linked to one immutable cash operation. Franked plus
+unfranked amounts must equal gross; withholding cannot exceed gross. The effective cash posting
+is exactly gross less withholding, and income does not count as external capital. A franking
+credit never increases spendable cash.
+
+The endpoint requires an active confirmed ledger, a payment date after its opening boundary,
+current source history, a free date/sequence slot and a funded replay. Same-payload retries are
+idempotent. The frontend loads both open and closed historical equity/ETF positions for asset
+selection and shows receipt attributes in the retained cash audit. This first slice does not
+derive entitlement from parcel quantities and is not a broker verification or tax calculation.
+
+`POST /api/accounts/{id}/income-receipts/{operationId}/corrections` appends immutable replacement
+or terminal reversal revisions, with before/after income commands and reversal/replacement cash
+postings. A replacement can correct dates, sequence, gross, withholding and tax attributes, but
+preserves asset, currency and source reference; reverse and record a new receipt to change those
+identity fields. The complete dated cash replay must remain funded, date/sequence slots remain
+reserved, stale audit heads conflict, and same-key retries return the original revision even
+after a later revision. Reversed receipts cannot be revised again. Receipts and revisions are
+never directly edited or deleted. AMIT components, automated estimates, crypto staking and
+transfers remain excluded.
+
 ### Terminal audited manual trade voids
 
 `POST /api/accounts/{id}/trades/{transactionId}/voids` appends a terminal manual
@@ -926,17 +1116,29 @@ after the supported ledger reconciles.
 
 ### Current delivery boundary and next work
 
-The live writer and audited manual/imported BUY/SELL correction paths are gated behind manually
-provisioned confirmed-ledger state. Imported correction is limited to fixed quantities and parcel
-allocations in one currency; it does not activate accounts, and ordinary legacy accounts continue
-using legacy trade behavior. Manual voids are now supported; imported reversals and financial
-moves/deletion remain explicitly blocked. Before any real account is enabled, deliver audited
-live deposits/withdrawals and cash balance/activity/reconciliation views, then provide a reviewed per-account
-confirmation/cutover flow that revalidates the opening preview and atomically provisions the
-confirmed statement and active ledger. Ordinary trade-entry routing and balance/activity/
-reconciliation must be ready before activation, with regression and concurrency tests proving
-that activation cannot race or partially apply. Income, transfers, sourced valuations, production
-XIRR, corporate-action tax treatment, and scheduled valuation remain subsequent work;
+The live trade and deposit/withdrawal writers, audited live funding revisions and audited
+manual/imported BUY/SELL correction paths require the matching confirmed statement and active
+ledger. Imported correction is limited to fixed quantities and parcel allocations in one
+currency; it does not activate accounts, and ordinary legacy accounts continue using legacy
+trade behavior. Manual voids are supported; imported reversals and financial moves/deletion
+remain explicitly blocked. Live cash review, capability-aware ordinary trade-entry routing and
+the explicit confirmation flow are implemented.
+
+Confirmation is per-account and online-only. Under the owned account lock and a serializable
+transaction it requires the latest draft for an active real account, no selected-draft activity,
+no post-boundary trades, a current accepted source fingerprint at the saved observation date,
+no blocking inventory issues, funded cash replay and the latest funded user-attested statement
+evidence exactly matching replay. Other draft activity is listed and retained as excluded; the
+user explicitly acknowledges the opening balances, attested evidence, exclusion and unavailable
+returns without sourced valuations. The actor, timestamp, idempotency identity, evidence identity,
+acknowledgements and excluded-draft summary are retained with the confirmed statement/ledger.
+Same-key retries return the original result, and serialization conflicts are retried safely.
+Unit and disposable-localhost tests cover activity/source blockers, idempotency, competing
+confirmation, account closure and user-deletion races. Only this explicit confirmation action
+can enable one eligible real account; no real account has been activated during development.
+
+Transfers, sourced valuations, production XIRR, corporate-action tax treatment and scheduled
+valuation remain subsequent work;
 accounting-backed performance must not be presented before its data and methodology are
 available. See the [delivery plan](../portfolio-foundation-plan.md) for sequence and acceptance
 gates.

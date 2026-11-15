@@ -117,6 +117,50 @@ describe('locked trading account lifecycle', () => {
     expect(m.update).not.toHaveBeenCalled()
   })
 
+  it('preserves the accounting source timestamp across close and reopen', async () => {
+    const updatedAt = new Date('2026-10-01T00:00:00.000Z')
+    m.account.mockResolvedValue({
+      id: 'a1',
+      status: 'ACTIVE',
+      updatedAt,
+    })
+    await closeTradingAccount('u1', 'a1')
+    expect(m.update).toHaveBeenLastCalledWith({
+      where: { id: 'a1' },
+      data: expect.objectContaining({
+        status: 'CLOSED',
+        updatedAt,
+      }),
+    })
+
+    m.account.mockResolvedValue({
+      id: 'a1',
+      status: 'CLOSED',
+      updatedAt,
+    })
+    await reopenTradingAccount('u1', 'a1')
+    expect(m.update).toHaveBeenLastCalledWith({
+      where: { id: 'a1' },
+      data: { status: 'ACTIVE', closedAt: null, updatedAt },
+    })
+  })
+
+  it('does not make a metadata-only rename look like accounting source drift', async () => {
+    const updatedAt = new Date('2026-10-01T00:00:00.000Z')
+    m.account
+      .mockResolvedValueOnce({
+        id: 'a1',
+        status: 'ACTIVE',
+        updatedAt,
+      })
+      .mockResolvedValueOnce(null)
+    await renameTradingAccount('u1', 'a1', 'New name')
+    expect(m.update).toHaveBeenCalledWith({
+      where: { id: 'a1' },
+      data: { name: 'New name', updatedAt },
+    })
+  })
+
   it('rolls a failing account delete through the transaction rather than claiming success', async () => {
     m.remove.mockRejectedValue(new Error('Injected delete failure'))
     await expect(deleteTradingAccount('u1', 'a1')).rejects.toThrow(

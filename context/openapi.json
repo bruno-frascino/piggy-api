@@ -1,6 +1,552 @@
 {
   "components": {
     "schemas": {
+      "AccountCashTransferCorrectionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "destinationHead": {
+            "$ref": "#/components/schemas/TransferRevisionHead"
+          },
+          "idempotencyKey": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "replacement": {
+            "$ref": "#/components/schemas/TransferReplacement"
+          },
+          "sourceHead": {
+            "$ref": "#/components/schemas/TransferRevisionHead"
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "reason",
+          "sourceHead",
+          "destinationHead",
+          "replacement"
+        ],
+        "type": "object"
+      },
+      "AccountCashTransferCorrectionResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "created": {
+                "type": "boolean"
+              },
+              "destinationOperationId": {
+                "type": "string"
+              },
+              "destinationReplay": {
+                "$ref": "#/components/schemas/DraftCashReplay"
+              },
+              "destinationRevisionId": {
+                "type": "string"
+              },
+              "sourceOperationId": {
+                "type": "string"
+              },
+              "sourceReplay": {
+                "$ref": "#/components/schemas/DraftCashReplay"
+              },
+              "sourceRevisionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sourceOperationId",
+              "destinationOperationId",
+              "sourceRevisionId",
+              "destinationRevisionId",
+              "created",
+              "sourceReplay",
+              "destinationReplay"
+            ],
+            "type": "object"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AccountCashTransferResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "created": {
+                "type": "boolean"
+              },
+              "destinationOperationId": {
+                "type": "string"
+              },
+              "destinationReplay": {
+                "$ref": "#/components/schemas/DraftCashReplay"
+              },
+              "sourceOperationId": {
+                "type": "string"
+              },
+              "sourceReplay": {
+                "$ref": "#/components/schemas/DraftCashReplay"
+              }
+            },
+            "required": [
+              "sourceOperationId",
+              "destinationOperationId",
+              "created",
+              "sourceReplay",
+              "destinationReplay"
+            ],
+            "type": "object"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AccountFxConversionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "effectiveDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "fees": {
+            "description": "Explicit fees aggregated per exchanged currency; empty list means no separately charged fee. Do not infer spread or a market rate.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "amount": {
+                  "description": "Exact non-negative fee.",
+                  "type": "string"
+                },
+                "currency": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "currency",
+                "amount"
+              ],
+              "type": "object"
+            },
+            "maxItems": 2,
+            "type": "array"
+          },
+          "from": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "description": "Exact positive amount exchanged before explicit fees.",
+                "type": "string"
+              },
+              "currency": {
+                "description": "Supported ISO currency",
+                "distinct from to.currency.": null,
+                "type": "string"
+              }
+            },
+            "required": [
+              "currency",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "idempotencyKey": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sourceReference": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "to": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "description": "Exact positive gross amount received before explicit fees.",
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "currency",
+              "amount"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "effectiveDate",
+          "sequence",
+          "from",
+          "to",
+          "fees",
+          "sourceReference"
+        ],
+        "type": "object"
+      },
+      "AccountFxConversionResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "created": {
+                "type": "boolean"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "replay": {
+                "$ref": "#/components/schemas/DraftCashReplay"
+              }
+            },
+            "required": [
+              "operationId",
+              "created",
+              "replay"
+            ],
+            "type": "object"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AccountFxCorrectionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedAuditNumber": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expectedRevisionId": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedSourceFingerprint": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "replacement": {
+            "$ref": "#/components/schemas/FxRevisionReplacement"
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "expectedRevisionId",
+          "expectedAuditNumber",
+          "expectedSourceFingerprint",
+          "reason",
+          "replacement"
+        ],
+        "type": "object"
+      },
+      "AccountFxCorrectionResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "created": {
+                "type": "boolean"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "replay": {
+                "$ref": "#/components/schemas/DraftCashReplay"
+              },
+              "revisionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operationId",
+              "revisionId",
+              "created",
+              "replay"
+            ],
+            "type": "object"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AccountIncomeReceiptResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "created": {
+                "type": "boolean"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "replay": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "activity": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "balances": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "funded": {
+                    "type": "boolean"
+                  },
+                  "fundingIssues": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "openingDate": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "openingDate",
+                  "funded",
+                  "balances",
+                  "activity",
+                  "fundingIssues"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "operationId",
+              "created",
+              "replay"
+            ],
+            "type": "object"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AccountReinvestmentInput": {
+        "additionalProperties": false,
+        "properties": {
+          "acquisition": {
+            "additionalProperties": false,
+            "properties": {
+              "effectiveDate": {
+                "format": "date",
+                "type": "string"
+              },
+              "fees": {
+                "description": "Explicit fees paid from this net distribution in the same currency.",
+                "type": "string"
+              },
+              "price": {
+                "description": "Exact unit price; total consideration must fit existing cent-precision storage without rounding.",
+                "type": "string"
+              },
+              "quantity": {
+                "description": "Exact positive units representable by the existing quantity storage.",
+                "type": "string"
+              },
+              "sequence": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "effectiveDate",
+              "sequence",
+              "quantity",
+              "price",
+              "fees"
+            ],
+            "type": "object"
+          },
+          "idempotencyKey": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "income": {
+            "additionalProperties": false,
+            "properties": {
+              "assetId": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "entitlementDate": {
+                "format": "date",
+                "type": "string"
+              },
+              "frankedAmount": {
+                "type": "string"
+              },
+              "frankingCreditAud": {
+                "type": "string"
+              },
+              "grossAmount": {
+                "type": "string"
+              },
+              "paymentDate": {
+                "format": "date",
+                "type": "string"
+              },
+              "sequence": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "sourceReference": {
+                "type": "string"
+              },
+              "unfrankedAmount": {
+                "type": "string"
+              },
+              "withholdingAmount": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "assetId",
+              "entitlementDate",
+              "paymentDate",
+              "sequence",
+              "currency",
+              "grossAmount",
+              "withholdingAmount",
+              "frankedAmount",
+              "unfrankedAmount",
+              "frankingCreditAud",
+              "sourceReference"
+            ],
+            "type": "object"
+          },
+          "residualAmount": {
+            "description": "Explicit non-negative cash paid into the account after acquisition and fees.",
+            "type": "string"
+          },
+          "residualDisposition": {
+            "enum": [
+              "ACCOUNT_CASH"
+            ],
+            "type": "string"
+          },
+          "statementConfirmed": {
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "income",
+          "acquisition",
+          "residualAmount",
+          "residualDisposition",
+          "statementConfirmed"
+        ],
+        "type": "object"
+      },
+      "AccountReinvestmentResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "acquisitionOperationId": {
+                "type": "string"
+              },
+              "created": {
+                "type": "boolean"
+              },
+              "incomeOperationId": {
+                "type": "string"
+              },
+              "positionId": {
+                "type": "string"
+              },
+              "replay": {
+                "$ref": "#/components/schemas/DraftCashReplay"
+              }
+            },
+            "required": [
+              "incomeOperationId",
+              "acquisitionOperationId",
+              "positionId",
+              "created",
+              "replay"
+            ],
+            "type": "object"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "type": "object"
+      },
       "AccountTradeResponse": {
         "properties": {
           "data": {
@@ -74,6 +620,142 @@
         ],
         "type": "object"
       },
+      "DraftCashReplay": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "activity": {
+            "items": {
+              "properties": {
+                "changes": {
+                  "items": {
+                    "properties": {
+                      "amount": {
+                        "type": "string"
+                      },
+                      "balanceAfter": {
+                        "type": "string"
+                      },
+                      "currency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "currency",
+                      "amount",
+                      "balanceAfter"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "effectiveDate": {
+                  "format": "date",
+                  "type": "string"
+                },
+                "idempotencyKey": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "sequence": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "idempotencyKey",
+                "effectiveDate",
+                "sequence",
+                "kind",
+                "changes"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "balances": {
+            "items": {
+              "properties": {
+                "currency": {
+                  "type": "string"
+                },
+                "endingAmount": {
+                  "type": "string"
+                },
+                "minimumAmount": {
+                  "type": "string"
+                },
+                "netExternalContribution": {
+                  "description": "Includes transfer principal for this account",
+                  "never the transfer fee.": null,
+                  "type": "string"
+                },
+                "openingAmount": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "currency",
+                "openingAmount",
+                "endingAmount",
+                "minimumAmount",
+                "netExternalContribution"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "funded": {
+            "type": "boolean"
+          },
+          "fundingIssues": {
+            "items": {
+              "properties": {
+                "balance": {
+                  "type": "string"
+                },
+                "currency": {
+                  "type": "string"
+                },
+                "effectiveDate": {
+                  "format": "date",
+                  "type": "string"
+                },
+                "idempotencyKey": {
+                  "type": "string"
+                },
+                "sequence": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "currency",
+                "idempotencyKey",
+                "effectiveDate",
+                "sequence",
+                "balance"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "openingDate": {
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "openingDate",
+          "funded",
+          "balances",
+          "activity",
+          "fundingIssues"
+        ],
+        "type": "object"
+      },
       "Error": {
         "properties": {
           "details": {
@@ -92,6 +774,100 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "FxRevisionReplacement": {
+        "additionalProperties": false,
+        "nullable": true,
+        "properties": {
+          "effectiveDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "fees": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "amount": {
+                  "description": "Exact non-negative fee in either fixed exchanged currency.",
+                  "type": "string"
+                },
+                "currency": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "currency",
+                "amount"
+              ],
+              "type": "object"
+            },
+            "maxItems": 2,
+            "type": "array"
+          },
+          "fromAmount": {
+            "description": "Exact positive exchanged amount before fees.",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "toAmount": {
+            "description": "Exact positive received amount before fees.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "effectiveDate",
+          "sequence",
+          "fromAmount",
+          "toAmount",
+          "fees"
+        ],
+        "type": "object"
+      },
+      "LiveCashTransferReview": {
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/TransferReplacement"
+          },
+          "destinationAccountId": {
+            "type": "string"
+          },
+          "destinationHead": {
+            "$ref": "#/components/schemas/TransferRevisionHead"
+          },
+          "destinationOperationId": {
+            "type": "string"
+          },
+          "sourceAccountId": {
+            "type": "string"
+          },
+          "sourceHead": {
+            "$ref": "#/components/schemas/TransferRevisionHead"
+          },
+          "sourceOperationId": {
+            "type": "string"
+          },
+          "sourceReference": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceAccountId",
+          "destinationAccountId",
+          "sourceOperationId",
+          "destinationOperationId",
+          "currency",
+          "sourceReference",
+          "sourceHead",
+          "destinationHead",
+          "current"
+        ],
         "type": "object"
       },
       "LiveExecutionCorrectionResponse": {
@@ -167,6 +943,145 @@
         ],
         "type": "object"
       },
+      "LiveFxConversionReview": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "auditNumber": {
+            "type": "integer"
+          },
+          "current": {
+            "$ref": "#/components/schemas/FxRevisionReplacement"
+          },
+          "expectedRevisionId": {
+            "type": "string"
+          },
+          "fromCurrency": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "sourceFingerprint": {
+            "type": "string"
+          },
+          "sourceReference": {
+            "type": "string"
+          },
+          "toCurrency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "accountId",
+          "fromCurrency",
+          "toCurrency",
+          "sourceReference",
+          "expectedRevisionId",
+          "auditNumber",
+          "sourceFingerprint",
+          "current"
+        ],
+        "type": "object"
+      },
+      "LiveReinvestmentReview": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "acquisitionOperationId": {
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/ReinvestmentCorrectionInput/properties/replacement"
+          },
+          "expectedAcquisitionRevisionId": {
+            "type": "string"
+          },
+          "expectedAuditNumber": {
+            "type": "integer"
+          },
+          "expectedIncomeRevisionId": {
+            "type": "string"
+          },
+          "expectedSourceFingerprint": {
+            "type": "string"
+          },
+          "hasEffectiveSales": {
+            "type": "boolean"
+          },
+          "incomeOperationId": {
+            "type": "string"
+          },
+          "positionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "incomeOperationId",
+          "acquisitionOperationId",
+          "positionId",
+          "expectedIncomeRevisionId",
+          "expectedAcquisitionRevisionId",
+          "expectedAuditNumber",
+          "expectedSourceFingerprint",
+          "current",
+          "hasEffectiveSales"
+        ],
+        "type": "object"
+      },
+      "OpeningConfirmationResult": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "confirmationAudit": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "confirmedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "confirmedByUserId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "created": {
+            "description": "False for an identical idempotent retry.",
+            "type": "boolean"
+          },
+          "ledgerState": {
+            "enum": [
+              "ACTIVE"
+            ],
+            "type": "string"
+          },
+          "openingDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "statementId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "statementId",
+          "openingDate",
+          "ledgerState",
+          "confirmedAt",
+          "confirmedByUserId",
+          "confirmationAudit",
+          "created"
+        ],
+        "type": "object"
+      },
       "OpeningStatement": {
         "properties": {
           "accountId": {
@@ -191,9 +1106,38 @@
             },
             "type": "array"
           },
+          "confirmation": {
+            "nullable": true,
+            "properties": {
+              "audit": {
+                "additionalProperties": true,
+                "nullable": true,
+                "type": "object"
+              },
+              "confirmedAt": {
+                "format": "date-time",
+                "nullable": true,
+                "type": "string"
+              },
+              "confirmedByUserId": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "confirmedByUserId",
+              "confirmedAt",
+              "audit"
+            ],
+            "type": "object"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "draftOperationCount": {
+            "description": "Inactive operations retained on this statement; any non-zero count blocks confirmation.",
+            "type": "integer"
           },
           "id": {
             "type": "string"
@@ -209,9 +1153,10 @@
             "type": "string"
           },
           "state": {
-            "description": "Inactive statement; never spendable cash or confirmed accounting.",
+            "description": "DRAFT is inactive; CONFIRMED is linked atomically to the account's active cash ledger.",
             "enum": [
-              "DRAFT"
+              "DRAFT",
+              "CONFIRMED"
             ],
             "type": "string"
           },
@@ -236,7 +1181,179 @@
           "sourceFingerprint",
           "createdAt",
           "cashBalances",
-          "parcelCount"
+          "parcelCount",
+          "draftOperationCount",
+          "confirmation"
+        ],
+        "type": "object"
+      },
+      "ReinvestmentCorrectionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedAcquisitionRevisionId": {
+            "type": "string"
+          },
+          "expectedAuditNumber": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expectedIncomeRevisionId": {
+            "type": "string"
+          },
+          "expectedSourceFingerprint": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "replacement": {
+            "additionalProperties": false,
+            "nullable": true,
+            "properties": {
+              "acquisition": {
+                "$ref": "#/components/schemas/AccountReinvestmentInput/properties/acquisition"
+              },
+              "income": {
+                "$ref": "#/components/schemas/AccountReinvestmentInput/properties/income"
+              },
+              "residualAmount": {
+                "type": "string"
+              },
+              "residualDisposition": {
+                "enum": [
+                  "ACCOUNT_CASH"
+                ],
+                "type": "string"
+              },
+              "statementConfirmed": {
+                "enum": [
+                  true
+                ],
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "income",
+              "acquisition",
+              "residualAmount",
+              "residualDisposition",
+              "statementConfirmed"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "expectedIncomeRevisionId",
+          "expectedAcquisitionRevisionId",
+          "expectedAuditNumber",
+          "expectedSourceFingerprint",
+          "reason",
+          "replacement"
+        ],
+        "type": "object"
+      },
+      "ReinvestmentCorrectionResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "acquisitionOperationId": {
+                "type": "string"
+              },
+              "acquisitionRevisionId": {
+                "type": "string"
+              },
+              "created": {
+                "type": "boolean"
+              },
+              "incomeOperationId": {
+                "type": "string"
+              },
+              "incomeRevisionId": {
+                "type": "string"
+              },
+              "replay": {
+                "$ref": "#/components/schemas/DraftCashReplay"
+              }
+            },
+            "required": [
+              "incomeOperationId",
+              "acquisitionOperationId",
+              "incomeRevisionId",
+              "acquisitionRevisionId",
+              "created",
+              "replay"
+            ],
+            "type": "object"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "type": "object"
+      },
+      "TransferReplacement": {
+        "additionalProperties": false,
+        "nullable": true,
+        "properties": {
+          "amount": {
+            "description": "Exact positive same-currency principal.",
+            "type": "string"
+          },
+          "destinationSequence": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "effectiveDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "fee": {
+            "description": "Exact non-negative sender-paid fee.",
+            "type": "string"
+          },
+          "sourceSequence": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "effectiveDate",
+          "sourceSequence",
+          "destinationSequence",
+          "amount",
+          "fee"
+        ],
+        "type": "object"
+      },
+      "TransferRevisionHead": {
+        "additionalProperties": false,
+        "properties": {
+          "auditNumber": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "revisionId": {
+            "type": "string"
+          },
+          "sourceFingerprint": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revisionId",
+          "auditNumber",
+          "sourceFingerprint"
         ],
         "type": "object"
       },
@@ -460,6 +1577,1012 @@
         ]
       }
     },
+    "/api/accounts/{id}/cash-operations": {
+      "get": {
+        "description": "Returns exact ledger-replayed balances and effective-dated activity, the opening boundary, source freshness, unsupported events and attested statement evidence. Transfer audit command summaries include transfer.fromAccountId, transfer.toAccountId and fee (charged to this account only); the shared idempotency key and source reference identify the pair. Transfer principal contributes to account-level external capital and cancels across both endpoints; fees remain costs. Paired operation integrity is checked before returning balances. Active and archived real accounts are read-only here. Evidence is user-attested, not broker-verified; stale or unsupported source history is explicitly flagged.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "accountStatus": {
+                          "enum": [
+                            "ACTIVE",
+                            "CLOSED"
+                          ],
+                          "type": "string"
+                        },
+                        "activity": {
+                          "items": {
+                            "properties": {
+                              "auditNumber": {
+                                "nullable": true,
+                                "type": "integer"
+                              },
+                              "changes": {
+                                "items": {
+                                  "type": "object"
+                                },
+                                "type": "array"
+                              },
+                              "effectiveDate": {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              "idempotencyKey": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "operationId": {
+                                "type": "string"
+                              },
+                              "recordedAt": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "sequence": {
+                                "type": "integer"
+                              },
+                              "sourceOrigin": {
+                                "enum": [
+                                  "MANUAL",
+                                  "IMPORT"
+                                ],
+                                "type": "string"
+                              },
+                              "sourceReference": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "idempotencyKey",
+                              "effectiveDate",
+                              "sequence",
+                              "kind",
+                              "changes",
+                              "operationId",
+                              "auditNumber",
+                              "recordedAt",
+                              "sourceOrigin",
+                              "sourceReference"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "activityTotal": {
+                          "type": "integer"
+                        },
+                        "auditNumber": {
+                          "type": "integer"
+                        },
+                        "auditOperations": {
+                          "items": {
+                            "properties": {
+                              "auditNumber": {
+                                "type": "integer"
+                              },
+                              "current": {
+                                "nullable": true,
+                                "type": "object"
+                              },
+                              "incomeReceipt": {
+                                "nullable": true,
+                                "properties": {
+                                  "assetId": {
+                                    "type": "string"
+                                  },
+                                  "assetSymbol": {
+                                    "type": "string"
+                                  },
+                                  "currency": {
+                                    "type": "string"
+                                  },
+                                  "entitlementDate": {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  "frankedAmount": {
+                                    "type": "string"
+                                  },
+                                  "frankingCreditAud": {
+                                    "type": "string"
+                                  },
+                                  "grossAmount": {
+                                    "type": "string"
+                                  },
+                                  "netAmount": {
+                                    "type": "string"
+                                  },
+                                  "paymentDate": {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  "unfrankedAmount": {
+                                    "type": "string"
+                                  },
+                                  "withholdingAmount": {
+                                    "type": "string"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "operationId": {
+                                "type": "string"
+                              },
+                              "original": {
+                                "type": "object"
+                              },
+                              "recordedAt": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "revisions": {
+                                "items": {
+                                  "type": "object"
+                                },
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "operationId",
+                              "auditNumber",
+                              "recordedAt",
+                              "original",
+                              "current",
+                              "revisions",
+                              "incomeReceipt"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "auditTotal": {
+                          "type": "integer"
+                        },
+                        "cashCompleteness": {
+                          "enum": [
+                            "COMPLETE",
+                            "INCOMPLETE"
+                          ],
+                          "type": "string"
+                        },
+                        "checkedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "evidence": {
+                          "items": {
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "evidenceStatus": {
+                          "enum": [
+                            "MATCHES_REPLAY",
+                            "VARIANCE",
+                            "NO_ATTESTATION"
+                          ],
+                          "type": "string"
+                        },
+                        "items": {
+                          "items": {
+                            "properties": {
+                              "currency": {
+                                "type": "string"
+                              },
+                              "current": {
+                                "nullable": true,
+                                "type": "object"
+                              },
+                              "expectedRevisionId": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "DEPOSIT",
+                                  "WITHDRAWAL"
+                                ],
+                                "type": "string"
+                              },
+                              "operationId": {
+                                "type": "string"
+                              },
+                              "original": {
+                                "type": "object"
+                              },
+                              "reinvestment": {
+                                "nullable": true,
+                                "properties": {
+                                  "acquisitionOperationId": {
+                                    "type": "string"
+                                  },
+                                  "incomeOperationId": {
+                                    "type": "string"
+                                  },
+                                  "positionId": {
+                                    "type": "string"
+                                  },
+                                  "request": {
+                                    "$ref": "#/components/schemas/AccountReinvestmentInput"
+                                  }
+                                },
+                                "required": [
+                                  "request",
+                                  "incomeOperationId",
+                                  "acquisitionOperationId",
+                                  "positionId"
+                                ],
+                                "type": "object"
+                              },
+                              "revisions": {
+                                "items": {
+                                  "type": "object"
+                                },
+                                "type": "array"
+                              },
+                              "sourceReference": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "operationId",
+                              "kind",
+                              "currency",
+                              "sourceReference",
+                              "expectedRevisionId",
+                              "original",
+                              "current",
+                              "revisions"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "ledgerState": {
+                          "type": "string"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "offset": {
+                          "type": "integer"
+                        },
+                        "openingBoundary": {
+                          "properties": {
+                            "date": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "timezone": {
+                              "enum": [
+                                "Australia/Sydney"
+                              ],
+                              "type": "string"
+                            },
+                            "type": {
+                              "enum": [
+                                "END_OF_DAY"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "date",
+                            "timezone",
+                            "type"
+                          ],
+                          "type": "object"
+                        },
+                        "replay": {
+                          "$ref": "#/components/schemas/AccountTradeResponse/properties/data/properties/replay"
+                        },
+                        "reviewedAsOfDate": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "sourceFingerprint": {
+                          "type": "string"
+                        },
+                        "sourceFreshness": {
+                          "properties": {
+                            "acceptedFingerprint": {
+                              "type": "string"
+                            },
+                            "currentFingerprint": {
+                              "nullable": true,
+                              "type": "string"
+                            },
+                            "status": {
+                              "enum": [
+                                "CURRENT",
+                                "STALE",
+                                "NOT_REVALIDATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "acceptedFingerprint",
+                            "currentFingerprint"
+                          ],
+                          "type": "object"
+                        },
+                        "sourceReviewIssues": {
+                          "items": {
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "unsupportedEvents": {
+                          "items": {
+                            "type": "object"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "total",
+                        "limit",
+                        "offset",
+                        "activity",
+                        "activityTotal",
+                        "auditOperations",
+                        "auditTotal",
+                        "accountStatus",
+                        "ledgerState",
+                        "openingBoundary",
+                        "reviewedAsOfDate",
+                        "checkedAt",
+                        "sourceFreshness",
+                        "cashCompleteness",
+                        "unsupportedEvents",
+                        "sourceReviewIssues",
+                        "evidence",
+                        "evidenceStatus",
+                        "auditNumber",
+                        "sourceFingerprint",
+                        "replay"
+                      ],
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Read-only cash replay, effective activity, retained revisions and evidence comparisons."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned account not found."
+          },
+          "409": {
+            "description": "No confirmed cash ledger exists",
+            "or retained ledger/evidence audit data failed integrity validation.": null
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Read live cash balances, activity and retained audits",
+        "tags": [
+          "Accounts"
+        ]
+      },
+      "post": {
+        "description": "Posts a cash-only capital flow for an explicitly confirmed active ledger. The operation does not create a trade or auto-balance cash. Dated replay rejects a withdrawal or backdated flow that leaves any point unfunded. No account is activated by this endpoint.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "amount": {
+                    "description": "Exact positive decimal amount.",
+                    "type": "string"
+                  },
+                  "currency": {
+                    "description": "Explicit supported ISO currency.",
+                    "type": "string"
+                  },
+                  "effectiveDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "DEPOSIT",
+                      "WITHDRAWAL"
+                    ],
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "sourceReference": {
+                    "broker or statement reference.": null,
+                    "description": "User-supplied bank",
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "idempotencyKey",
+                  "effectiveDate",
+                  "sequence",
+                  "currency",
+                  "amount",
+                  "sourceReference"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Idempotent retry of an already committed operation."
+          },
+          "201": {
+            "description": "Cash-only operation and immutable postings were committed atomically."
+          },
+          "400": {
+            "description": "Invalid capital flow command."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned account not found."
+          },
+          "409": {
+            "description": "Account has no active confirmed ledger",
+            "or date/sequence is reserved.": null,
+            "source history drifted": null
+          },
+          "422": {
+            "description": "Flow would leave a dated cash balance unfunded or history is unsupported."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Record an explicit live deposit or withdrawal",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/cash-operations/{operationId}/corrections": {
+      "post": {
+        "description": "Appends an immutable cash-only revision. Replacements retain operation kind, source reference and currency; reversal is terminal. Dated replay must remain funded.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedAuditNumber": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedRevisionId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedSourceFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "replacement": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "amount": {
+                            "description": "Exact positive decimal amount.",
+                            "type": "string"
+                          },
+                          "effectiveDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "sequence": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "effectiveDate",
+                          "sequence",
+                          "amount"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "expectedRevisionId",
+                  "expectedAuditNumber",
+                  "expectedSourceFingerprint",
+                  "reason",
+                  "replacement"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Idempotent retry of a prior correction/reversal."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "created": {
+                          "type": "boolean"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "replay": {
+                          "$ref": "#/components/schemas/AccountTradeResponse/properties/data/properties/replay"
+                        },
+                        "revisionId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "revisionId",
+                        "created",
+                        "replay"
+                      ],
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Immutable correction/reversal and its cash postings were committed."
+          },
+          "400": {
+            "description": "Invalid correction request."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned account or live funding operation not found."
+          },
+          "409": {
+            "concurrent correction": null,
+            "description": "Stale audit head",
+            "or reserved date/sequence.": null
+          },
+          "422": {
+            "description": "Corrected or reversed funding would leave a dated balance negative."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Correct or reverse a live deposit or withdrawal",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/cash-transfers": {
+      "post": {
+        "description": "Both accounts must be active real accounts with confirmed ledgers, current source history and explicit opening cash in this currency. A shared dated transfer debits principal plus sender-paid fee and credits principal only. Principal is external to each account and cancels when both accounts are selected; fees remain costs. No holdings, FX, activation, direct edits or one-sided reversals; corrections use the dedicated paired audit workflow. Same-key retries reuse both operations.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "amount": {
+                    "description": "Exact positive principal in the same currency at both endpoints.",
+                    "type": "string"
+                  },
+                  "currency": {
+                    "type": "string"
+                  },
+                  "destinationSequence": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "effectiveDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "fee": {
+                    "description": "Exact non-negative sender-paid fee in the principal currency.",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sourceReference": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sourceSequence": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "toAccountId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "toAccountId",
+                  "idempotencyKey",
+                  "effectiveDate",
+                  "sourceSequence",
+                  "destinationSequence",
+                  "currency",
+                  "amount",
+                  "fee",
+                  "sourceReference"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountCashTransferResponse"
+                }
+              }
+            },
+            "description": "Identical retry; no new postings."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountCashTransferResponse"
+                }
+              }
+            },
+            "description": "Both cash operations committed atomically."
+          },
+          "400": {
+            "description": "Invalid transfer command."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "An owned account was not found."
+          },
+          "409": {
+            "description": "Ledger unavailable",
+            "occupied sequence or conflicting retry.": null,
+            "stale source": null
+          },
+          "422": {
+            "description": "Missing currency opening or insufficient dated cash."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Atomically transfer same-currency cash between two owned live ledgers",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/cash-transfers/{operationId}/corrections": {
+      "get": {
+        "description": "Requires an owned outgoing transfer and two active real ledgers with fresh, valid sources. Returns fixed identity, current effective amounts and both review heads. A terminal reversal has current null. Retained archived audits remain accessible via cash-operations instead.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/LiveCashTransferReview"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validated paired review; does not write or activate accounts."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned outgoing transfer not found."
+          },
+          "409": {
+            "archived or source/audit history stale or inconsistent.": null,
+            "description": "Ledger unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Review both current ledger heads before a paired transfer revision",
+        "tags": [
+          "Accounts"
+        ]
+      },
+      "post": {
+        "description": "Preserves both accounts, currency and statement source. Replacement may change principal, sender-paid fee, shared date and independent sequences; null is a terminal reversal. Both review heads must be current, both dated timelines remain funded, and both immutable revision chains commit or roll back together. Old date/sequence slots remain reserved. Same-key retries reuse the pair, even after later activity. No one-sided funding revision, holdings move or FX.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCashTransferCorrectionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountCashTransferCorrectionResponse"
+                }
+              }
+            },
+            "description": "Identical paired revision retry; no new postings."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountCashTransferCorrectionResponse"
+                }
+              }
+            },
+            "description": "Both immutable reversal/replacement revisions committed."
+          },
+          "400": {
+            "description": "Invalid revision or no economic/date/order change."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned outgoing transfer not found."
+          },
+          "409": {
+            "changed identity or conflicting retry.": null,
+            "description": "Stale heads",
+            "reserved slots": null,
+            "terminal reversal": null
+          },
+          "422": {
+            "description": "Either dated account timeline would become unfunded or exceed the supported replay limit."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Atomically correct or terminally reverse both cash-transfer legs",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/accounts/{id}/close": {
       "post": {
         "description": "Locks the owned account and checks current open/partial parcels in the same transaction. Reopen before adding new open holdings; historical corrections that leave parcels closed remain allowed. Inactive opening drafts are preserved and never activated.",
@@ -490,6 +2613,229 @@
           }
         ],
         "summary": "Close a trading account while preserving history",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/fx-conversions": {
+      "post": {
+        "description": "Records an already executed broker conversion, never executes FX or implicitly funds a purchase. Requires an owned active confirmed real ledger, fresh sources and explicit openings in both currencies. Positive exchanged amounts are before separately recorded fees, which may be in either exchanged currency; no third currency. One date/sequence links both currency legs atomically. Full dated funding, immutable history and exact retries are enforced. Principal and fees are not external capital. Revisions use the dedicated audited correction endpoint; no direct edits, holdings changes or account activation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountFxConversionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountFxConversionResponse"
+                }
+              }
+            },
+            "description": "Identical retry; no new postings."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountFxConversionResponse"
+                }
+              }
+            },
+            "description": "Linked currency postings committed."
+          },
+          "400": {
+            "currencies": null,
+            "description": "Invalid amounts",
+            "fees or command fields.": null
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned account not found."
+          },
+          "409": {
+            "description": "Unconfirmed/demo/archived/stale ledger",
+            "occupied sequence or conflicting retry/source.": null
+          },
+          "422": {
+            "description": "Missing currency opening",
+            "insufficient dated funding or precision/replay limits.": null
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Record an explicit same-account currency conversion",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/fx-conversions/{operationId}/corrections": {
+      "get": {
+        "description": "Requires an owned FX operation and fresh active confirmed real ledger. Returns fixed currency direction/source, current amounts/fees and revision/audit/fingerprint. Terminal reversal has current null. Archived retained audits use cash-operations.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/LiveFxConversionReview"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validated current FX review; no writes or activation."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned FX operation not found."
+          },
+          "409": {
+            "description": "Archived",
+            "stale": null,
+            "unavailable or inconsistent ledger history.": null
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Review the current FX revision and live cash audit head",
+        "tags": [
+          "Accounts"
+        ]
+      },
+      "post": {
+        "description": "Changes exchanged amounts, fees, date or sequence, never account, currency pair/direction or source reference. Requires current revision/audit/fingerprint and reason. Atomic inverse/replacement legs restate effective history while preserving all original/replacement slots and funded replay in both currencies. Reversal removes original effects including fees, not a new reverse exchange. Identical retained retries remain valid after later activity; no generic funding revision or activation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountFxCorrectionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountFxCorrectionResponse"
+                }
+              }
+            },
+            "description": "Identical retry; no new postings."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountFxCorrectionResponse"
+                }
+              }
+            },
+            "description": "Immutable revision committed."
+          },
+          "400": {
+            "changed identity or no economic/date/order change.": null,
+            "description": "Invalid fields"
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned FX operation not found."
+          },
+          "409": {
+            "archived ledger": null,
+            "conflicting retry": null,
+            "description": "Stale heads/history",
+            "reserved slots or terminal reversal.": null
+          },
+          "422": {
+            "description": "Unfunded dated currency timeline or precision/replay limits."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Audited fixed-identity FX correction or terminal reversal",
         "tags": [
           "Accounts"
         ]
@@ -608,6 +2954,300 @@
           }
         ],
         "summary": "Correct an audited live imported Kraken execution",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/income-receipts": {
+      "post": {
+        "description": "Posts net cash to an active confirmed ledger while retaining gross income, withholding, franked/unfranked amounts, franking credits and the user-supplied statement reference. Only equity and ETF assets already held in the account are supported. Complex AMIT components and automated income are not supported.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "assetId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "currency": {
+                    "description": "Explicit supported ISO currency; franking amounts and credits require AUD.",
+                    "type": "string"
+                  },
+                  "entitlementDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "frankedAmount": {
+                    "description": "Gross component classified as franked.",
+                    "type": "string"
+                  },
+                  "frankingCreditAud": {
+                    "description": "Non-cash franking credit in AUD.",
+                    "type": "string"
+                  },
+                  "grossAmount": {
+                    "description": "Exact positive gross distribution amount.",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "paymentDate": {
+                    "description": "Effective date for the positive net-cash posting.",
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "sourceReference": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "unfrankedAmount": {
+                    "description": "Gross component classified as unfranked; both components must sum to gross.",
+                    "type": "string"
+                  },
+                  "withholdingAmount": {
+                    "description": "Exact non-negative withholding",
+                    "not greater than gross.": null,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "assetId",
+                  "entitlementDate",
+                  "paymentDate",
+                  "sequence",
+                  "currency",
+                  "grossAmount",
+                  "withholdingAmount",
+                  "frankedAmount",
+                  "unfrankedAmount",
+                  "frankingCreditAud",
+                  "sourceReference"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountIncomeReceiptResponse"
+                }
+              }
+            },
+            "description": "Idempotent retry of an identical income receipt."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountIncomeReceiptResponse"
+                }
+              }
+            },
+            "description": "Income audit record and net cash posting committed atomically."
+          },
+          "400": {
+            "description": "Invalid income receipt."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned account not found."
+          },
+          "409": {
+            "description": "Account has no active confirmed ledger",
+            "or date/sequence is reserved.": null,
+            "source history drifted": null
+          },
+          "422": {
+            "description": "Asset is not eligible or the dated cash history is unsupported."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Record a manual dividend or distribution receipt",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/income-receipts/{operationId}/corrections": {
+      "post": {
+        "description": "Appends an immutable income revision and cash postings. Replacement preserves asset, currency and source reference; reverse and record a new receipt to correct those identity fields. Dated replay must remain funded.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedAuditNumber": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedRevisionId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedSourceFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "replacement": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "entitlementDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "frankedAmount": {
+                            "type": "string"
+                          },
+                          "frankingCreditAud": {
+                            "type": "string"
+                          },
+                          "grossAmount": {
+                            "type": "string"
+                          },
+                          "paymentDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "sequence": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "unfrankedAmount": {
+                            "type": "string"
+                          },
+                          "withholdingAmount": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "entitlementDate",
+                          "paymentDate",
+                          "sequence",
+                          "grossAmount",
+                          "withholdingAmount",
+                          "frankedAmount",
+                          "unfrankedAmount",
+                          "frankingCreditAud"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "expectedRevisionId",
+                  "expectedAuditNumber",
+                  "expectedSourceFingerprint",
+                  "reason",
+                  "replacement"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Idempotent retry of a prior correction/reversal."
+          },
+          "201": {
+            "description": "Immutable correction/reversal and cash postings committed."
+          },
+          "400": {
+            "description": "Invalid correction request."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned account or live income receipt not found."
+          },
+          "409": {
+            "concurrent correction": null,
+            "description": "Stale audit head",
+            "or reserved date/sequence.": null
+          },
+          "422": {
+            "description": "Corrected or reversed income would leave a dated balance negative."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Correct or terminally reverse a live income receipt",
         "tags": [
           "Accounts"
         ]
@@ -879,7 +3519,7 @@
     },
     "/api/accounts/{id}/opening-statements": {
       "get": {
-        "description": "Returns up to 20 revisions with explicit cash balances and parcel counts. Saved snapshots are not current account valuations. Closed accounts retain access; drafts are removed with account/user deletion.",
+        "description": "Returns up to 20 inactive drafts or confirmed statements with explicit cash balances, parcel counts, operation counts and confirmation audit metadata. Saved snapshots are not current account valuations. Closed accounts retain access; drafts are removed with account/user deletion.",
         "parameters": [
           {
             "in": "path",
@@ -936,7 +3576,7 @@
                 }
               }
             },
-            "description": "Inactive statement revision page."
+            "description": "Opening statement revision page."
           },
           "400": {
             "description": "Invalid account ID or cursor."
@@ -953,7 +3593,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "List inactive opening draft revisions newest first",
+        "summary": "List opening statement revisions newest first",
         "tags": [
           "Accounts"
         ]
@@ -1792,6 +4432,162 @@
         ]
       }
     },
+    "/api/accounts/{id}/opening-statements/{statementId}/confirm": {
+      "post": {
+        "description": "Per-account and retry-safe. Requires the latest clean draft, matching source records at the reviewed observation date, issue-free supported inventory, no post-boundary trades, funded replay, exact latest user-attested cash evidence and explicit acknowledgements. Saved activity on the selected draft blocks confirmation; activity on other inactive drafts is retained and explicitly excluded, never posted or promoted. Confirmation creates no valuation or performance return. This endpoint enables only the selected account and is never called implicitly.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "statementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "acknowledgements": {
+                    "properties": {
+                      "cashEvidenceUserAttested": {
+                        "enum": [
+                          true
+                        ],
+                        "type": "boolean"
+                      },
+                      "openingBalancesReviewed": {
+                        "enum": [
+                          true
+                        ],
+                        "type": "boolean"
+                      },
+                      "priorDraftActivityExcluded": {
+                        "enum": [
+                          true
+                        ],
+                        "type": "boolean"
+                      },
+                      "returnsUnavailableWithoutValuations": {
+                        "enum": [
+                          true
+                        ],
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "openingBalancesReviewed",
+                      "cashEvidenceUserAttested",
+                      "priorDraftActivityExcluded",
+                      "returnsUnavailableWithoutValuations"
+                    ],
+                    "type": "object"
+                  },
+                  "expectedSourceFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "expectedSourceFingerprint",
+                  "acknowledgements"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/OpeningConfirmationResult"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Idempotent retry of the original confirmation."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/OpeningConfirmationResult"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Opening statement confirmation and active ledger committed atomically."
+          },
+          "400": {
+            "description": "Invalid confirmation command or incomplete acknowledgement."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "404": {
+            "description": "Account or opening statement not found."
+          },
+          "409": {
+            "description": "Source/evidence drift",
+            "ineligible account or competing confirmation.": null,
+            "unresolved history": null
+          },
+          "422": {
+            "description": "Reconciliation exceeds supported confirmation limits."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Confirm one reviewed opening statement and atomically enable its cash ledger",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/accounts/{id}/opening-statements/{statementId}/import-events/{eventId}/cash-operation": {
       "post": {
         "description": "Uses execution amounts and transaction links from the persisted applied import event; callers can supply only its stable sequence for the execution date. The event must belong to this account and match its recorded transaction links. Draft postings never affect live cash or holdings.",
@@ -2004,7 +4800,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Read-only draft reconciliation including cash evidence/variances, source savedFingerprint/acceptedFingerprint/currentFingerprint/correctionCount/changed, cash-operation currentRevisionId/capital cash/revisions (revisionId, reason, replacement boolean, nullable executionAudit containing number, previousFingerprint, nextFingerprint, reviewed input and before/after transaction snapshots; acquisition audits have kind BUY and input quantity, historical sale audits are untagged), effective or reversed sources, imported execution eligibility with duplicate transaction-link detection and cashManualExecutions (transactionId, positionId, kind, quantity, effectiveDate, occurredAt, currency, price, grossValue, fee, stageable, reason, operationId). Audit snapshots include transactionId, positionId, ISO date, quantity, price, totalValue, fees and currency. Manual eligibility excludes broker-linked allocations, imported/short parcels, unsupported money, boundary/future dates, stale snapshots, unavailable accounts and incompatible opening-sale proposals."
+            "description": "Read-only draft reconciliation including cash evidence/variances, source savedFingerprint/acceptedFingerprint/currentFingerprint/correctionCount/changed, confirmationReview (eligible, blockers, excludedDraftActivity with statementId/version/operationCount), cash-operation currentRevisionId/capital cash/revisions (revisionId, reason, replacement boolean, nullable executionAudit containing number, previousFingerprint, nextFingerprint, reviewed input and before/after transaction snapshots; acquisition audits have kind BUY and input quantity, historical sale audits are untagged), effective or reversed sources, imported execution eligibility with duplicate transaction-link detection and cashManualExecutions (transactionId, positionId, kind, quantity, effectiveDate, occurredAt, currency, price, grossValue, fee, stageable, reason, operationId). Audit snapshots include transactionId, positionId, ISO date, quantity, price, totalValue, fees and currency. Manual eligibility excludes broker-linked allocations, imported/short parcels, unsupported money, boundary/future dates, stale snapshots, unavailable accounts and incompatible opening-sale proposals."
           },
           "401": {
             "description": "Authentication required."
@@ -2117,6 +4913,228 @@
         ]
       }
     },
+    "/api/accounts/{id}/reinvestments": {
+      "post": {
+        "description": "Creates exactly one equity/ETF income receipt and a new BUY parcel in the same account/currency. Statement-confirmed entitlement and tax figures are authoritative; eligible historical holdings are required. Exact net income must equal acquisition consideration plus fees plus an explicit account-paid residual; issuer-held credits, extra funding, existing-receipt relinking and AMIT components are unsupported. Acquisition follows income in date/sequence order. Paired immutable links and full funded replay protect both records. Independent income revisions, acquisition corrections/voids and direct deletion are blocked; use the dedicated paired revision workflow. No activation or external capital is created.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountReinvestmentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountReinvestmentResponse"
+                }
+              }
+            },
+            "description": "Identical retained retry; no new records."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountReinvestmentResponse"
+                }
+              }
+            },
+            "description": "Income, new parcel and immutable linked postings committed."
+          },
+          "400": {
+            "description": "Invalid fields",
+            "ordering or residual equation.": null,
+            "precision": null
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned account not found."
+          },
+          "409": {
+            "archived": null,
+            "conflicting or unfunded ledger.": null,
+            "description": "Unconfirmed",
+            "stale": null
+          },
+          "422": {
+            "currency": null,
+            "description": "Ineligible asset",
+            "entitlement or unsupported history.": null
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Record statement-supported dividend reinvestment atomically",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/accounts/{id}/reinvestments/{operationId}/corrections": {
+      "get": {
+        "description": "Requires an owned fresh active real ledger. Either linked operation ID resolves both current revision heads, fixed statement identity and effective-sale restriction. Terminal reversal returns current null. Archived retained audits use cash-operations.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/LiveReinvestmentReview"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validated current paired review."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned reinvestment not found."
+          },
+          "409": {
+            "archived": null,
+            "description": "Unavailable",
+            "stale or inconsistent ledger.": null
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Review a paired reinvestment and current account audit head",
+        "tags": [
+          "Accounts"
+        ]
+      },
+      "post": {
+        "description": "Fixed account, asset, currency and statement reference. Requires both current revision heads, audit number, source fingerprint and reason. No effective SELL may remain on the new parcel. Corrections update statement tax figures and acquisition/date/order/residual together, retain all slots and require funded replay; reversal removes the effective income and parcel without a disposal. Issuer-held credits and one-sided changes remain blocked. Exact retained retries survive later activity.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReinvestmentCorrectionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReinvestmentCorrectionResponse"
+                }
+              }
+            },
+            "description": "Identical retained retry."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReinvestmentCorrectionResponse"
+                }
+              }
+            },
+            "description": "Paired immutable revisions committed."
+          },
+          "400": {
+            "changed identity or unchanged replacement.": null,
+            "description": "Invalid"
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned reinvestment not found."
+          },
+          "409": {
+            "description": "Effective sales",
+            "reserved slots or unfunded replay.": null,
+            "stale heads": null,
+            "terminal state": null
+          },
+          "422": {
+            "description": "Unsupported entitlement or history bounds."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Correct or terminally reverse both reinvestment effects atomically",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/accounts/{id}/reopen": {
       "post": {
         "description": "Serializes reopening with account lifecycle and participating trade/import writes.",
@@ -2149,6 +5167,115 @@
         ]
       }
     },
+    "/api/accounts/{id}/trade-capability": {
+      "get": {
+        "description": "Distinguishes active confirmed ledgers from legacy, demo, archived and blocked accounts. This read never activates an account.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "effectiveDate",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "effectiveDate": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "mode": {
+                          "enum": [
+                            "LIVE_LEDGER",
+                            "LEGACY",
+                            "DEMO",
+                            "ARCHIVED",
+                            "BLOCKED"
+                          ],
+                          "type": "string"
+                        },
+                        "nextSequence": {
+                          "nullable": true,
+                          "type": "integer"
+                        },
+                        "openingDate": {
+                          "format": "date",
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "reason": {
+                          "nullable": true,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "mode",
+                        "reason",
+                        "openingDate",
+                        "effectiveDate",
+                        "nextSequence"
+                      ],
+                      "type": "object"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Capability and available same-day cash sequence."
+          },
+          "400": {
+            "description": "Invalid effective date."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "404": {
+            "description": "Owned account not found."
+          },
+          "409": {
+            "description": "Ledger state or audited history is inconsistent."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Resolve the server-owned trade-write capability for an account",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/accounts/{id}/trades": {
       "post": {
         "description": "Available only to accounts with an explicitly confirmed opening statement and active cash ledger. Legacy account posting remains unchanged; no account is activated by this endpoint.",
@@ -2168,11 +5295,35 @@
               "schema": {
                 "properties": {
                   "assetId": {
-                    "description": "Required for BUY only.",
+                    "description": "Existing asset ID for BUY; alternatively provide symbol and exchangeCode.",
+                    "type": "string"
+                  },
+                  "assetName": {
+                    "type": "string"
+                  },
+                  "assetType": {
+                    "enum": [
+                      "EQUITY",
+                      "ETF",
+                      "CRYPTO"
+                    ],
+                    "type": "string"
+                  },
+                  "closeReason": {
+                    "enum": [
+                      "STOP_LOSS",
+                      "TARGET",
+                      "MANUAL",
+                      "OTHER"
+                    ],
                     "type": "string"
                   },
                   "effectiveDate": {
                     "format": "date",
+                    "type": "string"
+                  },
+                  "exchangeCode": {
+                    "description": "BUY exchange code when resolving an asset.",
                     "type": "string"
                   },
                   "fees": {
@@ -2184,11 +5335,21 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "industry": {
+                    "type": "string"
+                  },
                   "kind": {
                     "enum": [
                       "BUY",
                       "SELL"
                     ],
+                    "type": "string"
+                  },
+                  "notes": {
+                    "description": "SELL notes.",
+                    "type": "string"
+                  },
+                  "openReason": {
                     "type": "string"
                   },
                   "positionId": {
@@ -2206,6 +5367,14 @@
                   "sequence": {
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "stopLossPrice": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "symbol": {
+                    "description": "BUY instrument symbol when resolving an asset.",
+                    "type": "string"
                   }
                 },
                 "required": [
