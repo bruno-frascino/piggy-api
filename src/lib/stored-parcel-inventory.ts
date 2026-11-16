@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { AccountingDecimal, isAccountingDate } from './accounting-values.js'
 import { sydneyCalendarDate } from './accounting-preview.js'
 import { prepareAccountSplit } from './account-split-command.js'
@@ -14,6 +15,68 @@ type StoredEffect = NonNullable<
   Awaited<ReturnType<typeof prisma.accountSplitParcelEffect.findUnique>>
 > & { action: StoredAction }
 
+type SplitHistoryDb = Pick<
+  typeof prisma,
+  'accountSplitAction' | 'accountSplitParcelEffect'
+>
+
+export async function readStoredSplitHistory(
+  db: SplitHistoryDb,
+  accountId: string,
+  assetId?: string
+) {
+  const where = { accountId, ...(assetId ? { assetId } : {}) }
+  const actions = await db.accountSplitAction.findMany({
+    where,
+    orderBy: { id: 'asc' },
+    take: 501,
+  })
+  if (actions.length > 500)
+    throw Object.assign(
+      new Error(
+        'This account exceeds the split-action preview limit; no partial preview was generated.'
+      ),
+      { status: 422, name: 'Preview Limit' }
+    )
+  const effects = actions.length
+    ? await db.accountSplitParcelEffect.findMany({
+        where: { action: where },
+        orderBy: { id: 'asc' },
+        take: 50001,
+      })
+    : []
+  if (effects.length > 50000)
+    throw Object.assign(
+      new Error(
+        'This account exceeds the split-effect preview limit; no partial preview was generated.'
+      ),
+      { status: 422, name: 'Preview Limit' }
+    )
+  const actionById = new Map(actions.map((action) => [action.id, action]))
+  const effectsByPosition = new Map<string, StoredEffect[]>()
+  for (const effect of effects) {
+    const action = actionById.get(effect.actionId)
+    if (!action)
+      throw new Error('Split effect is outside the effective account inventory')
+    const rows = effectsByPosition.get(effect.positionId) ?? []
+    rows.push({ ...effect, action })
+    effectsByPosition.set(effect.positionId, rows)
+  }
+  const sourceFingerprint = actions.length
+    ? createHash('sha256')
+        .update(
+          JSON.stringify({
+            actions: actions.map((action) => ({
+              ...action,
+              request: prepareStoredAccountSplit(action, accountId).request,
+            })),
+            effects,
+          })
+        )
+        .digest('hex')
+    : undefined
+  return { actions, effectsByPosition, sourceFingerprint }
+}
 export function prepareStoredAccountSplit(
   action: StoredAction,
   accountId: string
@@ -123,6 +186,7 @@ export function projectStoredParcelInventory(
       newUnits: prepared.request.newUnits,
       oldUnits: prepared.request.oldUnits,
     }
+
     const after = projectParcelInventory({
       acquisitionDate,
       acquisitionQuantity,
@@ -157,4 +221,119 @@ export function projectStoredParcelInventory(
     acquisitionQuantity,
     events: [...sales, ...splits],
   })
+}
+
+export function reviewStoredParcelSale(
+  position: Parameters<typeof projectStoredParcelInventory>[0],
+  sale: { id: string; date: Date; quantity: number }
+) {
+  const observationDate = [
+    sydneyCalendarDate(position.openDate),
+    sydneyCalendarDate(sale.date),
+    ...position.transactions
+      .filter((trade) => !trade.voidedAt)
+      .map((trade) => sydneyCalendarDate(trade.date)),
+    ...position.splitEffects.map((effect) =>
+      effect.action.effectiveDate.toISOString().slice(0, 10)
+    ),
+    ...position.asset.splitActions
+      .filter((action) => action.accountId === position.accountId)
+      .map((action) => action.effectiveDate.toISOString().slice(0, 10)),
+  ].reduce(
+    (latest, date) => (date > latest ? date : latest),
+    sydneyCalendarDate(position.openDate)
+  )
+  const before = projectStoredParcelInventory(position, observationDate)
+  if (!before) return null
+  const after = projectStoredParcelInventory(
+    {
+      ...position,
+      transactions: [...position.transactions, { ...sale, type: 'SELL' }],
+    },
+    observationDate
+  )
+  return { before, after }
+}
+
+/** Internal read: the caller supplies an owned, locked account or consistent snapshot. */
+export async function readAccountAssetQuantityAt(
+  db: SplitHistoryDb & Pick<typeof prisma, 'position' | 'transaction'>,
+  userId: string,
+  accountId: string,
+  assetId: string,
+  date: string,
+  excludePositionId?: string
+) {
+  if (!isAccountingDate(date))
+    throw new Error('Invalid entitlement observation date')
+  const where = {
+    userId,
+    accountId,
+    assetId,
+    voidedAt: null,
+    positionType: 'LONG' as const,
+    ...(excludePositionId ? { id: { not: excludePositionId } } : {}),
+  }
+  const positions = await db.position.findMany({
+    where,
+    orderBy: { id: 'asc' },
+    take: 50001,
+    select: { id: true, accountId: true, assetId: true, openDate: true },
+  })
+  const trades = await db.transaction.findMany({
+    where: { voidedAt: null, type: { in: ['BUY', 'SELL'] }, position: where },
+    orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    select: {
+      id: true,
+      positionId: true,
+      date: true,
+      type: true,
+      quantity: true,
+    },
+    take: 50001,
+  })
+  if (positions.length > 50000 || trades.length > 50000)
+    throw Object.assign(
+      new Error('Entitlement history exceeds the supported audit limit'),
+      {
+        status: 422,
+        name: 'Accounting Conflict',
+      }
+    )
+  const history = await readStoredSplitHistory(db, accountId, assetId)
+  const tradesByPosition = new Map<string, typeof trades>()
+  for (const trade of trades) {
+    const rows = tradesByPosition.get(trade.positionId) ?? []
+    rows.push(trade)
+    tradesByPosition.set(trade.positionId, rows)
+  }
+  let quantity = new AccountingDecimal(0)
+  for (const position of positions) {
+    if (sydneyCalendarDate(position.openDate) > date) continue
+    const transactions = tradesByPosition.get(position.id) ?? []
+    const projection = projectStoredParcelInventory(
+      {
+        ...position,
+        transactions,
+        splitEffects: history.effectsByPosition.get(position.id) ?? [],
+        asset: { splitActions: history.actions },
+      },
+      date
+    )
+    const remaining = projection
+      ? new AccountingDecimal(projection.remainingQuantity)
+      : transactions
+          .filter((trade) => sydneyCalendarDate(trade.date) <= date)
+          .reduce(
+            (sum, trade) =>
+              trade.type === 'BUY'
+                ? sum.plus(String(trade.quantity))
+                : sum.minus(String(trade.quantity)),
+            new AccountingDecimal(0)
+          )
+    if (!remaining.isFinite() || remaining.lt(0))
+      throw new Error('Invalid historical parcel quantity')
+    quantity = quantity.plus(remaining)
+  }
+  return quantity
 }

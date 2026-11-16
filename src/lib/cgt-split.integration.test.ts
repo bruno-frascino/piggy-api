@@ -157,6 +157,59 @@ describe.skipIf(!enabled)(
       expect(recomputed?.openDate.toISOString()).toBe(
         '2024-01-01T00:00:00.000Z'
       )
+      const { readAccountAssetQuantityAt, reviewStoredParcelSale } =
+        await import('./stored-parcel-inventory.js')
+      for (const { date, quantity } of [
+        { date: '2023-12-31', quantity: '0' },
+        { date: '2025-06-30', quantity: '10' },
+        { date: '2025-07-01', quantity: '8' },
+        { date: '2025-08-01', quantity: '16' },
+        { date: '2025-10-01', quantity: '12' },
+      ]) {
+        expect(
+          (
+            await readAccountAssetQuantityAt(
+              prisma,
+              userId,
+              account.id,
+              asset.id,
+              date
+            )
+          ).toFixed()
+        ).toBe(quantity)
+      }
+      expect(
+        (
+          await readAccountAssetQuantityAt(
+            prisma,
+            userId,
+            account.id,
+            asset.id,
+            '2025-10-01',
+            position.id
+          )
+        ).toFixed()
+      ).toBe('0')
+      const saleSnapshot = await prisma.position.findUniqueOrThrow({
+        where: { id: position.id },
+        include: {
+          transactions: true,
+          splitEffects: { include: { action: true } },
+          asset: {
+            include: { splitActions: { where: { accountId: account.id } } },
+          },
+        },
+      })
+      expect(
+        reviewStoredParcelSale(saleSnapshot, {
+          id: 'proposed-terminal-sale',
+          date: new Date('2025-11-01'),
+          quantity: 12,
+        })?.after?.remainingQuantity
+      ).toBe('0')
+      await expect(
+        prisma.transaction.count({ where: { positionId: position.id } })
+      ).resolves.toBe(3)
       const { previewAccountOpening } =
         await import('./accounting-preview-service.js')
       for (const [openingDate, openingQuantity] of [
@@ -242,6 +295,15 @@ describe.skipIf(!enabled)(
           openingDate: '2025-07-31',
           cashBalances: [{ currency: 'AUD', amount: '100' }],
         })
+      ).rejects.toThrow('Split action is missing its parcel effect')
+      await expect(
+        readAccountAssetQuantityAt(
+          prisma,
+          userId,
+          account.id,
+          asset.id,
+          '2025-10-01'
+        )
       ).rejects.toThrow('Split action is missing its parcel effect')
       await prisma.accountSplitParcelEffect.create({
         data: {

@@ -88,6 +88,10 @@ import {
 import { prepareOpeningConfirmation } from './opening-confirmation.js'
 import { isConcurrentConflict } from './transaction-conflict.js'
 import { requireNoSplitHistory } from './split-mutation-guard.js'
+import {
+  readAccountAssetQuantityAt,
+  reviewStoredParcelSale,
+} from './stored-parcel-inventory.js'
 
 function conflict(message: string, status = 409): never {
   throw Object.assign(new Error(message), {
@@ -4681,7 +4685,10 @@ function accountTradeTransaction(
       const currentPosition = await db.position.findFirst({
         where: { id: input.positionId, userId, accountId, voidedAt: null },
         include: {
-          asset: { include: { exchange: true } },
+          asset: {
+            include: { exchange: true, splitActions: { where: { accountId } } },
+          },
+          splitEffects: { include: { action: true } },
           transactions: {
             where: { voidedAt: null },
             orderBy: { date: 'asc' },
@@ -4712,7 +4719,14 @@ function accountTradeTransaction(
           (sum, transaction) => sum.plus(String(transaction.quantity)),
           new AccountingDecimal(0)
         )
-      const remaining = buyQuantity.minus(soldQuantity)
+      const splitReview = reviewStoredParcelSale(currentPosition, {
+        id: randomUUID(),
+        date,
+        quantity: Number(input.quantity),
+      })
+      const remaining = splitReview
+        ? new AccountingDecimal(splitReview.before.remainingQuantity)
+        : buyQuantity.minus(soldQuantity)
       const recorded = new AccountingDecimal(String(currentPosition.quantity))
       if (
         buys.length !== 1 ||
@@ -5077,36 +5091,13 @@ export async function postAccountReinvestment(
           'Reinvestment requires an equity or ETF in the same payment and acquisition currency',
           422
         )
-      const trades = await db.transaction.findMany({
-        where: {
-          voidedAt: null,
-          type: { in: ['BUY', 'SELL'] },
-          position: {
-            userId,
-            accountId,
-            assetId: asset.id,
-            voidedAt: null,
-            positionType: 'LONG',
-          },
-        },
-        select: { date: true, type: true, quantity: true },
-        take: 50001,
-      })
-      if (trades.length > 50000)
-        conflict('Entitlement history exceeds the supported audit limit', 422)
-      const eligible = trades
-        .filter(
-          (trade) =>
-            sydneyCalendarDate(trade.date) <=
-            prepared.request.income.entitlementDate
-        )
-        .reduce(
-          (quantity, trade) =>
-            trade.type === 'BUY'
-              ? quantity.plus(String(trade.quantity))
-              : quantity.minus(String(trade.quantity)),
-          new AccountingDecimal(0)
-        )
+      const eligible = await readAccountAssetQuantityAt(
+        db,
+        userId,
+        accountId,
+        asset.id,
+        prepared.request.income.entitlementDate
+      )
       if (!eligible.gt(0))
         conflict(
           'Reinvestment requires eligible historical holdings on the statement entitlement date, not current holdings',
@@ -5353,39 +5344,15 @@ export async function correctLiveReinvestment(
       if (JSON.stringify(input.replacement) === JSON.stringify(current))
         conflict('Correction must change the statement or acquisition', 400)
       if (next) {
-        const eligibility = await db.transaction.findMany({
-          where: {
-            voidedAt: null,
-            type: { in: ['BUY', 'SELL'] },
-            position: {
-              userId,
-              accountId,
-              assetId: next.request.income.assetId,
-              id: { not: transaction.positionId },
-              voidedAt: null,
-              positionType: 'LONG',
-            },
-          },
-          select: { date: true, type: true, quantity: true },
-          take: 50001,
-        })
-        if (
-          eligibility.length > 50000 ||
-          !eligibility
-            .filter(
-              (row) =>
-                sydneyCalendarDate(row.date) <=
-                next.request.income.entitlementDate
-            )
-            .reduce(
-              (sum, row) =>
-                row.type === 'BUY'
-                  ? sum.plus(String(row.quantity))
-                  : sum.minus(String(row.quantity)),
-              new AccountingDecimal(0)
-            )
-            .gt(0)
+        const eligibility = await readAccountAssetQuantityAt(
+          db,
+          userId,
+          accountId,
+          next.request.income.assetId,
+          next.request.income.entitlementDate,
+          transaction.positionId
         )
+        if (!eligibility.gt(0))
           conflict(
             'Corrected entitlement requires eligible historical holdings excluding this reinvestment parcel',
             422

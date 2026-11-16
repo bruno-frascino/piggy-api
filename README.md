@@ -92,7 +92,8 @@ Next milestone: the approved stock-split/consolidation posting and history slice
 and reference examples exist, but corporate-action posting is not implemented. Retained split
 history temporarily blocks unsupported financial writes and opening confirmation. Opening/source
 inventory replays retained splits and fingerprints their evidence without changing trade cash;
-cash review still reports incomplete audit integration rather than certifying readiness. Sourced
+proposed-sale review and dated reinvestment entitlement share the validated inventory behind
+the write guards. Cash review still reports incomplete audit integration rather than certifying readiness. Sourced
 valuations and cash-flow-adjusted returns follow later.
 Existing demos remain legacy practice accounts, excluded from real aggregates and tax.
 

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { prisma } from './prisma.js'
 import {
   buildOpeningPreview,
@@ -6,8 +5,8 @@ import {
   sydneyCalendarDate,
 } from './accounting-preview.js'
 import {
-  prepareStoredAccountSplit,
   projectStoredParcelInventory,
+  readStoredSplitHistory,
 } from './stored-parcel-inventory.js'
 import { AccountingDecimal } from './accounting-values.js'
 
@@ -144,45 +143,15 @@ export async function readAccountOpeningPreview(
     rows.push(trade)
     tradesByPosition.set(trade.positionId, rows)
   }
-  const actions = await db.accountSplitAction.findMany({
-    where: { accountId },
-    orderBy: { id: 'asc' },
-    take: 501,
-  })
-  if (actions.length > 500)
-    throw Object.assign(
-      new Error(
-        'This account exceeds the split-action preview limit; no partial preview was generated.'
-      ),
-      { status: 422, name: 'Preview Limit' }
-    )
-  const effects = actions.length
-    ? await db.accountSplitParcelEffect.findMany({
-        where: { action: { accountId } },
-        orderBy: { id: 'asc' },
-        take: 50001,
-      })
-    : []
-  if (effects.length > 50000)
-    throw Object.assign(
-      new Error(
-        'This account exceeds the split-effect preview limit; no partial preview was generated.'
-      ),
-      { status: 422, name: 'Preview Limit' }
-    )
-  const actionById = new Map(actions.map((action) => [action.id, action]))
+  const {
+    actions,
+    effectsByPosition,
+    sourceFingerprint: splitSourceFingerprint,
+  } = await readStoredSplitHistory(db, accountId)
   const positionIds = new Set(positions.map((position) => position.id))
-  const linkedEffects = effects.map((effect) => {
-    const action = actionById.get(effect.actionId)
-    if (!action || !positionIds.has(effect.positionId))
+  for (const positionId of effectsByPosition.keys()) {
+    if (!positionIds.has(positionId))
       throw new Error('Split effect is outside the effective account inventory')
-    return { ...effect, action }
-  })
-  const effectsByPosition = new Map<string, typeof linkedEffects>()
-  for (const effect of linkedEffects) {
-    const rows = effectsByPosition.get(effect.positionId) ?? []
-    rows.push(effect)
-    effectsByPosition.set(effect.positionId, rows)
   }
   const splitInventoryByPosition = new Map<
     string,
@@ -236,19 +205,6 @@ export async function readAccountOpeningPreview(
       })
     }
   }
-  const splitSourceFingerprint = actions.length
-    ? createHash('sha256')
-        .update(
-          JSON.stringify({
-            actions: actions.map((action) => ({
-              ...action,
-              request: prepareStoredAccountSplit(action, accountId).request,
-            })),
-            effects,
-          })
-        )
-        .digest('hex')
-    : undefined
   const importIssues = batches.flatMap((batch) => [
     ...(batch.status !== 'COMMITTED'
       ? [

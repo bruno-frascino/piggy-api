@@ -251,15 +251,21 @@ require an effect. Source fingerprints include retained action/effect evidence, 
 statement provenance; missing or inconsistent effects fail instead of returning partial inventory.
 No-split accounts retain their existing fingerprint format. This reader does not establish an
 audited split continuation of a confirmed ledger's accepted fingerprint.
-Until dated live workflows and dependent writers support splits, retained history places a
+Proposed-sale review now replays the complete retained timeline without mutating acquisition or
+split snapshots. It reserves units for later sales and rejects proposed sales that would alter
+retained split quantities or introduce ambiguous split-day ordering. Reinvestment entry and
+paired correction share dated split-aware entitlement inventory; correction excludes its own
+reinvestment parcel. The bounded history loader and source-fingerprint representation are shared
+with opening review. These integrations remain behind the write fence, not a posting authorization.
+Until audited continuation and the remaining dependent writers support splits, retained history places a
 temporary account-wide 409 fence on legacy financial mutations, moves at either endpoint,
 new financial import steps, draft source-verified writes and live-ledger writes. Notes remain
 editable, and completed legacy import retries without financial steps remain possible.
 Opening review explicitly reports `SPLIT_REPLAY_UNSUPPORTED`; opening confirmation is blocked,
 trade capability is `BLOCKED`, and readable live cash history is marked `INCOMPLETE`.
 These protections do not implement split-aware corrections or authorize posting.
-Production support must still update dependent ledger inventory, trade, entitlement
-and statistics calculations and protect immutable
+Production support must still complete audited ledger continuation, remaining mutation workflows,
+holdings/statistics calculations and protect immutable
 historical reports before activation; see step 3H in the delivery plan. Separate cost-base
 adjustments and complex corporate actions remain outside this slice.
 
