@@ -955,7 +955,7 @@ router.post(
  * /api/accounts/{id}/trade-capability:
  *   get:
  *     summary: Resolve the server-owned trade-write capability for an account
- *     description: Distinguishes active confirmed ledgers from legacy, demo, archived and blocked accounts. This read never activates an account.
+ *     description: Distinguishes active confirmed ledgers from legacy, demo, archived and blocked accounts. Retained split history returns BLOCKED until financial writes support split-aware accounting. This read never activates an account.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []

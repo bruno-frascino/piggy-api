@@ -520,6 +520,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./split-mutation-guard.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/split-mutation-guard.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./transaction-conflict.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/transaction-conflict.ts",
@@ -658,10 +675,14 @@
         "src/lib/account-income-command.ts",
         "src/lib/account-reinvestment-command.ts",
         "src/lib/accounting-preview-service.ts",
+        "src/lib/stored-parcel-inventory.ts",
+        "src/lib/account-split-command.ts",
         "src/lib/cash-revisions.ts",
         "src/lib/draft-cash-evidence.ts",
+        "src/lib/position-service.ts",
         "src/lib/opening-statements.ts",
         "src/lib/live-acquisition-corrections.ts",
+        "src/lib/cgt-engine.ts",
         "src/lib/accounting-preview.test.ts",
         "src/lib/opening-confirmation-service.test.ts"
       ],
@@ -679,13 +700,22 @@
         "src/lib/account-income-command.ts",
         "src/lib/account-reinvestment-command.ts",
         "src/lib/account-trade-command.ts",
+        "src/lib/accounting-preview-service.ts",
+        "src/lib/stored-parcel-inventory.ts",
+        "src/lib/account-split-command.ts",
+        "src/lib/parcel-inventory.ts",
         "src/lib/cash-revisions.ts",
         "src/lib/draft-trade-command.ts",
         "src/lib/execution-correction.ts",
         "src/lib/import-execution-correction.ts",
         "src/lib/manual-trade-void.ts",
         "src/lib/draft-cash-evidence.ts",
-        "src/lib/live-acquisition-corrections.ts"
+        "src/lib/position-service.ts",
+        "src/controllers/accounting-preview.test.ts",
+        "src/lib/live-acquisition-corrections.ts",
+        "src/lib/cgt-engine.ts",
+        "src/lib/cgt-engine.test.ts",
+        "src/lib/position-service.test.ts"
       ],
       "orphan": false,
       "source": "src/lib/accounting-values.ts",
@@ -1042,9 +1072,43 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./prisma.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./stored-parcel-inventory.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/stored-parcel-inventory.ts",
           "valid": true
         }
       ],
@@ -1053,6 +1117,7 @@
         "src/controllers/accounts.ts",
         "src/lib/opening-statements.ts",
         "src/lib/cash-revisions.integration.test.ts",
+        "src/lib/cgt-split.integration.test.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/draft-manual-trades.integration.test.ts",
         "src/lib/imports/service.integration.test.ts",
@@ -1096,6 +1161,7 @@
         "src/controllers/trading-account-lifecycle.integration.test.ts",
         "src/index.ts",
         "src/lib/cash-revisions.integration.test.ts",
+        "src/lib/cgt-split.integration.test.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/draft-manual-trades.integration.test.ts",
         "src/lib/imports/service.integration.test.ts",
@@ -1105,6 +1171,182 @@
       ],
       "orphan": false,
       "source": "src/lib/prisma.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-split-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-command.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./parcel-inventory.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/parcel-inventory.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/accounting-preview-service.ts",
+        "src/lib/position-service.ts",
+        "src/lib/cgt-engine.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/stored-parcel-inventory.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./parcel-inventory.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/parcel-inventory.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/stored-parcel-inventory.ts",
+        "src/controllers/accounting-preview.test.ts",
+        "src/lib/account-split-command.test.ts",
+        "src/lib/cgt-engine.test.ts",
+        "src/lib/cgt-split.integration.test.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/position-service.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/account-split-command.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/stored-parcel-inventory.ts",
+        "src/lib/account-split-command.ts",
+        "src/lib/parcel-inventory.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/parcel-inventory.ts",
       "valid": true
     },
     {
@@ -1675,6 +1917,40 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./crypto/instrument.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/crypto/instrument.ts",
@@ -1713,6 +1989,23 @@
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
           "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./stored-parcel-inventory.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/stored-parcel-inventory.ts",
+          "valid": true
         }
       ],
       "dependents": [
@@ -1721,6 +2014,7 @@
         "src/controllers/positions.ts",
         "src/lib/position-mutations.ts",
         "src/controllers/watchlists.ts",
+        "src/lib/cgt-split.integration.test.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/imports/service.integration.test.ts",
         "src/lib/position-mutations.integration.test.ts",
@@ -1760,6 +2054,17 @@
       ],
       "orphan": false,
       "source": "src/lib/crypto/kraken-markets.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [],
+      "dependents": [
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/imports/service.ts",
+        "src/lib/position-mutations.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/split-mutation-guard.ts",
       "valid": true
     },
     {
@@ -1843,6 +2148,40 @@
     },
     {
       "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/account-split-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-command.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
         {
           "circular": false,
           "coreModule": false,
@@ -2663,6 +3002,23 @@
           "module": "../prisma.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../split-mutation-guard.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/split-mutation-guard.ts",
           "valid": true
         },
         {
@@ -4078,6 +4434,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./split-mutation-guard.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/split-mutation-guard.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./user-lock.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/user-lock.ts",
@@ -4087,6 +4460,7 @@
       "dependents": [
         "src/controllers/positions.ts",
         "src/controllers/trading-account-lifecycle.integration.test.ts",
+        "src/lib/cgt-split.integration.test.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/imports/service.integration.test.ts",
         "src/lib/position-mutations.integration.test.ts",
@@ -4472,6 +4846,40 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./fx-rates.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/fx-rates.ts",
@@ -4493,11 +4901,29 @@
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
           "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./stored-parcel-inventory.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/stored-parcel-inventory.ts",
+          "valid": true
         }
       ],
       "dependents": [
         "src/controllers/tax-reports.ts",
         "src/lib/cgt-engine.test.ts",
+        "src/lib/cgt-split.integration.test.ts",
         "src/lib/draft-cash-ledger.integration.test.ts"
       ],
       "orphan": false,
@@ -5461,6 +5887,31 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./account-split-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-command.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/account-split-command.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./account-trade-command.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/account-trade-command.ts",
@@ -5671,6 +6122,40 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./account-split-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-command.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./cgt-engine.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/cgt-engine.ts",
@@ -5680,6 +6165,116 @@
       "dependents": [],
       "orphan": false,
       "source": "src/lib/cgt-engine.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-split-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-command.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./cgt-engine.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/cgt-engine.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-mutations.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-mutations.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/cgt-split.integration.test.ts",
       "valid": true
     },
     {
@@ -5866,6 +6461,23 @@
           "module": "./account-deletion.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/account-deletion.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-split-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-command.ts",
           "valid": true
         },
         {
@@ -7085,6 +7697,31 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./parcel-inventory.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/parcel-inventory.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/parcel-inventory.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./password-reset.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/password-reset.ts",
@@ -7374,6 +8011,40 @@
     },
     {
       "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-split-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-command.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
         {
           "circular": false,
           "coreModule": false,
@@ -7859,8 +8530,8 @@
         }
       ]
     },
-    "totalCruised": 150,
-    "totalDependenciesCruised": 362,
+    "totalCruised": 157,
+    "totalDependenciesCruised": 396,
     "violations": [],
     "warn": 0
   }

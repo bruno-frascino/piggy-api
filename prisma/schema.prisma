@@ -99,6 +99,7 @@ model TradingAccount {
   importBatches      ImportBatch[]
   openingStatements  AccountOpeningStatement[]
   cashLedger         AccountCashLedger?
+  splitActions       AccountSplitAction[]
 
   @@unique([userId, name])
   @@map("trading_accounts")
@@ -472,9 +473,10 @@ model Asset {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  exchange       Exchange        @relation(fields: [exchangeId], references: [id])
+  exchange       Exchange               @relation(fields: [exchangeId], references: [id])
   positions      Position[]
   incomeReceipts AccountIncomeReceipt[]
+  splitActions   AccountSplitAction[]
   priceHistory   PriceHistory[]
   watchlistItems WatchlistItem[]
 
@@ -546,13 +548,55 @@ model Position {
   updatedAt          DateTime       @updatedAt
   voidedAt           DateTime?
 
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  asset        Asset          @relation(fields: [assetId], references: [id])
-  account      TradingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user         User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset        Asset                      @relation(fields: [assetId], references: [id])
+  account      TradingAccount             @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  splitEffects AccountSplitParcelEffect[]
 
   @@unique([userId, assetId, openDate, entryPrice, accountId, externalRef])
   @@map("positions")
+}
+
+model AccountSplitAction {
+  id                String   @id @default(cuid())
+  accountId         String
+  assetId           String
+  effectiveDate     DateTime @db.Date
+  newUnits          Decimal  @db.Decimal(26, 0)
+  oldUnits          Decimal  @db.Decimal(26, 0)
+  sourceReference   String
+  idempotencyKey    String
+  payloadHash       String
+  sourceFingerprint String
+  methodology       String
+  request           Json
+  recordedAt        DateTime @default(now())
+
+  account TradingAccount             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  asset   Asset                      @relation(fields: [assetId], references: [id])
+  effects AccountSplitParcelEffect[]
+
+  @@unique([accountId, idempotencyKey])
+  @@unique([accountId, assetId, sourceReference])
+  @@unique([accountId, assetId, effectiveDate])
+  @@index([accountId, effectiveDate])
+  @@map("account_split_actions")
+}
+
+model AccountSplitParcelEffect {
+  id             String  @id @default(cuid())
+  actionId       String
+  positionId     String
+  beforeQuantity Decimal @db.Decimal(38, 12)
+  afterQuantity  Decimal @db.Decimal(38, 12)
+
+  action   AccountSplitAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  position Position           @relation(fields: [positionId], references: [id], onDelete: NoAction)
+
+  @@unique([actionId, positionId])
+  @@index([positionId])
+  @@map("account_split_parcel_effects")
 }
 
 // ─── Transactions ────────────────────────────────────────────────────────────

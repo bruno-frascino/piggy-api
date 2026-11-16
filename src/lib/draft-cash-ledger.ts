@@ -87,6 +87,7 @@ import {
 } from './draft-cash-evidence.js'
 import { prepareOpeningConfirmation } from './opening-confirmation.js'
 import { isConcurrentConflict } from './transaction-conflict.js'
+import { requireNoSplitHistory } from './split-mutation-guard.js'
 
 function conflict(message: string, status = 409): never {
   throw Object.assign(new Error(message), {
@@ -137,6 +138,8 @@ type DraftCashTransaction = Pick<
   | 'importedEvent'
   | 'accountOpeningStatement'
   | 'accountCashLedger'
+  | 'accountSplitAction'
+  | 'accountSplitParcelEffect'
   | 'accountCashOperation'
   | 'draftCashOperation'
   | 'draftOperationTradeLink'
@@ -874,6 +877,7 @@ async function verifyStatementSource(
   statement: Awaited<ReturnType<typeof readStatement>>,
   history: Pick<Awaited<ReturnType<typeof readCashHistory>>, 'executionAudits'>
 ) {
+  await requireNoSplitHistory(db, [statement.accountId])
   const snapshot = statement.previewSnapshot
   if (
     !snapshot ||
@@ -3037,6 +3041,7 @@ async function readLiveCashState(
     conflict(
       'This legacy account has no active confirmed cash ledger. Existing trade creation remains unchanged.'
     )
+  if (!readOnly) await requireNoSplitHistory(db, [accountId])
   const statement = await readStatement(
     db,
     userId,
@@ -4159,6 +4164,20 @@ export async function readAccountTradeCapability(
         select: { id: true, status: true, isDemo: true },
       })
       if (!account) conflict('Trading account not found', 404)
+      const split = await db.accountSplitAction.findFirst({
+        where: { accountId },
+        select: { id: true },
+      })
+      if (split)
+        return {
+          accountId,
+          mode: 'BLOCKED' as const,
+          reason:
+            'Retained stock split history requires split-aware accounting before financial writes.',
+          openingDate: null,
+          effectiveDate,
+          nextSequence: null,
+        }
       if (account.isDemo)
         return {
           accountId,
@@ -6424,6 +6443,7 @@ export async function readLiveCapitalOperations(
         'STAKING_INCOME_UNSUPPORTED',
         'IMPORT_CASH_CURRENCY_UNVERIFIED',
         'IMPORT_RECONCILIATION',
+        'SPLIT_REPLAY_UNSUPPORTED',
       ])
       const unsupportedEvents = [
         ...state.unsupportedEvents,

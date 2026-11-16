@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   tradeLink: vi.fn(),
   liveTradeLink: vi.fn(),
   cashLedger: vi.fn(),
+  split: vi.fn(),
 }))
 vi.mock('./prisma.js', () => ({ prisma: { $transaction: mocks.transaction } }))
 vi.mock('./user-lock.js', () => ({ lockActiveUser: vi.fn() }))
@@ -48,6 +49,7 @@ const tx = {
   draftOperationTradeLink: { findFirst: mocks.tradeLink },
   accountCashOperation: { findFirst: mocks.liveTradeLink },
   accountCashLedger: { findUnique: mocks.cashLedger },
+  accountSplitAction: { findFirst: mocks.split },
   position: {
     findFirst: mocks.position,
     delete: mocks.remove,
@@ -67,6 +69,7 @@ beforeEach(() => {
   mocks.tradeLink.mockResolvedValue(null)
   mocks.liveTradeLink.mockResolvedValue(null)
   mocks.cashLedger.mockResolvedValue(null)
+  mocks.split.mockResolvedValue(null)
   mocks.accountLock.mockResolvedValue(undefined)
   mocks.account.mockResolvedValue({ id: 'a1', isDemo: false })
   mocks.accountUpsert.mockResolvedValue({ id: 'a1', isDemo: false })
@@ -101,6 +104,54 @@ describe('atomic parcel disposal mutations', () => {
       { id: 's1', type: 'SELL', quantity: 6, brokerRef: null },
     ],
   }
+  it('blocks legacy financial writes and moves at either endpoint with retained split history', async () => {
+    mocks.position.mockResolvedValue(acquisition)
+    mocks.split.mockResolvedValue({ id: 'split1' })
+    const calls = [
+      () => closePosition('u1', 'p1', input),
+      () => updateCloseEvent('u1', 's1', { exitPrice: 13 }),
+      () => deletePosition('u1', 'p1'),
+      () => updatePositionAcquisition('u1', 'p1', { quantity: 11 }, {}),
+      () => updatePositionAcquisition('u1', 'p1', {}, {}, 'a2'),
+      () =>
+        createPosition(
+          'u1',
+          { accountId: 'a1' },
+          {
+            assetId: 'asset1',
+            openDate: input.closeDate,
+            entryPrice: 10,
+            quantity: 1,
+            totalBuyValue: 10,
+            capitalAllocated: 10,
+          }
+        ),
+    ]
+    for (const call of calls) {
+      await expect(call()).rejects.toMatchObject({
+        status: 409,
+        message: /split history/,
+      })
+    }
+    expect(mocks.split).toHaveBeenCalledWith({
+      where: { accountId: { in: ['a1', 'a2'] } },
+      select: { id: true },
+    })
+    expect(mocks.update).not.toHaveBeenCalled()
+    expect(mocks.remove).not.toHaveBeenCalled()
+    expect(mocks.sell).not.toHaveBeenCalled()
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.lock).toHaveBeenCalled()
+  })
+
+  it('allows metadata-only edits despite retained split history', async () => {
+    mocks.position.mockResolvedValue(acquisition)
+    mocks.split.mockResolvedValue({ id: 'split1' })
+    await updatePositionAcquisition('u1', 'p1', {}, { notes: 'Keep evidence' })
+    await updateCloseEvent('u1', 's1', { notes: 'Statement reference' })
+    expect(mocks.split).not.toHaveBeenCalled()
+    expect(mocks.update).toHaveBeenCalled()
+  })
   it('rejects new acquisitions when the account was closed before the lock was acquired', async () => {
     mocks.account
       .mockResolvedValueOnce({ id: 'a1', status: 'ACTIVE' })

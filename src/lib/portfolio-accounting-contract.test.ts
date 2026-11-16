@@ -273,6 +273,40 @@ describe('portfolio-accounting-v1 executable reference contract', () => {
     )
   })
 
+  it('preserves the remaining parcel cost after a prior sale and a split', () => {
+    const acquisitionCost = amount('1000').plus('10')
+    const costOfPriorSale = acquisitionCost.times('2').div('10')
+    const remainingCost = acquisitionCost.minus(costOfPriorSale)
+    const unitsAfterSplit = amount('8').times('2')
+    const costOfLaterSale = remainingCost.times('4').div(unitsAfterSplit)
+
+    expect(costOfPriorSale.toString()).toBe('202')
+    expect(unitsAfterSplit.toString()).toBe('16')
+    expect(remainingCost.toString()).toBe('808')
+    expect(costOfLaterSale.toString()).toBe('202')
+    expect(remainingCost.minus(costOfLaterSale).toString()).toBe('606')
+  })
+
+  it('preserves cost through a consolidation without inventing cash or a disposal', () => {
+    const units = amount('20').times('1').div('4')
+    const totalCost = amount('1000').plus('10')
+    const cash: Cash = { AUD: '100' }
+
+    expect(units.toString()).toBe('5')
+    expect(totalCost.toString()).toBe('1010')
+    expect(totalCost.div(units).toString()).toBe('202')
+    expect(cash).toEqual({ AUD: '100' })
+  })
+
+  it('distinguishes an exactly representable split quantity from a rounded one', () => {
+    const exact = amount('0.12').times('3').div('2')
+    const rounded = amount('1').div('3').toDecimalPlaces(12)
+
+    expect(exact.toString()).toBe('0.18')
+    expect(exact.times('2').toString()).toBe('0.36')
+    expect(rounded.times('3').equals('1')).toBe(false)
+  })
+
   it('supports tiny crypto consideration without rounding intermediate amounts to cents', () => {
     const gross = positive('0.000000000123').times(
       positive('123456.123456789012')

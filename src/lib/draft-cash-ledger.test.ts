@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   importedEvents: vi.fn(),
   importedEvent: vi.fn(),
   ledgerFindUnique: vi.fn(),
+  splitFindFirst: vi.fn(),
   statementActivityFindMany: vi.fn(),
 }))
 vi.mock('./prisma.js', () => ({
@@ -149,6 +150,7 @@ function stored(raw: unknown = deposit) {
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.statement.mockResolvedValue(statement)
+  mocks.splitFindFirst.mockResolvedValue(null)
   mocks.lock.mockResolvedValue([{ id: 'a1' }])
   mocks.rows.mockResolvedValue([])
   mocks.linkCount.mockResolvedValue(0)
@@ -191,6 +193,7 @@ beforeEach(() => {
           findMany: mocks.statementActivityFindMany,
         },
         accountCashLedger: { findUnique: mocks.ledgerFindUnique },
+        accountSplitAction: { findFirst: mocks.splitFindFirst },
         draftCashOperation: { findMany: mocks.rows, create: mocks.create },
         draftOperationTradeLink: { count: mocks.linkCount },
         draftCashPosting: { count: mocks.postingCount },
@@ -217,6 +220,16 @@ beforeEach(() => {
 })
 
 describe('persistent inactive cash staging', () => {
+  it('rejects draft cash staging when retained splits cannot be replayed', async () => {
+    mocks.splitFindFirst.mockResolvedValue({ id: 'split1' })
+    await expect(
+      saveDraftCashOperation('u1', 's1', deposit)
+    ).rejects.toMatchObject({
+      status: 409,
+      message: /split history/,
+    })
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
   it('stages a zero-fee manual SELL without inventing a fee posting', async () => {
     mocks.transactions.mockResolvedValue([
       { ...trade, type: 'SELL', fees: new Decimal('0'), brokerRef: null },

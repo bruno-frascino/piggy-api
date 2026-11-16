@@ -479,7 +479,7 @@ router.patch(
  *       404:
  *         description: Batch not found
  *       409:
- *         description: Blocking issues, chronology violation, discarded batch or concurrent event/holdings changes
+ *         description: Blocking issues, chronology violation, discarded batch, concurrent event/holdings changes, or retained split history blocks new financial import steps pending split-aware accounting
  */
 router.post(
   '/:id/commit',

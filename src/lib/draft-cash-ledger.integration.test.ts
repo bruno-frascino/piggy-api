@@ -2891,6 +2891,98 @@ describe.skipIf(!enabled)(
         },
       })
     }
+    it('blocks live writes after a retained split and marks the cash read incomplete', async () => {
+      const {
+        postAccountCapitalFlow,
+        readLiveCapitalOperations,
+        readAccountTradeCapability,
+      } = await import('./draft-cash-ledger.js')
+      const { prepareAccountSplit } = await import('./account-split-command.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture holding')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const position = await prisma.position.findFirstOrThrow({
+        where: { accountId: f.accountId, assetId: f.incomeAssetId },
+      })
+      const request = {
+        idempotencyKey: randomUUID(),
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-02',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: 'fixture-split-statement',
+        statementConfirmed: true,
+      }
+      const prepared = prepareAccountSplit(request, f.accountId)
+      const split = await prisma.accountSplitAction.create({
+        data: {
+          accountId: f.accountId,
+          assetId: f.incomeAssetId,
+          effectiveDate: new Date('2026-10-02'),
+          newUnits: '2',
+          oldUnits: '1',
+          sourceReference: request.sourceReference,
+          idempotencyKey: request.idempotencyKey,
+          payloadHash: prepared.payloadHash,
+          sourceFingerprint: 'fixture-source',
+          methodology: 'account-split-v1',
+          request,
+          effects: {
+            create: {
+              positionId: position.id,
+              beforeQuantity: '1',
+              afterQuantity: '2',
+            },
+          },
+        },
+      })
+      await prisma.position.update({
+        where: { id: position.id },
+        data: { quantity: 2 },
+      })
+      const ledgerBefore = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      await expect(
+        postAccountCapitalFlow(
+          f.userId,
+          f.accountId,
+          liveCapitalFlowInput({ amount: '10' })
+        )
+      ).rejects.toMatchObject({ status: 409, message: /split history/ })
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(0)
+      expect(
+        await prisma.accountCashLedger.findUniqueOrThrow({
+          where: { accountId: f.accountId },
+        })
+      ).toEqual(ledgerBefore)
+      const history = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(history.cashCompleteness).toBe('INCOMPLETE')
+      expect(history.sourceFreshness.status).toBe('STALE')
+      expect(
+        history.sourceReviewIssues.map((issue) => issue.code)
+      ).not.toContain('INVENTORY_MISMATCH')
+      expect(history.sourceReviewIssues).toContainEqual(
+        expect.objectContaining({
+          code: 'SPLIT_REPLAY_UNSUPPORTED',
+          sourceId: split.id,
+        })
+      )
+      expect(
+        await readAccountTradeCapability(
+          f.userId,
+          f.accountId,
+          currentSydneyDate()
+        )
+      ).toMatchObject({
+        mode: 'BLOCKED',
+        reason: expect.stringMatching(/split history/),
+      })
+    })
     it('posts atomic FX with both fee currencies, concurrent exact retries and retained cash-only history', async () => {
       const {
         postAccountFxConversion,

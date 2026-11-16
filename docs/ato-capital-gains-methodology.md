@@ -68,6 +68,12 @@ For each effective SELL transaction within the target financial year:
   `position.totalBuyValue / position.entryPrice` for legacy records without that quantity).
 - `proratedBuyFee` = `position.buyFees × (quantity / originalBuyQty)`.
 - `costBase` = `position.entryPrice × quantity + proratedBuyFee`.
+- For a persisted, validated stock split or consolidation before disposal, the reader instead
+  allocates the original parcel acquisition cost and fees by the exact fraction of that parcel
+  disposed after replaying its effective sales and splits. The acquisition date is unchanged;
+  inconsistent source data, missing parcel effects and ambiguous same-day ordering fail the
+  calculation. Split posting is not yet available in the application, and this calculation
+  does not establish that the wider accounting foundation supports corporate actions.
 - Foreign-currency amounts are converted to AUD using the historical FX rate
   on the **acquisition date** (for cost base) and the **disposal date** (for
   proceeds) respectively — see "FX conversion" below.

@@ -30,6 +30,7 @@ export interface PreviewPosition {
   quantity: string
   updatedAt: Date
   transactions: PreviewTransaction[]
+  splitInventory?: { openingQuantity: string; currentQuantity: string }
 }
 
 export interface OpeningPreview {
@@ -137,7 +138,8 @@ export function buildOpeningPreview(
   positions: PreviewPosition[],
   input: OpeningPreviewInput,
   importIssues: { id: string; reason: string }[],
-  now = new Date()
+  now = new Date(),
+  splitSourceFingerprint?: string
 ): OpeningPreview {
   const issues: OpeningPreview['issues'] = []
   const issue = (
@@ -234,7 +236,7 @@ export function buildOpeningPreview(
       }
       const signedQty = tx.type === 'BUY' ? qty : qty.negated()
       totalQty = totalQty.plus(signedQty)
-      if (totalQty.lt(0))
+      if (totalQty.lt(0) && !position.splitInventory)
         issue(
           'OVERSELL',
           'Disposals exceed acquired units at this point in history.',
@@ -255,6 +257,12 @@ export function buildOpeningPreview(
           delta:
             tx.type === 'BUY' ? gross.plus(fee).negated() : gross.minus(fee),
         })
+    }
+    if (position.splitInventory) {
+      openingQty = new AccountingDecimal(
+        position.splitInventory.openingQuantity
+      )
+      totalQty = new AccountingDecimal(position.splitInventory.currentQuantity)
     }
     const recorded = new AccountingDecimal(position.quantity)
     if (!recorded.isFinite() || recorded.lt(0))
@@ -357,6 +365,7 @@ export function buildOpeningPreview(
         importIssues,
         input,
         asOfDate,
+        ...(splitSourceFingerprint ? { splitSourceFingerprint } : {}),
       })
     )
     .digest('hex')

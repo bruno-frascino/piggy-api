@@ -38,6 +38,7 @@ const {
   tradeLinkFindFirstMock,
   liveTradeLinkFindFirstMock,
   cashLedgerFindUniqueMock,
+  splitFindFirstMock,
   exchangeFindUniqueMock,
   assetFindUniqueMock,
   assetCreateMock,
@@ -62,6 +63,7 @@ const {
   tradeLinkFindFirstMock: vi.fn(),
   liveTradeLinkFindFirstMock: vi.fn(),
   cashLedgerFindUniqueMock: vi.fn(),
+  splitFindFirstMock: vi.fn(),
   exchangeFindUniqueMock: vi.fn(),
   assetFindUniqueMock: vi.fn(),
   assetCreateMock: vi.fn(),
@@ -94,6 +96,7 @@ vi.mock('../lib/prisma.js', () => {
     draftOperationTradeLink: { findFirst: tradeLinkFindFirstMock },
     accountCashOperation: { findFirst: liveTradeLinkFindFirstMock },
     accountCashLedger: { findUnique: cashLedgerFindUniqueMock },
+    accountSplitAction: { findFirst: splitFindFirstMock },
     position: {
       findMany: positionFindManyMock,
       count: positionCountMock,
@@ -148,9 +151,20 @@ describe('positions controller', () => {
     tradeLinkFindFirstMock.mockResolvedValue(null)
     liveTradeLinkFindFirstMock.mockResolvedValue(null)
     cashLedgerFindUniqueMock.mockResolvedValue(null)
+    splitFindFirstMock.mockResolvedValue(null)
     derived.history.mockResolvedValue(undefined)
     derived.stop.mockResolvedValue(undefined)
-    positionFindUniqueMock.mockImplementation(() => positionFindFirstMock())
+    positionFindUniqueMock.mockImplementation(async () => {
+      const position = await positionFindFirstMock()
+      return position
+        ? {
+            ...position,
+            openDate: new Date(position.openDate),
+            splitEffects: [],
+            asset: { ...position.asset, splitActions: [] },
+          }
+        : position
+    })
     krakenMarkets.mockResolvedValue([
       { symbol: 'BTC-AUD', exchangeCode: 'KRAKEN' },
       { symbol: 'SHIB-AUD', exchangeCode: 'KRAKEN' },
@@ -622,6 +636,9 @@ describe('positions controller', () => {
       transactionUpdateMock.mockResolvedValue({ id: 'tx_1', price: 12 })
       positionFindUniqueMock.mockResolvedValue({
         id: 'p_1',
+        openDate: new Date('2026-01-01'),
+        splitEffects: [],
+        asset: { splitActions: [] },
         entryPrice: 10,
         buyFees: 0,
         transactions: [
@@ -683,6 +700,9 @@ describe('positions controller', () => {
       transactionUpdateMock.mockResolvedValue({ id: 'tx_1' })
       positionFindUniqueMock.mockResolvedValue({
         id: 'p_1',
+        openDate: new Date('2026-01-01'),
+        splitEffects: [],
+        asset: { splitActions: [] },
         entryPrice: 10,
         buyFees: 0,
         transactions: [],
@@ -708,6 +728,9 @@ describe('positions controller', () => {
       transactionUpdateMock.mockResolvedValue({ id: 'tx_1' })
       positionFindUniqueMock.mockResolvedValue({
         id: 'p_1',
+        openDate: new Date('2026-01-01'),
+        splitEffects: [],
+        asset: { splitActions: [] },
         entryPrice: 10,
         buyFees: 0,
         transactions: [],
@@ -1393,6 +1416,23 @@ describe('positions controller', () => {
   })
 
   describe('POST /api/positions/:id/close', () => {
+    it('surfaces the split accounting conflict without recording a sale', async () => {
+      positionFindFirstMock.mockResolvedValue({
+        id: 'p_1',
+        status: 'OPEN',
+        transactions: [{ type: 'BUY', quantity: 5 }],
+      })
+      splitFindFirstMock.mockResolvedValue({ id: 'split1' })
+      const response = await request(createApp())
+        .post('/api/positions/p_1/close')
+        .send({ closeDate: '2026-02-01', exitPrice: 12, quantity: 1 })
+      expect(response.status).toBe(409)
+      expect(response.body).toMatchObject({
+        error: 'Accounting Conflict',
+        message: expect.stringMatching(/split history/),
+      })
+      expect(transactionCreateMock).not.toHaveBeenCalled()
+    })
     it('rejects overselling a tiny balance rather than accepting an absolute epsilon', async () => {
       positionFindFirstMock.mockResolvedValue({
         id: 'tiny',
@@ -1457,6 +1497,9 @@ describe('positions controller', () => {
       transactionCreateMock.mockResolvedValue({ id: 'tx_1' })
       positionFindUniqueMock.mockResolvedValue({
         id: 'p_1',
+        openDate: new Date('2026-01-01'),
+        splitEffects: [],
+        asset: { splitActions: [] },
         entryPrice: 10,
         buyFees: 0,
         transactions: [
@@ -1528,6 +1571,9 @@ describe('positions controller', () => {
       transactionCreateMock.mockResolvedValue({ id: 'tx_1' })
       positionFindUniqueMock.mockResolvedValue({
         id: 'p_1',
+        openDate: new Date('2026-01-01'),
+        splitEffects: [],
+        asset: { splitActions: [] },
         entryPrice: 10,
         buyFees: 0,
         transactions: [],

@@ -23,7 +23,7 @@ router.use(authenticateToken)
  * /api/accounts/{id}/opening-preview:
  *   post:
  *     summary: Preview opening inventory and trade-only cash without saving financial data
- *     description: Read-only end-of-day Australia/Sydney reconciliation. It cannot confirm or enable accounting. Missing funding is never invented. Limited to 5000 parcels, 500 import batches, 50000 transactions and 10000 relevant import events; exceeding any limit returns 422.
+ *     description: Read-only end-of-day Australia/Sydney reconciliation. Opening and current inventory replay validated retained split effects without changing trade cash. Split actions and effects are included in source fingerprints. Missing or inconsistent retained effects reject the preview rather than returning partial inventory. It cannot confirm or enable accounting; retained splits still add SPLIT_REPLAY_UNSUPPORTED until cash-ledger audit integration is complete. Missing funding is never invented. Limited to 5000 parcels, 500 import batches, 50000 transactions, 10000 relevant import events, 500 split actions and 50000 split effects; exceeding any limit returns 422.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []

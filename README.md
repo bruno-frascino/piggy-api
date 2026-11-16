@@ -88,8 +88,12 @@ Imported corrections retain source events and fixed quantity/parcel allocations;
 voids, financial moves and deletion are blocked. Retained void audits remain readable on archived
 ledger-backed accounts, but are not a source-freshness or reconciliation assertion.
 
-Next milestone: a separately agreed corporate-action/adjustment slice. Sourced valuations and
-cash-flow-adjusted returns follow later.
+Next milestone: the approved stock-split/consolidation posting and history slice. Its policy
+and reference examples exist, but corporate-action posting is not implemented. Retained split
+history temporarily blocks unsupported financial writes and opening confirmation. Opening/source
+inventory replays retained splits and fingerprints their evidence without changing trade cash;
+cash review still reports incomplete audit integration rather than certifying readiness. Sourced
+valuations and cash-flow-adjusted returns follow later.
 Existing demos remain legacy practice accounts, excluded from real aggregates and tax.
 
 ## Tech Stack

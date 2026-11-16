@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { AccountingDecimal } from './accounting-values.js'
+import { prepareAccountSplit } from './account-split-command.js'
 
 const {
   exchangeFindUniqueMock,
@@ -73,6 +75,9 @@ describe('effective parcel recomputation after voids', () => {
   ])('excludes retained voided economic effects %j', async (row) => {
     positionFindUniqueMock.mockResolvedValue({
       id: 'p1',
+      openDate: new Date('2026-01-01'),
+      splitEffects: [],
+      asset: { splitActions: [] },
       entryPrice: 10,
       buyFees: 0,
       transactions: [
@@ -106,6 +111,140 @@ describe('effective parcel recomputation after voids', () => {
       }),
     })
   })
+})
+
+describe('split-aware parcel recomputation', () => {
+  beforeEach(() => vi.clearAllMocks())
+  it.each([
+    { prior: 0, sold: 0, remaining: 20, status: 'OPEN', pnl: null },
+    { prior: 2, sold: 0, remaining: 16, status: 'PARTIAL', pnl: 18 },
+    { prior: 2, sold: 4, remaining: 12, status: 'PARTIAL', pnl: 56 },
+    { prior: 2, sold: 16, remaining: 0, status: 'CLOSED', pnl: 170 },
+  ])(
+    'recomputes split-adjusted inventory and cost for $sold later units sold',
+    async ({ prior, sold, remaining, status, pnl }) => {
+      const request = {
+        idempotencyKey: 'split-key',
+        assetId: 'asset',
+        effectiveDate: '2025-08-01',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: 'statement',
+        statementConfirmed: true,
+      }
+      const action = {
+        id: 'split',
+        accountId: 'account',
+        assetId: 'asset',
+        effectiveDate: new Date(request.effectiveDate),
+        newUnits: new AccountingDecimal('2'),
+        oldUnits: new AccountingDecimal('1'),
+        sourceReference: request.sourceReference,
+        idempotencyKey: request.idempotencyKey,
+        payloadHash: prepareAccountSplit(request, 'account').payloadHash,
+        sourceFingerprint: 'source',
+        methodology: 'account-split-v1',
+        request,
+      }
+      const position = {
+        id: 'parcel',
+        accountId: 'account',
+        assetId: 'asset',
+        positionType: 'LONG',
+        openDate: new Date('2024-01-01'),
+        entryPrice: new AccountingDecimal('100'),
+        buyFees: new AccountingDecimal('10'),
+        asset: { splitActions: [action] },
+        splitEffects: [
+          {
+            actionId: action.id,
+            positionId: 'parcel',
+            beforeQuantity: new AccountingDecimal(String(10 - prior)),
+            afterQuantity: new AccountingDecimal(String((10 - prior) * 2)),
+            action,
+          },
+        ],
+        transactions: [
+          {
+            id: 'buy',
+            type: 'BUY',
+            date: new Date('2024-01-01'),
+            quantity: 10,
+            totalValue: 1000,
+            fees: 10,
+            price: 100,
+          },
+          ...(prior
+            ? [
+                {
+                  id: 'prior',
+                  type: 'SELL',
+                  date: new Date('2025-07-01'),
+                  quantity: prior,
+                  totalValue: prior * 110,
+                  fees: 0,
+                  price: 110,
+                },
+              ]
+            : []),
+          ...(sold
+            ? [
+                {
+                  id: 'later',
+                  type: 'SELL',
+                  date: new Date('2025-10-01'),
+                  quantity: sold,
+                  totalValue: sold * 60,
+                  fees: 0,
+                  price: 60,
+                },
+              ]
+            : []),
+          {
+            id: 'voided',
+            type: 'SELL',
+            date: new Date('2025-11-01'),
+            quantity: 100,
+            totalValue: 6000,
+            fees: 0,
+            price: 60,
+            voidedAt: new Date(),
+          },
+        ],
+      }
+      positionFindUniqueMock.mockResolvedValue(position)
+      await recomputePositionFromTransactions('parcel')
+      expect(positionUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'parcel' },
+        data: expect.objectContaining({
+          quantity: remaining,
+          status,
+          realizedPnL: pnl,
+          closeDate: status === 'CLOSED' ? new Date('2025-10-01') : null,
+        }),
+      })
+      expect(positionUpdateMock.mock.calls[0][0].data).not.toHaveProperty(
+        'entryPrice'
+      )
+      expect(positionUpdateMock.mock.calls[0][0].data).not.toHaveProperty(
+        'openDate'
+      )
+      positionUpdateMock.mockClear()
+      positionFindUniqueMock.mockResolvedValue({
+        ...position,
+        splitEffects: [
+          {
+            ...position.splitEffects[0],
+            afterQuantity: new AccountingDecimal('15'),
+          },
+        ],
+      })
+      await expect(recomputePositionFromTransactions('parcel')).rejects.toThrow(
+        'Split parcel quantities do not match'
+      )
+      expect(positionUpdateMock).not.toHaveBeenCalled()
+    }
+  )
 })
 
 describe('findOrCreateAsset', () => {
@@ -261,6 +400,9 @@ describe('recomputePositionFromTransactions', () => {
     async ({ sold, expected, remaining }) => {
       positionFindUniqueMock.mockResolvedValue({
         id: 'tiny',
+        openDate: new Date('2026-01-01'),
+        splitEffects: [],
+        asset: { splitActions: [] },
         entryPrice: 100000,
         buyFees: 0,
         transactions: [
@@ -307,6 +449,9 @@ describe('recomputePositionFromTransactions', () => {
       id: 'p_1',
       entryPrice: 10,
       buyFees: 5,
+      openDate: new Date('2026-01-01'),
+      splitEffects: [],
+      asset: { splitActions: [] },
       transactions: [
         {
           type: 'BUY',
@@ -337,6 +482,9 @@ describe('recomputePositionFromTransactions', () => {
       id: 'p_1',
       entryPrice: 10,
       buyFees: 10,
+      openDate: new Date('2026-01-01'),
+      splitEffects: [],
+      asset: { splitActions: [] },
       transactions: [
         {
           type: 'BUY',
@@ -377,6 +525,9 @@ describe('recomputePositionFromTransactions', () => {
       id: 'p_1',
       entryPrice: 10,
       buyFees: 0,
+      openDate: new Date('2026-01-01'),
+      splitEffects: [],
+      asset: { splitActions: [] },
       transactions: [
         {
           type: 'BUY',

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../prisma.js'
+import { requireNoSplitHistory } from '../split-mutation-guard.js'
 import { lockOwnedTradingAccount } from '../account-lock.js'
 import { savePositionHistory } from '../position-derived-values.js'
 import Decimal from './decimal.js'
@@ -660,6 +661,7 @@ export async function commitBatch(
 
   await prisma.$transaction(async (tx) => {
     await lockImportAccount(tx, userId, batch.accountId)
+    if (steps.length) await requireNoSplitHistory(tx, [batch.accountId])
     const ledger = await tx.accountCashLedger.findUnique({
       where: { accountId: batch.accountId },
       select: { accountId: true, openingStatementId: true, state: true },

@@ -529,6 +529,22 @@ describe('account trade endpoint', () => {
         })
       })
     expect(readCapability).toHaveBeenCalledWith('u1', 'a1', '2026-10-02')
+    readCapability.mockResolvedValue({
+      accountId: 'a1',
+      mode: 'BLOCKED',
+      reason:
+        'Retained stock split history requires split-aware accounting before financial writes.',
+      openingDate: null,
+      effectiveDate: '2026-10-02',
+      nextSequence: null,
+    })
+    await request(app())
+      .get(`${path}?effectiveDate=2026-10-02`)
+      .set('Authorization', '******')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data).toMatchObject({ mode: 'BLOCKED', nextSequence: null })
+      })
   })
 
   it('authenticates, validates and forwards manual voids, retries and errors', async () => {

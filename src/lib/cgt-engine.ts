@@ -1,5 +1,8 @@
 import { prisma } from './prisma.js'
 import { getHistoricalFxRateToAud } from './fx-rates.js'
+import { AccountingDecimal } from './accounting-values.js'
+import { sydneyCalendarDate } from './accounting-preview.js'
+import { projectStoredParcelInventory } from './stored-parcel-inventory.js'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 // ATO: an asset must be held for MORE than 12 months to qualify for the 50%
@@ -113,13 +116,20 @@ export async function computeCapitalGainsReport(
     include: {
       position: {
         include: {
-          asset: { include: { exchange: true } },
+          asset: {
+            include: {
+              exchange: true,
+              splitActions: {
+                where: { accountId: { in: accountIds } },
+              },
+            },
+          },
           account: true,
           transactions: {
-            where: { type: 'BUY', voidedAt: null },
-            select: { quantity: true },
-            take: 1,
+            where: { type: { in: ['BUY', 'SELL'] }, voidedAt: null },
+            select: { id: true, type: true, date: true, quantity: true },
           },
+          splitEffects: { include: { action: true } },
         },
       },
     },
@@ -136,7 +146,10 @@ export async function computeCapitalGainsReport(
 
     // totalBuyValue is only 2dp, so derive the parcel size from the BUY
     // transaction; the value/price formula is a fallback for legacy rows.
-    const buyTxQty = Number(position.transactions?.[0]?.quantity)
+    const buyTransactions = position.transactions.filter(
+      (trade) => trade.type === 'BUY'
+    )
+    const buyTxQty = Number(buyTransactions[0]?.quantity)
     const originalBuyQty =
       Number.isFinite(buyTxQty) && buyTxQty > 0
         ? buyTxQty
@@ -150,8 +163,25 @@ export async function computeCapitalGainsReport(
         : 0
 
     const proceedsForeign = Number(tx.totalValue) - Number(tx.fees)
-    const costBaseForeign =
+    let costBaseForeign =
       Number(position.entryPrice) * quantity + proratedBuyFee
+    const disposalDay = sydneyCalendarDate(disposeDate)
+    const projected = projectStoredParcelInventory(position, disposalDay)
+    if (projected) {
+      const allocation = projected.sales.find(
+        (sale) => sale.id === `sell:${tx.id}`
+      )
+      if (!allocation)
+        throw new Error(
+          'Split parcel disposal is missing from effective history'
+        )
+      costBaseForeign = new AccountingDecimal(String(buyTxQty))
+        .times(position.entryPrice.toFixed())
+        .plus(position.buyFees.toFixed())
+        .times(allocation.costFraction.numerator)
+        .div(allocation.costFraction.denominator)
+        .toNumber()
+    }
 
     const [fxAcquire, fxDispose] = await Promise.all([
       getHistoricalFxRateToAud(currency, acquireDate),

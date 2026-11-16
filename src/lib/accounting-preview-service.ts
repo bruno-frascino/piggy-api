@@ -1,8 +1,15 @@
+import { createHash } from 'node:crypto'
 import { prisma } from './prisma.js'
 import {
   buildOpeningPreview,
   parseOpeningPreviewInput,
+  sydneyCalendarDate,
 } from './accounting-preview.js'
+import {
+  prepareStoredAccountSplit,
+  projectStoredParcelInventory,
+} from './stored-parcel-inventory.js'
+import { AccountingDecimal } from './accounting-values.js'
 
 type PreviewDb = Pick<
   typeof prisma,
@@ -11,6 +18,8 @@ type PreviewDb = Pick<
   | 'importBatch'
   | 'transaction'
   | 'importedEvent'
+  | 'accountSplitAction'
+  | 'accountSplitParcelEffect'
 >
 
 export async function previewAccountOpening(
@@ -49,6 +58,9 @@ export async function readAccountOpeningPreview(
     take: 5001,
     select: {
       id: true,
+      accountId: true,
+      assetId: true,
+      openDate: true,
       quantity: true,
       positionType: true,
       origin: true,
@@ -132,6 +144,111 @@ export async function readAccountOpeningPreview(
     rows.push(trade)
     tradesByPosition.set(trade.positionId, rows)
   }
+  const actions = await db.accountSplitAction.findMany({
+    where: { accountId },
+    orderBy: { id: 'asc' },
+    take: 501,
+  })
+  if (actions.length > 500)
+    throw Object.assign(
+      new Error(
+        'This account exceeds the split-action preview limit; no partial preview was generated.'
+      ),
+      { status: 422, name: 'Preview Limit' }
+    )
+  const effects = actions.length
+    ? await db.accountSplitParcelEffect.findMany({
+        where: { action: { accountId } },
+        orderBy: { id: 'asc' },
+        take: 50001,
+      })
+    : []
+  if (effects.length > 50000)
+    throw Object.assign(
+      new Error(
+        'This account exceeds the split-effect preview limit; no partial preview was generated.'
+      ),
+      { status: 422, name: 'Preview Limit' }
+    )
+  const actionById = new Map(actions.map((action) => [action.id, action]))
+  const positionIds = new Set(positions.map((position) => position.id))
+  const linkedEffects = effects.map((effect) => {
+    const action = actionById.get(effect.actionId)
+    if (!action || !positionIds.has(effect.positionId))
+      throw new Error('Split effect is outside the effective account inventory')
+    return { ...effect, action }
+  })
+  const effectsByPosition = new Map<string, typeof linkedEffects>()
+  for (const effect of linkedEffects) {
+    const rows = effectsByPosition.get(effect.positionId) ?? []
+    rows.push(effect)
+    effectsByPosition.set(effect.positionId, rows)
+  }
+  const splitInventoryByPosition = new Map<
+    string,
+    {
+      openingQuantity: string
+      currentQuantity: string
+    }
+  >()
+  if (actions.length) {
+    for (const position of positions) {
+      const parcel = {
+        ...position,
+        transactions: tradesByPosition.get(position.id) ?? [],
+        splitEffects: effectsByPosition.get(position.id) ?? [],
+        asset: {
+          splitActions: actions.filter(
+            (action) => action.assetId === position.assetId
+          ),
+        },
+      }
+      const current = projectStoredParcelInventory(
+        parcel,
+        sydneyCalendarDate(now)
+      )
+      if (!current) continue
+      const quantityAt = (date: string) => {
+        if (sydneyCalendarDate(position.openDate) > date) return '0'
+        const projection = projectStoredParcelInventory(parcel, date)
+        return (
+          projection?.remainingQuantity ??
+          parcel.transactions
+            .reduce(
+              (quantity, trade) =>
+                sydneyCalendarDate(trade.date) <= date
+                  ? quantity.plus(
+                      trade.type === 'BUY'
+                        ? trade.quantity
+                        : trade.type === 'SELL'
+                          ? -trade.quantity
+                          : 0
+                    )
+                  : quantity,
+              new AccountingDecimal(0)
+            )
+            .toFixed()
+        )
+      }
+      splitInventoryByPosition.set(position.id, {
+        openingQuantity: quantityAt(input.openingDate),
+        currentQuantity: current.remainingQuantity,
+      })
+    }
+  }
+  const splitSourceFingerprint = actions.length
+    ? createHash('sha256')
+        .update(
+          JSON.stringify({
+            actions: actions.map((action) => ({
+              ...action,
+              request: prepareStoredAccountSplit(action, accountId).request,
+            })),
+            effects,
+          })
+        )
+        .digest('hex')
+    : undefined
   const importIssues = batches.flatMap((batch) => [
     ...(batch.status !== 'COMMITTED'
       ? [
@@ -149,7 +266,7 @@ export async function readAccountOpeningPreview(
       reason: `Imported ${event.kind} (${event.status}) needs reconciliation; cash and income history are not assumed complete.`,
     }))
   )
-  return buildOpeningPreview(
+  const preview = buildOpeningPreview(
     account,
     positions.map((p) => ({
       id: p.id,
@@ -167,9 +284,27 @@ export async function readAccountOpeningPreview(
         totalValue: tx.totalValue.toString(),
         fees: tx.fees.toString(),
       })),
+      ...(splitInventoryByPosition.has(p.id)
+        ? {
+            splitInventory: splitInventoryByPosition.get(p.id),
+          }
+        : {}),
     })),
     input,
     importIssues,
-    now
+    now,
+    splitSourceFingerprint
   )
+  const split = actions[0]
+  if (split) {
+    preview.issues.push({
+      code: 'SPLIT_REPLAY_UNSUPPORTED',
+      severity: 'BLOCKING',
+      message:
+        'Opening inventory includes retained stock splits, but cash-ledger audit integration is incomplete. Reconciliation cannot yet be certified.',
+      sourceId: split.id,
+    })
+    preview.counts.blockingIssues += 1
+  }
+  return preview
 }

@@ -228,6 +228,41 @@ methodology version. No missing data defaults to zero or last-known data without
 Use unadjusted prices with explicit split/unit adjustments, or a separately verified consistent
 alternative; never combine adjusted prices with duplicated corporate actions.
 
+### Stock splits and consolidations (partial, not enabled)
+
+The user approved a statement-supported initial slice for stock splits and consolidations.
+Apply the exact stated ratio to the units held in each affected parcel immediately before the
+action. The original acquisition date and remaining aggregate cost base, including acquisition
+fees, are preserved; earlier disposals retain their previously allocated cost. Later disposals
+allocate the remaining cost over the adjusted units. The action itself is neither a cash flow
+nor a disposal. Reject cases requiring rounding, cash-in-lieu or unsupported allocation rather
+than guessing. Block posting when affected parcels have effective later sales; eligible sales
+must be voided and re-entered after posting. Ambiguous same-day ordering must fail closed.
+
+Posting/history, including source provenance and atomic application to affected holdings,
+are planned first; audited corrections and terminal reversal are deferred. They are not yet
+available. Additive action/effect storage, split-aware CGT and position recomputation are
+implemented. Both readers share linked action identity, request hash and parcel quantity
+validation and reject missing effects; existing report revisions remain unchanged. Position
+recomputation updates remaining units, realized P&L and status without rewriting acquisition
+fields. Opening/current source inventory now uses the same validated split replay without
+changing trade cash. Fully disposed pre-action parcels and post-action acquisitions do not
+require an effect. Source fingerprints include retained action/effect evidence, including
+statement provenance; missing or inconsistent effects fail instead of returning partial inventory.
+No-split accounts retain their existing fingerprint format. This reader does not establish an
+audited split continuation of a confirmed ledger's accepted fingerprint.
+Until dated live workflows and dependent writers support splits, retained history places a
+temporary account-wide 409 fence on legacy financial mutations, moves at either endpoint,
+new financial import steps, draft source-verified writes and live-ledger writes. Notes remain
+editable, and completed legacy import retries without financial steps remain possible.
+Opening review explicitly reports `SPLIT_REPLAY_UNSUPPORTED`; opening confirmation is blocked,
+trade capability is `BLOCKED`, and readable live cash history is marked `INCOMPLETE`.
+These protections do not implement split-aware corrections or authorize posting.
+Production support must still update dependent ledger inventory, trade, entitlement
+and statistics calculations and protect immutable
+historical reports before activation; see step 3H in the delivery plan. Separate cost-base
+adjustments and complex corporate actions remain outside this slice.
+
 ### Exact metric contracts
 
 - **Account value V(t)**: sum of cash and remaining units times dated market prices, each

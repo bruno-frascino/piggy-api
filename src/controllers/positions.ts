@@ -303,7 +303,7 @@ router.get(
  *       404:
  *         description: Exchange or explicitly selected trading account not found
  *       409:
- *         description: Existing asset has an incompatible classification, or trading account must be reopened before adding holdings
+ *         description: Existing asset has an incompatible classification, trading account must be reopened, or retained split history blocks financial writes pending split-aware accounting
  *       503:
  *         description: Kraken market validation temporarily unavailable
  */
@@ -785,7 +785,7 @@ router.get(
  *       404:
  *         description: Close event not found
  *       409:
- *         description: Concurrent move, imported execution change or financial edit of a cash-linked trade
+ *         description: Concurrent move, imported execution change, financial edit of a cash-linked trade, or retained split history blocking financial changes (notes remain editable)
  */
 router.patch(
   '/close-events/:id',
@@ -1119,7 +1119,7 @@ router.post(
  *       404:
  *         description: Position not found
  *       409:
- *         description: Incompatible asset, concurrent account move, parcel does not have exactly one BUY, or open holdings require account reopening
+ *         description: Incompatible asset, concurrent account move, parcel does not have exactly one BUY, open holdings require account reopening, or retained split history in either account blocks financial changes and moves (notes remain editable)
  *       503:
  *         description: Kraken market validation temporarily unavailable
  */
@@ -1438,7 +1438,7 @@ router.patch(
  *       404:
  *         description: Position not found
  *       409:
- *         description: Position moved accounts concurrently; reload and retry
+ *         description: Position moved accounts concurrently, or retained split history blocks sales pending split-aware accounting
  */
 router.post(
   '/:id/close',
@@ -1519,7 +1519,7 @@ router.post(
  *       404:
  *         description: Position not found
  *       409:
- *         description: Concurrent move or parcel has imported execution records or durable draft cash links
+ *         description: Concurrent move, imported execution records, durable draft cash links, or retained split history blocks deletion pending split-aware accounting
  */
 router.delete(
   '/:id',

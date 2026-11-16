@@ -26,6 +26,7 @@ const m = vi.hoisted(() => ({
   queryRaw: vi.fn(),
   accountFindFirst: vi.fn(),
   cashLedgerFindUnique: vi.fn(),
+  splitFindFirst: vi.fn(),
   beginLiveImportPosting: vi.fn(),
   finishLiveImportPosting: vi.fn(),
 }))
@@ -34,6 +35,7 @@ vi.mock('../prisma.js', () => {
   const tx = {
     $queryRaw: m.queryRaw,
     accountCashLedger: { findUnique: m.cashLedgerFindUnique },
+    accountSplitAction: { findFirst: m.splitFindFirst },
     tradingAccount: { findFirst: m.accountFindFirst },
     importBatch: {
       findFirst: m.batchFindFirst,
@@ -153,6 +155,7 @@ beforeEach(() => {
   m.queryRaw.mockResolvedValue([{ id: 'acc1' }])
   m.accountFindFirst.mockResolvedValue({ isDemo: false, status: 'ACTIVE' })
   m.cashLedgerFindUnique.mockResolvedValue(null)
+  m.splitFindFirst.mockResolvedValue(null)
   m.beginLiveImportPosting.mockResolvedValue(m.finishLiveImportPosting)
   m.finishLiveImportPosting.mockResolvedValue(undefined)
   m.recompute.mockResolvedValue({ id: 'pos1' })
@@ -412,6 +415,33 @@ describe('commitBatch', () => {
     fee: { toFixed: () => '2' },
   })
 
+  it('rejects import writes under the account lock when split replay is unsupported', async () => {
+    m.eventFindMany.mockResolvedValue([buyRow])
+    m.splitFindFirst.mockResolvedValue({ id: 'split1' })
+    await expect(commitBatch('b1', 'u1')).rejects.toMatchObject({
+      status: 409,
+      message: /split history/,
+    })
+    expect(m.queryRaw).toHaveBeenCalled()
+    expect(m.positionCreate).not.toHaveBeenCalled()
+    expect(m.transactionCreate).not.toHaveBeenCalled()
+    expect(m.eventUpdate).not.toHaveBeenCalled()
+    expect(m.beginLiveImportPosting).not.toHaveBeenCalled()
+  })
+
+  it('preserves a completed legacy import retry without replaying financial steps', async () => {
+    m.batchFindFirst.mockResolvedValue({ ...batch, status: 'COMMITTED' })
+    m.eventFindMany.mockResolvedValue([{ ...buyRow, status: 'APPLIED' }])
+    m.splitFindFirst.mockResolvedValue({ id: 'split1' })
+    await expect(commitBatch('b1', 'u1')).resolves.toEqual({
+      createdPositionIds: [],
+      appliedEvents: 0,
+    })
+    expect(m.splitFindFirst).not.toHaveBeenCalled()
+    expect(m.positionCreate).not.toHaveBeenCalled()
+    expect(m.transactionCreate).not.toHaveBeenCalled()
+    expect(m.eventUpdate).not.toHaveBeenCalled()
+  })
   it('posts import cash with the imported trades in the same live-ledger transaction', async () => {
     m.eventFindMany.mockResolvedValue([buyRow])
     m.cashLedgerFindUnique.mockResolvedValue({

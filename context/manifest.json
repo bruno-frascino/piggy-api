@@ -6,29 +6,29 @@
     },
     "data-model.md": {
       "path": "context/data-model.md",
-      "sha256": "b8ccc88cbeae21afd55dd18e3286d45bacda0e2906ad0977f609504e09a4993e"
+      "sha256": "54de0a3a67058ceb2cd4af9b99045419f26bf2149c77636c4d273fca50437945"
     },
     "module-graph.json": {
       "path": "context/module-graph.json",
-      "sha256": "97d6a38c283b529baf09957fe2fd300f79b0c833c2bf7ec67bf6c579996ef12a"
+      "sha256": "bd223324c4b64a1d7580264fdd71f2bb7910a6645062394e4aca7b0fd5bd8fec"
     },
     "module-graph.md": {
       "path": "context/module-graph.md",
-      "sha256": "615a480ca9eb8012ead95750f89fe0656f9e6e617270a508b8616214480e9ae2"
+      "sha256": "ed7d6a92155e31c7bbefad9d3616ca5aea4b392605d2aa115ed104fb3a766fd5"
     },
     "openapi.json": {
       "path": "context/openapi.json",
-      "sha256": "d0b74d3976af5a8b026781057d584bc6e8fa362e26115a6c022a2e7edec9d03a"
+      "sha256": "c4ffd894089765471be3e9daa71ea5c75112e4d8772f418bf1b6940b499745c2"
     },
     "symbol-index.json": {
       "path": "context/symbol-index.json",
-      "sha256": "020733e4b0e4ab0e9d3958010c28b72c9b06287f1664ac4db5401475c43ca5e8"
+      "sha256": "551f857033b74b7ecbd93eb5fdc07d59e2349581ff453f4abbc8e0b2ea829283"
     },
     "unused.json": {
       "path": "context/unused.json",
-      "sha256": "79fdd5bf50dd7fb293c306b5de7a8f5e4f281e432e7bb23801cb67ba4c933e9e"
+      "sha256": "53e7167340a6faa6c45ac1250d16a2547f1bf9af80ae679b59f90d843101a12e"
     }
   },
-  "generatedAt": "2026-11-15T09:22:56.596Z",
+  "generatedAt": "2026-11-16T08:37:16.801Z",
   "generatorVersion": 1
 }

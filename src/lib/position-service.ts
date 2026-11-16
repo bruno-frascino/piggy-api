@@ -1,5 +1,8 @@
 import { prisma } from './prisma.js'
 import { normalizeInstrument } from './crypto/instrument.js'
+import { AccountingDecimal } from './accounting-values.js'
+import { sydneyCalendarDate } from './accounting-preview.js'
+import { projectStoredParcelInventory } from './stored-parcel-inventory.js'
 import {
   getKrakenMarkets,
   KrakenMarketsUnavailable,
@@ -176,7 +179,11 @@ export async function recomputePositionFromTransactions(
 ) {
   const position = await db.position.findUnique({
     where: { id: positionId },
-    include: { transactions: { orderBy: { date: 'asc' } } },
+    include: {
+      transactions: { orderBy: { date: 'asc' } },
+      splitEffects: { include: { action: true } },
+      asset: { include: { splitActions: true } },
+    },
   })
   if (!position) return null
 
@@ -189,24 +196,57 @@ export async function recomputePositionFromTransactions(
 
   const buyQty = buyTxs.reduce((sum, tx) => sum + Number(tx.quantity), 0)
   const sellQty = sellTxs.reduce((sum, tx) => sum + Number(tx.quantity), 0)
-  const rawRemainingQty = Math.max(0, buyQty - sellQty)
+  const observationDate = [
+    sydneyCalendarDate(position.openDate),
+    ...position.transactions
+      .filter((tx) => !tx.voidedAt)
+      .map((tx) => sydneyCalendarDate(tx.date)),
+    ...position.splitEffects.map((effect) =>
+      effect.action.effectiveDate.toISOString().slice(0, 10)
+    ),
+    ...position.asset.splitActions
+      .filter((action) => action.accountId === position.accountId)
+      .map((action) => action.effectiveDate.toISOString().slice(0, 10)),
+  ]
+    .sort()
+    .at(-1)!
+  const projected = projectStoredParcelInventory(position, observationDate)
+  if (projected && position.positionType !== 'LONG')
+    throw new Error('Only long split parcels are supported')
+  const rawRemainingQty = projected
+    ? Number(projected.remainingQuantity)
+    : Math.max(0, buyQty - sellQty)
   const sellValue = sellTxs.reduce((sum, tx) => sum + Number(tx.totalValue), 0)
   const sellFees = sellTxs.reduce((sum, tx) => sum + Number(tx.fees), 0)
   const buyFees = Number(position.buyFees)
   const costBasisSold = Number(position.entryPrice) * sellQty
   const proratedBuyFees = buyQty > 0 ? buyFees * (sellQty / buyQty) : 0
-  const realizedPnL = sellValue - sellFees - costBasisSold - proratedBuyFees
+  const allocatedCost = projected
+    ? new AccountingDecimal(String(buyQty))
+        .times(position.entryPrice.toFixed())
+        .plus(position.buyFees.toFixed())
+        .times(
+          new AccountingDecimal(
+            projected.remainingCostFraction.denominator
+          ).minus(projected.remainingCostFraction.numerator)
+        )
+        .div(projected.remainingCostFraction.denominator)
+        .toNumber()
+    : costBasisSold + proratedBuyFees
+  const realizedPnL = projected
+    ? sellValue - sellFees - allocatedCost
+    : sellValue - sellFees - costBasisSold - proratedBuyFees
   const returnPercentage =
-    costBasisSold + proratedBuyFees > 0
-      ? (realizedPnL / (costBasisSold + proratedBuyFees)) * 100
-      : 0
+    allocatedCost > 0 ? (realizedPnL / allocatedCost) * 100 : 0
 
   const hasAnySell = sellTxs.length > 0
   const latestSell = hasAnySell ? sellTxs[sellTxs.length - 1] : null
   const isClosed =
     hasAnySell &&
     buyQty > 0 &&
-    rawRemainingQty <= quantityTolerance(buyQty, sellQty)
+    (projected
+      ? rawRemainingQty === 0
+      : rawRemainingQty <= quantityTolerance(buyQty, sellQty))
   const remainingQty = isClosed ? 0 : rawRemainingQty
   const status = isClosed ? 'CLOSED' : hasAnySell ? 'PARTIAL' : 'OPEN'
 

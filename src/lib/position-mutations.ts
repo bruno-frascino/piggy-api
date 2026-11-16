@@ -1,6 +1,7 @@
 import { prisma } from './prisma.js'
 import { lockActiveUser } from './user-lock.js'
 import { lockOwnedPosition, lockOwnedTradingAccount } from './account-lock.js'
+import { requireNoSplitHistory } from './split-mutation-guard.js'
 import {
   quantityTolerance,
   recomputePositionFromTransactions,
@@ -65,7 +66,7 @@ async function requireUnlinkedTrades(
 }
 
 async function requireNoCashLedger(
-  db: Pick<typeof prisma, 'accountCashLedger'>,
+  db: Pick<typeof prisma, 'accountCashLedger' | 'accountSplitAction'>,
   accountIds: string[]
 ): Promise<void> {
   for (const accountId of new Set(accountIds)) {
@@ -80,6 +81,7 @@ async function requireNoCashLedger(
         'This account has a confirmed cash ledger. Financial edits, moves and deletion require a coordinated accounting workflow, which is not yet available.'
       )
   }
+  await requireNoSplitHistory(db, accountIds)
 }
 
 function requireManualSource(imported: boolean): void {

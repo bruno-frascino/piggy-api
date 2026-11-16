@@ -41,6 +41,10 @@ erDiagram
     User ||--o{ Position : "user"
     Asset ||--o{ Position : "asset"
     TradingAccount ||--o{ Position : "account"
+    TradingAccount ||--o{ AccountSplitAction : "account"
+    Asset ||--o{ AccountSplitAction : "asset"
+    AccountSplitAction ||--o{ AccountSplitParcelEffect : "action"
+    Position ||--o{ AccountSplitParcelEffect : "position"
     Position ||--o{ Transaction : "position"
     User ||--o{ PortfolioSnapshot : "user"
     TradingAccount ||--o{ PortfolioSnapshot : "account"
@@ -139,6 +143,7 @@ Constraints: `@@index([purgeAfter])`
 | importBatches | `ImportBatch[]` | — |
 | openingStatements | `AccountOpeningStatement[]` | — |
 | cashLedger | `AccountCashLedger?` | — |
+| splitActions | `AccountSplitAction[]` | — |
 
 Constraints: `@@unique([userId, name])`
 
@@ -483,6 +488,7 @@ Constraints: `@@unique([revisionId, legIndex])`
 | exchange | `Exchange` | @relation(fields: [exchangeId], references: [id]) |
 | positions | `Position[]` | — |
 | incomeReceipts | `AccountIncomeReceipt[]` | — |
+| splitActions | `AccountSplitAction[]` | — |
 | priceHistory | `PriceHistory[]` | — |
 | watchlistItems | `WatchlistItem[]` | — |
 
@@ -554,8 +560,46 @@ Constraints: `@@unique([assetId, date])`
 | asset | `Asset` | @relation(fields: [assetId], references: [id]) |
 | account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
 | transactions | `Transaction[]` | — |
+| splitEffects | `AccountSplitParcelEffect[]` | — |
 
 Constraints: `@@unique([userId, assetId, openDate, entryPrice, accountId, externalRef])`
+
+### `AccountSplitAction` (table: `account_split_actions`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| accountId | `String` | — |
+| assetId | `String` | — |
+| effectiveDate | `DateTime` | @db.Date |
+| newUnits | `Decimal` | @db.Decimal(26, 0) |
+| oldUnits | `Decimal` | @db.Decimal(26, 0) |
+| sourceReference | `String` | — |
+| idempotencyKey | `String` | — |
+| payloadHash | `String` | — |
+| sourceFingerprint | `String` | — |
+| methodology | `String` | — |
+| request | `Json` | — |
+| recordedAt | `DateTime` | @default(now()) |
+| account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
+| asset | `Asset` | @relation(fields: [assetId], references: [id]) |
+| effects | `AccountSplitParcelEffect[]` | — |
+
+Constraints: `@@unique([accountId, idempotencyKey])`, `@@unique([accountId, assetId, sourceReference])`, `@@unique([accountId, assetId, effectiveDate])`, `@@index([accountId, effectiveDate])`
+
+### `AccountSplitParcelEffect` (table: `account_split_parcel_effects`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| actionId | `String` | — |
+| positionId | `String` | — |
+| beforeQuantity | `Decimal` | @db.Decimal(38, 12) |
+| afterQuantity | `Decimal` | @db.Decimal(38, 12) |
+| action | `AccountSplitAction` | @relation(fields: [actionId], references: [id], onDelete: Cascade) |
+| position | `Position` | @relation(fields: [positionId], references: [id], onDelete: NoAction) |
+
+Constraints: `@@unique([actionId, positionId])`, `@@index([positionId])`
 
 ### `Transaction` (table: `transactions`)
 
@@ -784,3 +828,5 @@ Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, s
 - `20261108065037_account_cash_operations_support_capital_flows`
 - `20261111000000_reviewed_opening_confirmation`
 - `20261111185204_account_income_receipts`
+- `20261115103553_account_split_actions`
+- `20261115105034_defer_split_effect_fk`

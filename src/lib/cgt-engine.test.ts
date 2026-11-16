@@ -29,6 +29,8 @@ import {
   computeCapitalGainsReport,
   getFinancialYearRange,
 } from './cgt-engine.js'
+import { AccountingDecimal } from './accounting-values.js'
+import { prepareAccountSplit } from './account-split-command.js'
 
 function makeDisposal({
   id,
@@ -69,6 +71,7 @@ function makeDisposal({
     position: {
       id: `pos-${id}`,
       accountId,
+      assetId: 'asset-1',
       openDate: new Date(openDate),
       entryPrice,
       buyFees,
@@ -77,9 +80,21 @@ function makeDisposal({
         symbol: 'CBA',
         assetType: 'EQUITY',
         exchange: { code: 'ASX', currency },
+        splitActions: [],
       },
       account: { name: accountName },
-      transactions: buyQty === undefined ? [] : [{ quantity: buyQty }],
+      transactions:
+        buyQty === undefined
+          ? []
+          : [
+              {
+                id: 'buy',
+                type: 'BUY',
+                date: new Date(openDate),
+                quantity: buyQty,
+              },
+            ],
+      splitEffects: [],
     },
   }
 }
@@ -108,6 +123,204 @@ describe('computeAccountsKey', () => {
 })
 
 describe('computeCapitalGainsReport', () => {
+  it('uses the adjusted parcel cost for a sale after a split and earlier disposal', async () => {
+    const disposal = makeDisposal({
+      id: 'after',
+      quantity: 4,
+      totalValue: 240,
+      fees: 0,
+      date: '2025-10-01',
+      entryPrice: 100,
+      buyFees: 10,
+      totalBuyValue: 1000,
+      openDate: '2024-01-01',
+      buyQty: 10,
+    })
+    const request = {
+      idempotencyKey: 'split-key',
+      assetId: 'asset-1',
+      effectiveDate: '2025-08-01',
+      newUnits: '2',
+      oldUnits: '1',
+      sourceReference: 'statement-1',
+      statementConfirmed: true,
+    }
+    const prepared = prepareAccountSplit(request, 'acc1')
+    const effect = {
+      actionId: 'split-1',
+      positionId: disposal.position.id,
+      beforeQuantity: new AccountingDecimal('8'),
+      afterQuantity: new AccountingDecimal('16'),
+      action: {
+        id: 'split-1',
+        accountId: 'acc1',
+        assetId: 'asset-1',
+        effectiveDate: new Date('2025-08-01'),
+        newUnits: new AccountingDecimal('2'),
+        oldUnits: new AccountingDecimal('1'),
+        sourceReference: request.sourceReference,
+        idempotencyKey: request.idempotencyKey,
+        sourceFingerprint: 'verified-source',
+        methodology: 'account-split-v1',
+        request,
+        payloadHash: prepared.payloadHash,
+      },
+    }
+    const splitDisposal = {
+      ...disposal,
+      position: {
+        ...disposal.position,
+        asset: { ...disposal.position.asset, splitActions: [effect.action] },
+        entryPrice: new AccountingDecimal('100'),
+        buyFees: new AccountingDecimal('10'),
+        transactions: [
+          ...disposal.position.transactions,
+          {
+            id: 'before',
+            type: 'SELL',
+            date: new Date('2025-07-01'),
+            quantity: 2,
+          },
+          {
+            id: 'after',
+            type: 'SELL',
+            date: new Date('2025-10-01'),
+            quantity: 4,
+          },
+        ],
+        splitEffects: [effect],
+      },
+    }
+    transactionFindManyMock.mockResolvedValue([splitDisposal])
+
+    const result = await computeCapitalGainsReport('u1', 2025, ['acc1'])
+    expect(result.lineItems[0].costBaseForeign).toBe(202)
+    expect(result.lineItems[0].capitalGainAud).toBe(38)
+    expect(result.lineItems[0].acquireDate).toBe('2024-01-01')
+
+    transactionFindManyMock.mockResolvedValue([
+      {
+        ...splitDisposal,
+        id: 'before',
+        date: new Date('2025-07-01'),
+        quantity: 2,
+        totalValue: 220,
+      },
+    ])
+    const earlier = await computeCapitalGainsReport('u1', 2025, ['acc1'])
+    expect(earlier.lineItems[0].costBaseForeign).toBe(202)
+
+    transactionFindManyMock.mockResolvedValue([
+      {
+        ...splitDisposal,
+        position: {
+          ...splitDisposal.position,
+          splitEffects: [
+            { ...effect, afterQuantity: new AccountingDecimal('15') },
+          ],
+        },
+      },
+    ])
+    await expect(
+      computeCapitalGainsReport('u1', 2025, ['acc1'])
+    ).rejects.toThrow('Split parcel quantities do not match effective history')
+
+    transactionFindManyMock.mockResolvedValue([
+      {
+        ...splitDisposal,
+        position: {
+          ...splitDisposal.position,
+          splitEffects: [
+            {
+              ...effect,
+              action: { ...effect.action, payloadHash: 'tampered' },
+            },
+          ],
+        },
+      },
+    ])
+    await expect(
+      computeCapitalGainsReport('u1', 2025, ['acc1'])
+    ).rejects.toThrow('Invalid split action source or parcel identity')
+
+    transactionFindManyMock.mockResolvedValue([
+      {
+        ...splitDisposal,
+        position: { ...splitDisposal.position, splitEffects: [] },
+      },
+    ])
+    await expect(
+      computeCapitalGainsReport('u1', 2025, ['acc1'])
+    ).rejects.toThrow('Split action is missing its parcel effect')
+
+    const consolidationRequest = {
+      ...request,
+      effectiveDate: '2025-09-01',
+      newUnits: '1',
+      oldUnits: '2',
+      idempotencyKey: 'consolidation-key',
+      sourceReference: 'statement-2',
+    }
+    const consolidation = {
+      ...effect,
+      actionId: 'consolidation',
+      beforeQuantity: new AccountingDecimal('16'),
+      afterQuantity: new AccountingDecimal('8'),
+      action: {
+        ...effect.action,
+        id: 'consolidation',
+        effectiveDate: new Date('2025-09-01'),
+        newUnits: new AccountingDecimal('1'),
+        oldUnits: new AccountingDecimal('2'),
+        idempotencyKey: consolidationRequest.idempotencyKey,
+        sourceReference: consolidationRequest.sourceReference,
+        request: consolidationRequest,
+        payloadHash: prepareAccountSplit(consolidationRequest, 'acc1')
+          .payloadHash,
+      },
+    }
+    transactionFindManyMock.mockResolvedValue([
+      {
+        ...splitDisposal,
+        position: {
+          ...splitDisposal.position,
+          asset: {
+            ...splitDisposal.position.asset,
+            splitActions: [effect.action, consolidation.action],
+          },
+          splitEffects: [effect, consolidation],
+        },
+      },
+    ])
+    const repeated = await computeCapitalGainsReport('u1', 2025, ['acc1'])
+    expect(repeated.lineItems[0].costBaseForeign).toBe(404)
+    expect(repeated.lineItems[0].capitalGainAud).toBe(-164)
+
+    const sameDayRequest = { ...request, effectiveDate: '2025-10-01' }
+    const sameDayAction = {
+      ...effect.action,
+      effectiveDate: new Date('2025-10-01'),
+      request: sameDayRequest,
+      payloadHash: prepareAccountSplit(sameDayRequest, 'acc1').payloadHash,
+    }
+    transactionFindManyMock.mockResolvedValue([
+      {
+        ...splitDisposal,
+        position: {
+          ...splitDisposal.position,
+          asset: {
+            ...splitDisposal.position.asset,
+            splitActions: [sameDayAction],
+          },
+          splitEffects: [{ ...effect, action: sameDayAction }],
+        },
+      },
+    ])
+    await expect(
+      computeCapitalGainsReport('u1', 2025, ['acc1'])
+    ).rejects.toThrow('Ambiguous same-day split ordering')
+  })
+
   it('rejects when accountIds is empty', async () => {
     await expect(computeCapitalGainsReport('u1', 2025, [])).rejects.toThrow(
       'At least one trading account must be selected'
