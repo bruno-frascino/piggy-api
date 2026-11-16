@@ -93,7 +93,9 @@ and reference examples exist, but corporate-action posting is not implemented. R
 history temporarily blocks unsupported financial writes and opening confirmation. Opening/source
 inventory replays retained splits and fingerprints their evidence without changing trade cash;
 proposed-sale review and dated reinvestment entitlement share the validated inventory behind
-the write guards. Cash review still reports incomplete audit integration rather than certifying readiness. Sourced
+the write guards. Audited retained splits now advance the shared source/audit chain without cash
+postings; unaudited records are not adopted. Cash review remains incomplete even with a current
+source, pending the remaining dependent workflows and locked split writer. Sourced
 valuations and cash-flow-adjusted returns follow later.
 Existing demos remain legacy practice accounts, excluded from real aggregates and tax.
 

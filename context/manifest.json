@@ -6,11 +6,11 @@
     },
     "data-model.md": {
       "path": "context/data-model.md",
-      "sha256": "54de0a3a67058ceb2cd4af9b99045419f26bf2149c77636c4d273fca50437945"
+      "sha256": "f52444013114beb495c43f5cc48cb484a1fcded97f75309f414bd1e95219fbfc"
     },
     "module-graph.json": {
       "path": "context/module-graph.json",
-      "sha256": "18c54d5326c2608242fd5d053118bf6ebc9bd17667ba0001504c0311876a1f2f"
+      "sha256": "82cd2c5f813b8ad5260e0ff272c3d4bda3b9b762a651bac6eebd9368d4adcf4b"
     },
     "module-graph.md": {
       "path": "context/module-graph.md",
@@ -22,13 +22,13 @@
     },
     "symbol-index.json": {
       "path": "context/symbol-index.json",
-      "sha256": "8bc32bd1e083c3071268e9c6962db196fc0ce861db1210fa53fc96912d17a38f"
+      "sha256": "e1a6562116c021c49493e40840208882a30140c7a29a2d094e55357bd1aa8018"
     },
     "unused.json": {
       "path": "context/unused.json",
-      "sha256": "a495e4f38537146449217dfda9241aa6708df7fb8350c9f3addecaf14dce7c81"
+      "sha256": "53e7167340a6faa6c45ac1250d16a2547f1bf9af80ae679b59f90d843101a12e"
     }
   },
-  "generatedAt": "2026-11-16T09:09:52.238Z",
+  "generatedAt": "2026-11-16T11:43:33.246Z",
   "generatorVersion": 1
 }

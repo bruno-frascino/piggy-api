@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 import { AccountingDecimal } from './accounting-values.js'
 import { prepareAccountSplit } from './account-split-command.js'
 
@@ -19,6 +20,7 @@ vi.mock('./prisma.js', () => ({
 import { prisma } from './prisma.js'
 import {
   readAccountAssetQuantityAt,
+  readStoredSplitHistory,
   reviewStoredParcelSale,
 } from './stored-parcel-inventory.js'
 
@@ -46,6 +48,9 @@ function fixture() {
     methodology: 'account-split-v1',
     request,
     recordedAt: new Date('2025-08-02'),
+    auditNumber: null,
+    previousFingerprint: null,
+    nextFingerprint: null,
   }
   const effect = {
     id: 'effect1',
@@ -96,6 +101,39 @@ beforeEach(() => {
   mocks.trades.mockResolvedValue(f.transactions)
   mocks.actions.mockResolvedValue([f.action])
   mocks.effects.mockResolvedValue([f.effect])
+})
+
+describe('split source fingerprint stability', () => {
+  it('preserves the original source hash and excludes audit continuation metadata', async () => {
+    const { action, effect } = fixture()
+    const {
+      auditNumber: _auditNumber,
+      previousFingerprint: _previous,
+      nextFingerprint: _next,
+      ...original
+    } = action
+    const expected = createHash('sha256')
+      .update(JSON.stringify({ actions: [original], effects: [effect] }))
+      .digest('hex')
+    expect((await readStoredSplitHistory(prisma, 'a1')).sourceFingerprint).toBe(
+      expected
+    )
+    mocks.actions.mockResolvedValue([
+      {
+        ...action,
+        auditNumber: 2,
+        previousFingerprint: 'a'.repeat(64),
+        nextFingerprint: 'b'.repeat(64),
+      },
+    ])
+    expect((await readStoredSplitHistory(prisma, 'a1')).sourceFingerprint).toBe(
+      expected
+    )
+    mocks.effects.mockResolvedValue([{ ...effect, id: 'changed-evidence' }])
+    expect(
+      (await readStoredSplitHistory(prisma, 'a1')).sourceFingerprint
+    ).not.toBe(expected)
+  })
 })
 
 describe('dated account/asset entitlement inventory', () => {

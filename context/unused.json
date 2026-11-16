@@ -321,29 +321,6 @@
       ],
       "unlisted": [],
       "unresolved": []
-    },
-    {
-      "binaries": [],
-      "catalog": [],
-      "dependencies": [],
-      "devDependencies": [],
-      "duplicates": [],
-      "enumMembers": [],
-      "exports": [
-        {
-          "col": 17,
-          "line": 80,
-          "name": "prepareStoredAccountSplit",
-          "pos": 2573
-        }
-      ],
-      "file": "src/lib/stored-parcel-inventory.ts",
-      "files": [],
-      "namespaceMembers": [],
-      "optionalPeerDependencies": [],
-      "types": [],
-      "unlisted": [],
-      "unresolved": []
     }
   ]
 }

@@ -559,19 +559,22 @@ model Position {
 }
 
 model AccountSplitAction {
-  id                String   @id @default(cuid())
-  accountId         String
-  assetId           String
-  effectiveDate     DateTime @db.Date
-  newUnits          Decimal  @db.Decimal(26, 0)
-  oldUnits          Decimal  @db.Decimal(26, 0)
-  sourceReference   String
-  idempotencyKey    String
-  payloadHash       String
-  sourceFingerprint String
-  methodology       String
-  request           Json
-  recordedAt        DateTime @default(now())
+  id                  String   @id @default(cuid())
+  accountId           String
+  assetId             String
+  effectiveDate       DateTime @db.Date
+  newUnits            Decimal  @db.Decimal(26, 0)
+  oldUnits            Decimal  @db.Decimal(26, 0)
+  sourceReference     String
+  idempotencyKey      String
+  payloadHash         String
+  sourceFingerprint   String
+  methodology         String
+  request             Json
+  recordedAt          DateTime @default(now())
+  auditNumber         Int?
+  previousFingerprint String?
+  nextFingerprint     String?
 
   account TradingAccount             @relation(fields: [accountId], references: [id], onDelete: Cascade)
   asset   Asset                      @relation(fields: [assetId], references: [id])
@@ -580,6 +583,7 @@ model AccountSplitAction {
   @@unique([accountId, idempotencyKey])
   @@unique([accountId, assetId, sourceReference])
   @@unique([accountId, assetId, effectiveDate])
+  @@unique([accountId, auditNumber])
   @@index([accountId, effectiveDate])
   @@map("account_split_actions")
 }

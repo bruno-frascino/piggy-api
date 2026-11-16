@@ -89,6 +89,7 @@ import { prepareOpeningConfirmation } from './opening-confirmation.js'
 import { isConcurrentConflict } from './transaction-conflict.js'
 import { requireNoSplitHistory } from './split-mutation-guard.js'
 import {
+  prepareStoredAccountSplit,
   readAccountAssetQuantityAt,
   reviewStoredParcelSale,
 } from './stored-parcel-inventory.js'
@@ -3126,6 +3127,37 @@ async function readLiveCashState(
     revision?: (typeof cashLedgerOps)[number]['revisions'][number]
     prepared?: ReturnType<typeof prepareCashRevision>
   }[] = []
+  const splitActions = await db.accountSplitAction.findMany({
+    where: { accountId },
+    orderBy: { id: 'asc' },
+    take: 501,
+  })
+  if (splitActions.length > 500)
+    conflict('Live split history exceeds the supported replay limit', 422)
+  const splitEvents = splitActions.flatMap((action) => {
+    if (
+      action.auditNumber === null &&
+      action.previousFingerprint === null &&
+      action.nextFingerprint === null
+    )
+      return []
+    const prepared = prepareStoredAccountSplit(action, accountId)
+    if (
+      action.auditNumber === null ||
+      !Number.isSafeInteger(action.auditNumber) ||
+      action.auditNumber < 1 ||
+      action.previousFingerprint === null ||
+      action.nextFingerprint === null ||
+      !isFingerprint(action.previousFingerprint) ||
+      !isFingerprint(action.nextFingerprint) ||
+      action.sourceFingerprint !== action.previousFingerprint ||
+      action.previousFingerprint === action.nextFingerprint ||
+      prepared.request.effectiveDate <= openingDate ||
+      prepared.request.effectiveDate > sydneyCalendarDate(now)
+    )
+      conflict('Stored split audit continuation is inconsistent')
+    return [{ auditNumber: action.auditNumber, split: action }]
+  })
   const linkedTransactions = new Set(
     [...history.effective.values()].flatMap((command) =>
       command && 'transactionIds' in command ? command.transactionIds : []
@@ -3874,9 +3906,30 @@ async function readLiveCashState(
       for (const transactionId of command.transactionIds)
         linkedTransactions.add(transactionId)
   }
-  liveEvents.sort((left, right) => left.auditNumber - right.auditNumber)
+  const auditEvents = [...liveEvents, ...splitEvents].sort(
+    (left, right) => left.auditNumber - right.auditNumber
+  )
+  if (auditEvents.length > 50000)
+    conflict(
+      'Live account audit history exceeds the supported replay limit',
+      422
+    )
   let expectedAuditNumber = history.executionAudits.length + 1
-  for (const event of liveEvents) {
+  for (const event of auditEvents) {
+    if ('split' in event) {
+      if (
+        event.auditNumber !== expectedAuditNumber ||
+        event.split.accountId !== accountId ||
+        event.split.previousFingerprint !== acceptedFingerprint ||
+        event.split.nextFingerprint === null
+      )
+        conflict(
+          'Live split audit sequence or fingerprint chain is inconsistent'
+        )
+      acceptedFingerprint = event.split.nextFingerprint
+      expectedAuditNumber += 1
+      continue
+    }
     const operation = event.operation
     if (
       event.auditNumber !== expectedAuditNumber ||
@@ -4140,8 +4193,8 @@ async function readLiveCashState(
     sourceObservationDate,
     history,
     cashLedgerOps,
-    liveAuditEventCount: liveEvents.length,
-    auditEventCount: history.executionAudits.length + liveEvents.length,
+    liveAuditEventCount: auditEvents.length,
+    auditEventCount: history.executionAudits.length + auditEvents.length,
     liveReservedSlots,
     acceptedFingerprint,
     liveCommands,

@@ -581,11 +581,14 @@ Constraints: `@@unique([userId, assetId, openDate, entryPrice, accountId, extern
 | methodology | `String` | — |
 | request | `Json` | — |
 | recordedAt | `DateTime` | @default(now()) |
+| auditNumber | `Int?` | — |
+| previousFingerprint | `String?` | — |
+| nextFingerprint | `String?` | — |
 | account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
 | asset | `Asset` | @relation(fields: [assetId], references: [id]) |
 | effects | `AccountSplitParcelEffect[]` | — |
 
-Constraints: `@@unique([accountId, idempotencyKey])`, `@@unique([accountId, assetId, sourceReference])`, `@@unique([accountId, assetId, effectiveDate])`, `@@index([accountId, effectiveDate])`
+Constraints: `@@unique([accountId, idempotencyKey])`, `@@unique([accountId, assetId, sourceReference])`, `@@unique([accountId, assetId, effectiveDate])`, `@@unique([accountId, auditNumber])`, `@@index([accountId, effectiveDate])`
 
 ### `AccountSplitParcelEffect` (table: `account_split_parcel_effects`)
 
@@ -830,3 +833,4 @@ Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, s
 - `20261111185204_account_income_receipts`
 - `20261115103553_account_split_actions`
 - `20261115105034_defer_split_effect_fk`
+- `20261116093000_split_audit_continuation`

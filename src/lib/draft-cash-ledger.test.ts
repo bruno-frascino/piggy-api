@@ -12,6 +12,7 @@ import {
   prepareDraftTradeRequest,
   prepareDraftTradeCash,
 } from './draft-trade-command.js'
+import { prepareAccountSplit } from './account-split-command.js'
 
 const mocks = vi.hoisted(() => ({
   statement: vi.fn(),
@@ -36,6 +37,9 @@ const mocks = vi.hoisted(() => ({
   importedEvent: vi.fn(),
   ledgerFindUnique: vi.fn(),
   splitFindFirst: vi.fn(),
+  splitFindMany: vi.fn(),
+  liveAccount: vi.fn(),
+  liveOperations: vi.fn(),
   statementActivityFindMany: vi.fn(),
 }))
 vi.mock('./prisma.js', () => ({
@@ -65,6 +69,7 @@ import {
   recordDraftCashEvidence,
   saveDraftReconciliationCashOperation,
   previewDraftCashEvidence,
+  readLiveCapitalOperations,
 } from './draft-cash-ledger.js'
 
 const fingerprint = 'a'.repeat(64)
@@ -151,6 +156,13 @@ beforeEach(() => {
   vi.resetAllMocks()
   mocks.statement.mockResolvedValue(statement)
   mocks.splitFindFirst.mockResolvedValue(null)
+  mocks.splitFindMany.mockResolvedValue([])
+  mocks.liveAccount.mockResolvedValue({
+    id: 'a1',
+    status: 'ACTIVE',
+    isDemo: false,
+  })
+  mocks.liveOperations.mockResolvedValue([])
   mocks.lock.mockResolvedValue([{ id: 'a1' }])
   mocks.rows.mockResolvedValue([])
   mocks.linkCount.mockResolvedValue(0)
@@ -193,7 +205,12 @@ beforeEach(() => {
           findMany: mocks.statementActivityFindMany,
         },
         accountCashLedger: { findUnique: mocks.ledgerFindUnique },
-        accountSplitAction: { findFirst: mocks.splitFindFirst },
+        accountSplitAction: {
+          findFirst: mocks.splitFindFirst,
+          findMany: mocks.splitFindMany,
+        },
+        tradingAccount: { findFirst: mocks.liveAccount },
+        accountCashOperation: { findMany: mocks.liveOperations },
         draftCashOperation: { findMany: mocks.rows, create: mocks.create },
         draftOperationTradeLink: { count: mocks.linkCount },
         draftCashPosting: { count: mocks.postingCount },
@@ -217,6 +234,154 @@ beforeEach(() => {
         position: { findFirst: mocks.position },
       })
   )
+})
+
+describe('retained split audit continuation', () => {
+  function split(effectiveDate = '2026-10-02') {
+    const prepared = prepareAccountSplit(
+      {
+        idempotencyKey: 'split-key',
+        assetId: 'asset1',
+        effectiveDate,
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: 'statement-1',
+        statementConfirmed: true,
+      },
+      'a1'
+    )
+    return {
+      id: 'split1',
+      accountId: 'a1',
+      assetId: 'asset1',
+      effectiveDate: new Date(prepared.request.effectiveDate),
+      newUnits: new Decimal(2),
+      oldUnits: new Decimal(1),
+      sourceReference: prepared.request.sourceReference,
+      idempotencyKey: prepared.request.idempotencyKey,
+      payloadHash: prepared.payloadHash,
+      request: prepared.request,
+      methodology: 'account-split-v1',
+      sourceFingerprint: fingerprint,
+      auditNumber: 1,
+      previousFingerprint: fingerprint,
+      nextFingerprint: 'b'.repeat(64),
+    }
+  }
+  beforeEach(() => {
+    mocks.statement.mockResolvedValue({ ...statement, state: 'CONFIRMED' })
+    mocks.transactions.mockResolvedValue([])
+    mocks.ledgerFindUnique.mockResolvedValue({
+      state: 'ACTIVE',
+      openingStatementId: 's1',
+      openingSourceFingerprint: fingerprint,
+      acceptedSourceFingerprint: 'b'.repeat(64),
+    })
+    mocks.splitFindMany.mockResolvedValue([split()])
+    mocks.preview.mockResolvedValue({
+      sourceFingerprint: 'b'.repeat(64),
+      issues: [
+        {
+          code: 'SPLIT_REPLAY_UNSUPPORTED',
+          sourceId: 'split1',
+          severity: 'BLOCKING',
+        },
+      ],
+    })
+  })
+  it('advances the audit head without inventing cash operations or completeness', async () => {
+    const result = await readLiveCapitalOperations('u1', 'a1')
+    expect(result).toMatchObject({
+      auditNumber: 1,
+      auditTotal: 0,
+      cashCompleteness: 'INCOMPLETE',
+      sourceFreshness: { status: 'CURRENT' },
+      auditOperations: [],
+      activity: [],
+    })
+    expect(mocks.splitFindMany).toHaveBeenCalledWith({
+      where: { accountId: 'a1' },
+      orderBy: { id: 'asc' },
+      take: 501,
+    })
+  })
+  it.each([
+    { auditNumber: null },
+    { previousFingerprint: null },
+    { nextFingerprint: null },
+    { auditNumber: 0 },
+    { auditNumber: 1.5 },
+    { nextFingerprint: 'not-a-hash' },
+    { previousFingerprint: 'A'.repeat(64) },
+    { nextFingerprint: fingerprint },
+    { sourceFingerprint: 'c'.repeat(64) },
+    { effectiveDate: new Date('2026-10-01') },
+    { payloadHash: 'tampered' },
+  ])('rejects invalid retained audit metadata: %j', async (changes) => {
+    mocks.splitFindMany.mockResolvedValue([{ ...split(), ...changes }])
+    await expect(readLiveCapitalOperations('u1', 'a1')).rejects.toThrow()
+  })
+  it.each([
+    { auditNumber: 2 },
+    {
+      previousFingerprint: 'c'.repeat(64),
+      sourceFingerprint: 'c'.repeat(64),
+    },
+    { accountId: 'other-account' },
+  ])('rejects a gap or disconnected source: %j', async (changes) => {
+    mocks.splitFindMany.mockResolvedValue([{ ...split(), ...changes }])
+    await expect(readLiveCapitalOperations('u1', 'a1')).rejects.toThrow(
+      /split.*(chain|identity)/
+    )
+  })
+  it('does not silently adopt staged records into the accepted audit head', async () => {
+    mocks.splitFindMany.mockResolvedValue([
+      {
+        ...split(),
+        auditNumber: null,
+        previousFingerprint: null,
+        nextFingerprint: null,
+      },
+    ])
+    await expect(readLiveCapitalOperations('u1', 'a1')).rejects.toThrow(
+      'Live cash source audit head is inconsistent'
+    )
+    mocks.ledgerFindUnique.mockResolvedValue({
+      state: 'ACTIVE',
+      openingStatementId: 's1',
+      openingSourceFingerprint: fingerprint,
+      acceptedSourceFingerprint: fingerprint,
+    })
+    expect(await readLiveCapitalOperations('u1', 'a1')).toMatchObject({
+      auditNumber: 0,
+      cashCompleteness: 'INCOMPLETE',
+      sourceFreshness: { status: 'STALE' },
+    })
+  })
+  it.each(['2026-09-30', '2026-10-01'])(
+    'rejects audited splits on or before the opening boundary: %s',
+    async (date) => {
+      mocks.splitFindMany.mockResolvedValue([split(date)])
+      await expect(readLiveCapitalOperations('u1', 'a1')).rejects.toThrow(
+        'Stored split audit continuation is inconsistent'
+      )
+    }
+  )
+  it('rejects duplicate split audit numbers instead of adopting two continuations', async () => {
+    mocks.splitFindMany.mockResolvedValue([
+      split(),
+      { ...split(), id: 'split2' },
+    ])
+    await expect(readLiveCapitalOperations('u1', 'a1')).rejects.toThrow(
+      /audit sequence/
+    )
+  })
+  it('rejects oversized retained history before returning partial audit results', async () => {
+    mocks.splitFindMany.mockResolvedValue(Array(501).fill(split()))
+    await expect(readLiveCapitalOperations('u1', 'a1')).rejects.toMatchObject({
+      status: 422,
+    })
+  })
 })
 
 describe('persistent inactive cash staging', () => {

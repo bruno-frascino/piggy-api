@@ -2983,6 +2983,262 @@ describe.skipIf(!enabled)(
         reason: expect.stringMatching(/split history/),
       })
     })
+    it('continues the shared audit chain across a split without changing cash or enabling writes', async () => {
+      const {
+        postAccountCapitalFlow,
+        correctLiveCapitalOperation,
+        readLiveCapitalOperations,
+        readAccountTradeCapability,
+      } = await import('./draft-cash-ledger.js')
+      const { prepareAccountSplit } = await import('./account-split-command.js')
+      const { prepareCashRevision } = await import('./cash-revisions.js')
+      const { previewAccountOpening } =
+        await import('./accounting-preview-service.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture holding')
+      await confirmCashLedger(f.accountId, f.statementId)
+      await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        liveCapitalFlowInput({
+          effectiveDate: '2026-10-02',
+          amount: '10',
+        })
+      )
+      const later = await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        liveCapitalFlowInput({
+          effectiveDate: '2026-10-04',
+          sequence: 2,
+          amount: '5',
+        })
+      )
+      const initial = await readLiveCapitalOperations(f.userId, f.accountId)
+      const corrected = await correctLiveCapitalOperation(
+        f.userId,
+        f.accountId,
+        later.operationId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: later.operationId,
+          expectedAuditNumber: initial.auditNumber,
+          expectedSourceFingerprint: initial.sourceFingerprint,
+          reason: 'Fixture statement correction',
+          replacement: {
+            effectiveDate: '2026-10-04',
+            sequence: 3,
+            amount: '7',
+          },
+        }
+      )
+      const revision =
+        await prisma.accountCashOperationRevision.findUniqueOrThrow({
+          where: { id: corrected.revisionId },
+        })
+      const before = await readLiveCapitalOperations(f.userId, f.accountId)
+      const position = await prisma.position.findFirstOrThrow({
+        where: { accountId: f.accountId, assetId: f.incomeAssetId },
+        include: { transactions: true },
+      })
+      const request = {
+        idempotencyKey: randomUUID(),
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-03',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: 'audited-fixture-split',
+        statementConfirmed: true,
+      }
+      const prepared = prepareAccountSplit(request, f.accountId)
+      // Only this disposable fixture bypasses the still-disabled split writer.
+      const split = await prisma.$transaction(async (db) => {
+        const action = await db.accountSplitAction.create({
+          data: {
+            accountId: f.accountId,
+            assetId: request.assetId,
+            effectiveDate: new Date(request.effectiveDate),
+            newUnits: request.newUnits,
+            oldUnits: request.oldUnits,
+            sourceReference: request.sourceReference,
+            idempotencyKey: request.idempotencyKey,
+            payloadHash: prepared.payloadHash,
+            sourceFingerprint: before.sourceFingerprint,
+            methodology: 'account-split-v1',
+            request,
+            auditNumber: 2,
+            previousFingerprint: before.sourceFingerprint,
+            nextFingerprint: 'f'.repeat(64),
+            effects: {
+              create: {
+                positionId: position.id,
+                beforeQuantity: '1',
+                afterQuantity: '2',
+              },
+            },
+          },
+        })
+        await db.position.update({
+          where: { id: position.id },
+          data: { quantity: 2 },
+        })
+        return action
+      })
+      const preview = await previewAccountOpening(f.userId, f.accountId, {
+        openingDate: '2026-10-01',
+        cashBalances: [{ currency: 'AUD', amount: '100' }],
+      })
+      const next = preview.sourceFingerprint
+      const storedRevision = revision.request
+      if (
+        !storedRevision ||
+        typeof storedRevision !== 'object' ||
+        Array.isArray(storedRevision) ||
+        !storedRevision.capitalAudit ||
+        typeof storedRevision.capitalAudit !== 'object' ||
+        Array.isArray(storedRevision.capitalAudit)
+      )
+        throw new Error('Missing fixture capital revision audit')
+      const continuedRequest = {
+        ...storedRevision,
+        expectedAuditNumber: 3,
+        expectedSourceFingerprint: next,
+        capitalAudit: {
+          ...storedRevision.capitalAudit,
+          number: 4,
+          previousFingerprint: next,
+          nextFingerprint: next,
+        },
+      }
+      await prisma.$transaction([
+        prisma.accountSplitAction.update({
+          where: { id: split.id },
+          data: { nextFingerprint: next },
+        }),
+        prisma.accountCashOperation.update({
+          where: { id: later.operationId },
+          data: {
+            auditNumber: 3,
+            previousFingerprint: next,
+            nextFingerprint: next,
+          },
+        }),
+        prisma.accountCashOperationRevision.update({
+          where: { id: revision.id },
+          data: {
+            auditNumber: 4,
+            previousFingerprint: next,
+            nextFingerprint: next,
+            request: continuedRequest,
+            payloadHash: prepareCashRevision(continuedRequest).payloadHash,
+          },
+        }),
+        prisma.accountCashLedger.update({
+          where: { accountId: f.accountId },
+          data: { acceptedSourceFingerprint: next },
+        }),
+      ])
+      const history = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(history.replay).toEqual(before.replay)
+      expect(history).toMatchObject({
+        auditNumber: 4,
+        auditTotal: 2,
+        cashCompleteness: 'INCOMPLETE',
+        sourceFreshness: { status: 'CURRENT' },
+        sourceFingerprint: next,
+      })
+      expect(history.auditOperations.map((op) => op.auditNumber)).toEqual([
+        3, 1,
+      ])
+      expect(history.auditOperations[0].revisions[0].auditNumber).toBe(4)
+      expect(
+        (
+          await prisma.position.findUniqueOrThrow({
+            where: { id: position.id },
+            include: { transactions: true },
+          })
+        ).transactions
+      ).toEqual(position.transactions)
+      await expect(
+        postAccountCapitalFlow(f.userId, f.accountId, liveCapitalFlowInput())
+      ).rejects.toMatchObject({ status: 409, message: /split history/ })
+      expect(
+        await readAccountTradeCapability(
+          f.userId,
+          f.accountId,
+          currentSydneyDate()
+        )
+      ).toMatchObject({ mode: 'BLOCKED' })
+
+      for (const auditNumber of [1, 4]) {
+        await prisma.accountSplitAction.update({
+          where: { id: split.id },
+          data: { auditNumber },
+        })
+        await expect(
+          readLiveCapitalOperations(f.userId, f.accountId)
+        ).rejects.toThrow(/audit sequence/)
+      }
+      await prisma.accountSplitAction.update({
+        where: { id: split.id },
+        data: {
+          auditNumber: 2,
+          previousFingerprint: 'c'.repeat(64),
+          sourceFingerprint: 'c'.repeat(64),
+        },
+      })
+      await expect(
+        readLiveCapitalOperations(f.userId, f.accountId)
+      ).rejects.toThrow(/fingerprint chain/)
+      await prisma.accountSplitAction.update({
+        where: { id: split.id },
+        data: {
+          previousFingerprint: split.previousFingerprint,
+          sourceFingerprint: split.sourceFingerprint,
+        },
+      })
+      await expect(
+        prisma.accountSplitAction.update({
+          where: { id: split.id },
+          data: { nextFingerprint: null },
+        })
+      ).rejects.toThrow(/account_split_actions_audit_continuation_check/)
+      await expect(
+        prisma.accountSplitAction.update({
+          where: { id: split.id },
+          data: { nextFingerprint: 'invalid' },
+        })
+      ).rejects.toThrow(/account_split_actions_audit_continuation_check/)
+      await prisma.accountCashLedger.update({
+        where: { accountId: f.accountId },
+        data: { acceptedSourceFingerprint: before.sourceFingerprint },
+      })
+      await expect(
+        readLiveCapitalOperations(f.userId, f.accountId)
+      ).rejects.toThrow('Live cash source audit head is inconsistent')
+      await prisma.accountCashLedger.update({
+        where: { accountId: f.accountId },
+        data: { acceptedSourceFingerprint: next },
+      })
+      await prisma.accountSplitAction.update({
+        where: { id: split.id },
+        data: { recordedAt: new Date('2026-10-05') },
+      })
+      expect(
+        (await readLiveCapitalOperations(f.userId, f.accountId)).sourceFreshness
+          .status
+      ).toBe('STALE')
+      await prisma.accountSplitAction.update({
+        where: { id: split.id },
+        data: { recordedAt: split.recordedAt },
+      })
+      await prisma.accountSplitParcelEffect.deleteMany({
+        where: { actionId: split.id },
+      })
+      await expect(
+        readLiveCapitalOperations(f.userId, f.accountId)
+      ).rejects.toThrow('Split action is missing its parcel effect')
+    })
     it('posts atomic FX with both fee currencies, concurrent exact retries and retained cash-only history', async () => {
       const {
         postAccountFxConversion,

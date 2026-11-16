@@ -1336,6 +1336,7 @@
         "src/lib/cgt-engine.test.ts",
         "src/lib/cgt-split.integration.test.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/draft-cash-ledger.test.ts",
         "src/lib/position-service.test.ts",
         "src/lib/stored-parcel-inventory.test.ts"
       ],
@@ -6744,6 +6745,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./account-split-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-command.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./cash-ledger.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/cash-ledger.ts",
@@ -8647,7 +8665,7 @@
       ]
     },
     "totalCruised": 158,
-    "totalDependenciesCruised": 402,
+    "totalDependenciesCruised": 403,
     "violations": [],
     "warn": 0
   }

@@ -67,8 +67,20 @@ export async function readStoredSplitHistory(
         .update(
           JSON.stringify({
             actions: actions.map((action) => ({
-              ...action,
+              // Keep the original source representation; audit heads cannot hash themselves.
+              id: action.id,
+              accountId: action.accountId,
+              assetId: action.assetId,
+              effectiveDate: action.effectiveDate,
+              newUnits: action.newUnits,
+              oldUnits: action.oldUnits,
+              sourceReference: action.sourceReference,
+              idempotencyKey: action.idempotencyKey,
+              payloadHash: action.payloadHash,
+              sourceFingerprint: action.sourceFingerprint,
+              methodology: action.methodology,
               request: prepareStoredAccountSplit(action, accountId).request,
+              recordedAt: action.recordedAt,
             })),
             effects,
           })
