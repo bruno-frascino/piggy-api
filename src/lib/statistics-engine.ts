@@ -1,4 +1,13 @@
+import { AccountingDecimal } from './accounting-values.js'
+import {
+  projectStoredParcelInventory,
+  storedParcelObservationDate,
+} from './stored-parcel-inventory.js'
+
+type StoredPositionInput = Parameters<typeof projectStoredParcelInventory>[0]
+
 type TradeEventInput = {
+  id?: string
   quantity: number
   price: number
   fees: number | null
@@ -9,11 +18,20 @@ type TradeEventInput = {
     entryPrice: number
     buyFees: number | null
     quantity: number
-    transactions?: { quantity: number }[]
+    assetId?: string
+    transactions?: {
+      id?: string
+      type?: string
+      date?: Date | string
+      quantity: number
+      voidedAt?: Date | null
+    }[]
+    splitEffects?: StoredPositionInput['splitEffects']
     accountId: string
     asset: {
       symbol: string
       exchange: { code: string; currency: string }
+      splitActions?: StoredPositionInput['asset']['splitActions']
     }
   }
 }
@@ -82,6 +100,11 @@ export type SummaryOutput = {
 }
 
 export function mapTradeRows(events: TradeEventInput[]): StatisticsTradeRow[] {
+  const splitCostFractionsByPosition = new Map<
+    string,
+    Map<string, { numerator: string; denominator: string }> | null
+  >()
+
   return events.map((event) => {
     const quantity = Number(event.quantity)
     const sellPrice = Number(event.price)
@@ -89,19 +112,42 @@ export function mapTradeRows(events: TradeEventInput[]): StatisticsTradeRow[] {
 
     const entryPrice = Number(event.position.entryPrice)
     const positionBuyFees = Number(event.position.buyFees ?? 0)
-    // Prorate by total bought units. position.quantity is only the remaining
-    // quantity (0 once fully closed), so it is just a fallback.
-    const boughtQty = event.position.transactions?.length
-      ? event.position.transactions.reduce(
-          (sum, tx) => sum + Number(tx.quantity),
-          0
-        )
+    // The no-split path prorates buy fees by total bought units; remaining
+    // position quantity is only a fallback because it can be zero after closure.
+    const buyTransactions = event.position.transactions?.filter(
+      (transaction) =>
+        transaction.type === undefined || transaction.type === 'BUY'
+    )
+    const boughtQty = buyTransactions?.length
+      ? buyTransactions.reduce((sum, tx) => sum + Number(tx.quantity), 0)
       : Math.max(Number(event.position.quantity), 0)
     const allocatedBuyFees =
       boughtQty > 0 ? positionBuyFees * (quantity / boughtQty) : 0
 
     const proceeds = quantity * sellPrice - sellFees
-    const cost = quantity * entryPrice + allocatedBuyFees
+    if (!splitCostFractionsByPosition.has(event.position.id)) {
+      splitCostFractionsByPosition.set(
+        event.position.id,
+        getSplitSaleCostFractions(event)
+      )
+    }
+    const splitCostFractions = splitCostFractionsByPosition.get(
+      event.position.id
+    )
+    const splitCostFraction =
+      splitCostFractions?.get(String(event.id ?? '')) ?? null
+    if (splitCostFractions && !splitCostFraction)
+      throw new Error(
+        'Split-aware statistics sale is missing from parcel history'
+      )
+    const cost = splitCostFraction
+      ? new AccountingDecimal(String(entryPrice))
+          .mul(String(boughtQty))
+          .plus(String(positionBuyFees))
+          .mul(splitCostFraction.numerator)
+          .div(splitCostFraction.denominator)
+          .toNumber()
+      : quantity * entryPrice + allocatedBuyFees
     const pnl = proceeds - cost
     const returnPct = cost > 0 ? (pnl / cost) * 100 : 0
 
@@ -110,7 +156,7 @@ export function mapTradeRows(events: TradeEventInput[]): StatisticsTradeRow[] {
     const holdingDays = dayDiff(openDate, closeDate)
 
     return {
-      id: String((event as { id?: string }).id ?? ''),
+      id: String(event.id ?? ''),
       positionId: String(event.position.id),
       symbol: event.position.asset.symbol,
       accountId: event.position.accountId,
@@ -124,6 +170,56 @@ export function mapTradeRows(events: TradeEventInput[]): StatisticsTradeRow[] {
       holdingDays,
     }
   })
+}
+
+function getSplitSaleCostFractions(event: TradeEventInput) {
+  const position = event.position
+  if (
+    !position.assetId ||
+    !position.transactions ||
+    !position.splitEffects ||
+    !position.asset.splitActions
+  )
+    return null
+
+  const transactions: StoredPositionInput['transactions'] = []
+  for (const transaction of position.transactions) {
+    if (!transaction.id || !transaction.type || !transaction.date) return null
+    transactions.push({
+      id: transaction.id,
+      type: transaction.type,
+      date:
+        transaction.date instanceof Date
+          ? transaction.date
+          : new Date(transaction.date),
+      quantity: transaction.quantity,
+      voidedAt: transaction.voidedAt,
+    })
+  }
+
+  const storedPosition: StoredPositionInput = {
+    id: position.id,
+    accountId: position.accountId,
+    assetId: position.assetId,
+    openDate:
+      position.openDate instanceof Date
+        ? position.openDate
+        : new Date(position.openDate),
+    transactions,
+    splitEffects: position.splitEffects,
+    asset: { splitActions: position.asset.splitActions },
+  }
+  const projection = projectStoredParcelInventory(
+    storedPosition,
+    storedParcelObservationDate(storedPosition)
+  )
+  if (!projection) return null
+
+  return new Map(
+    projection.sales.map(
+      (sale) => [sale.id.slice('sell:'.length), sale.costFraction] as const
+    )
+  )
 }
 
 export function computeSummary({

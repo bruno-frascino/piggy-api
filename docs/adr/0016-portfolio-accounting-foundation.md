@@ -228,7 +228,7 @@ methodology version. No missing data defaults to zero or last-known data without
 Use unadjusted prices with explicit split/unit adjustments, or a separately verified consistent
 alternative; never combine adjusted prices with duplicated corporate actions.
 
-### Stock splits and consolidations (partial, not enabled)
+### Stock splits and consolidations (partial, not released)
 
 The user approved a statement-supported initial slice for stock splits and consolidations.
 Apply the exact stated ratio to the units held in each affected parcel immediately before the
@@ -239,9 +239,9 @@ nor a disposal. Reject cases requiring rounding, cash-in-lieu or unsupported all
 than guessing. Block posting when affected parcels have effective later sales; eligible sales
 must be voided and re-entered after posting. Ambiguous same-day ordering must fail closed.
 
-Posting/history, including source provenance and atomic application to affected holdings,
-are planned first; audited corrections and terminal reversal are deferred. They are not yet
-available. Additive action/effect storage, split-aware CGT and position recomputation are
+The internal locked writer applies statement-supported actions atomically, but public
+posting/history endpoints and UI are not available; audited corrections and terminal reversal
+are deferred. Additive action/effect storage, split-aware CGT and position recomputation are
 implemented. Both readers share linked action identity, request hash and parcel quantity
 validation and reject missing effects; existing report revisions remain unchanged. Position
 recomputation updates remaining units, realized P&L and status without rewriting acquisition
@@ -274,6 +274,11 @@ later disposals. It atomically stores the action and parcel effects, updates onl
 quantities, and advances the accepted source/audit head; it does not create cash activity or alter
 the original BUY. Exact retries and repeated splits are supported. This service is not exposed by a
 route, and no existing financial-write fence is removed.
+Read-only realized-trade statistics now load effective parcel trades and retained split evidence,
+then allocate original acquisition cost using the validated exact sale cost fraction. Summary,
+realized time series, distributions and closed-trade results use this path; no-split calculations
+retain their previous formula. Missing or inconsistent split evidence fails closed rather than
+falling back to nominal unsplit units.
 Until the remaining dependent writers support splits, retained history places a
 temporary account-wide 409 fence on legacy financial mutations, moves at either endpoint,
 new financial import steps, draft source-verified writes and live-ledger writes. Notes remain
@@ -281,9 +286,9 @@ editable, and completed legacy import retries without financial steps remain pos
 Opening review explicitly reports `SPLIT_REPLAY_UNSUPPORTED`; opening confirmation is blocked,
 trade capability is `BLOCKED`, and readable live cash history is marked `INCOMPLETE`.
 These protections do not implement split-aware corrections or authorize posting.
-Production support must still complete the locked source-fresh atomic writer, remaining mutation
-workflows, holdings/statistics calculations and protect immutable
-historical reports before activation; see step 3H in the delivery plan. Separate cost-base
+Production support must still complete remaining mutation/revision workflows, split-aware
+holdings cost presentation and historical/saved-report protections before activation; see step 3H
+in the delivery plan. Separate cost-base
 adjustments and complex corporate actions remain outside this slice.
 
 ### Exact metric contracts

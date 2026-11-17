@@ -747,9 +747,11 @@
         "src/lib/position-service.ts",
         "src/controllers/accounting-preview.test.ts",
         "src/lib/live-acquisition-corrections.ts",
+        "src/lib/statistics-engine.ts",
         "src/lib/cgt-engine.ts",
         "src/lib/cgt-engine.test.ts",
         "src/lib/position-service.test.ts",
+        "src/lib/statistics-engine.test.ts",
         "src/lib/stored-parcel-inventory.test.ts"
       ],
       "orphan": false,
@@ -1140,6 +1142,7 @@
         "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/draft-cash-ledger.test.ts",
         "src/lib/position-service.test.ts",
+        "src/lib/statistics-engine.test.ts",
         "src/lib/stored-parcel-inventory.test.ts"
       ],
       "orphan": false,
@@ -1383,6 +1386,7 @@
         "src/lib/draft-cash-ledger.ts",
         "src/lib/accounting-preview-service.ts",
         "src/lib/position-service.ts",
+        "src/lib/statistics-engine.ts",
         "src/lib/cgt-engine.ts",
         "src/lib/cgt-split.integration.test.ts",
         "src/lib/stored-parcel-inventory.test.ts"
@@ -4672,7 +4676,42 @@
       "valid": true
     },
     {
-      "dependencies": [],
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./stored-parcel-inventory.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/stored-parcel-inventory.ts",
+          "valid": true
+        }
+      ],
       "dependents": [
         "src/controllers/statistics.ts",
         "src/lib/statistics-engine.test.ts"
@@ -8183,6 +8222,40 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./account-split-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-command.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./statistics-engine.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/statistics-engine.ts",
@@ -8683,7 +8756,7 @@
       ]
     },
     "totalCruised": 158,
-    "totalDependenciesCruised": 404,
+    "totalDependenciesCruised": 408,
     "violations": [],
     "warn": 0
   }

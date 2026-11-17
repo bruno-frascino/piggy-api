@@ -235,13 +235,11 @@ export function projectStoredParcelInventory(
   })
 }
 
-export function reviewStoredParcelSale(
-  position: Parameters<typeof projectStoredParcelInventory>[0],
-  sale: { id: string; date: Date; quantity: number }
+export function storedParcelObservationDate(
+  position: Parameters<typeof projectStoredParcelInventory>[0]
 ) {
-  const observationDate = [
+  return [
     sydneyCalendarDate(position.openDate),
-    sydneyCalendarDate(sale.date),
     ...position.transactions
       .filter((trade) => !trade.voidedAt)
       .map((trade) => sydneyCalendarDate(trade.date)),
@@ -255,6 +253,16 @@ export function reviewStoredParcelSale(
     (latest, date) => (date > latest ? date : latest),
     sydneyCalendarDate(position.openDate)
   )
+}
+
+export function reviewStoredParcelSale(
+  position: Parameters<typeof projectStoredParcelInventory>[0],
+  sale: { id: string; date: Date; quantity: number }
+) {
+  const observationDate = storedParcelObservationDate({
+    ...position,
+    transactions: [...position.transactions, { ...sale, type: 'SELL' }],
+  })
   const before = projectStoredParcelInventory(position, observationDate)
   if (!before) return null
   const after = projectStoredParcelInventory(

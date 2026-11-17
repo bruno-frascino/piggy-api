@@ -20,16 +20,18 @@ FX posting/history, and audited fixed-identity FX revisions (3E), are implemente
 command records income once and creates a new parcel, with account-paid residual cash only.
 **3G, paired audited reinvestment corrections/reversal, is complete.** Independent financial
 edits remain blocked, and effective parcel sales must be voided before paired changes.
-**3H, stock splits/consolidations, is not enabled.** The user approved the initial scope;
+**3H, stock splits/consolidations, is not released.** The user approved the initial scope;
 parcel projection, command preparation, review, additive persistence, split-aware CGT
 reading and position recomputation are implemented. Opening and current source inventory now
 replay retained splits, and fingerprints include their action/effect evidence. Proposed-sale
 review and dated reinvestment entitlement now share this validated inventory, behind the existing
 account-wide write guards. Audited split continuation now validates retained actions in the shared
 account audit chain without creating cash operations. An internal locked, source-fresh atomic split
-writer now applies exact parcel effects and advances that chain. It is not exposed through an API,
-and existing financial-write fences remain. Posting/history endpoints and UI remain unavailable.
-Legacy accounts retain their existing behavior.
+writer now applies exact parcel effects and advances that chain. Read-only realized-trade
+statistics now replay split-aware sales and allocate original acquisition cost by exact parcel
+fractions; incomplete or inconsistent split evidence fails closed. The writer is not exposed
+through an API, and existing financial-write fences remain. Posting/history endpoints and UI
+remain unavailable. Legacy accounts retain their existing behavior.
 Date: 17 November 2026.
 Scope: piggy-api and sibling piggy-fe.
 
@@ -41,15 +43,15 @@ Backend [generated context](../context/README.md) and [API surface](../context/a
 describe implemented code, not planned capabilities. The [frontend README](../../piggy-fe/README.md)
 describes available UI entry points.
 
-| Milestone                              | Current state            | Resume guidance                                                                                |
-| -------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------- |
-| 1. Accounting contract/reference cases | Delivered specification  | Reference cases are not proof of production income, transfers, valuations or returns           |
-| 2. Opening/cash-backed trades          | Implemented              | Steps 2A-2F are delivered; real-account activation remains an explicit per-account user action |
-| 3. Income/transfers/adjustments        | In progress (3A-3G done) | Next: implement approved stock-split/consolidation posting and history (3H)                    |
-| 4. Sourced valuations                  | Planned                  | Replace synthetic value series only with explicit provenance and completeness                  |
-| 5. TWR/XIRR/risk                       | Planned                  | Depends on verified flows and valuations; existing trading statistics are not these returns    |
-| 6. Broader ingestion/tax readiness     | Planned                  | Demand-driven adapters and reviewed tax cases, not a prerequisite to support every broker      |
-| 7. Decision tools                      | Planned                  | Follow verified accounting/performance, not ahead of it                                        |
+| Milestone                              | Current state                        | Resume guidance                                                                                |
+| -------------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| 1. Accounting contract/reference cases | Delivered specification              | Reference cases are not proof of production income, transfers, valuations or returns           |
+| 2. Opening/cash-backed trades          | Implemented                          | Steps 2A-2F are delivered; real-account activation remains an explicit per-account user action |
+| 3. Income/transfers/adjustments        | In progress (3A-3G done; 3H partial) | Next: complete split-aware holdings, revisions and report/history protections before release   |
+| 4. Sourced valuations                  | Planned                              | Replace synthetic value series only with explicit provenance and completeness                  |
+| 5. TWR/XIRR/risk                       | Planned                              | Depends on verified flows and valuations; existing trading statistics are not these returns    |
+| 6. Broader ingestion/tax readiness     | Planned                              | Demand-driven adapters and reviewed tax cases, not a prerequisite to support every broker      |
+| 7. Decision tools                      | Planned                              | Follow verified accounting/performance, not ahead of it                                        |
 
 ### Increment 2 delivery checklist
 
@@ -73,15 +75,16 @@ section are the current handoff.
 
 ### Step status register
 
-Last updated: 16 November 2026. Steps 2A-2F and 3A-3G are implemented and verified; no
+Last updated: 17 November 2026. Steps 2A-2F and 3A-3G are implemented and verified; no
 real account has been activated. The user selected same-currency cash transfers as slice 3B.
 Posting/history and paired transfer revisions (3C) are implemented and verified;
 explicit same-account FX posting/history is implemented and verified. Audited FX revisions
 are implemented and verified. Statement-supported dividend-reinvestment posting/history is
 implemented and verified, as are paired audited reinvestment revisions. The user approved
 statement-supported stock splits/consolidations as 3H, blocking existing later sales and
-deferring audited corrections/reversal; posting and history are not yet implemented. Preserve
-per-account confirmation as an explicit cutover gate.
+deferring audited corrections/reversal. The internal writer and read-only realized-trade
+statistics support are implemented but not released; preserve per-account confirmation as an
+explicit cutover gate.
 
 | Step                                          | Status  | Prerequisites                                           | Remaining work / evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | --------------------------------------------- | ------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -376,8 +379,9 @@ Remaining slices:
    cash-in-lieu rather than inventing allocations. Block posting if an affected parcel has an
    effective later sale; void eligible sales first and re-enter them after the action is safely
    supported. Reject ambiguous same-day ordering unless proven by the supported timeline.
-   Posting/history come first; audited corrections and terminal reversal are a separate slice.
-   Do not expose posting until inventory, cash-ledger replay and source fingerprints, trade
+   The internal writer exists, but posting/history APIs and UI remain unavailable; audited
+   corrections and terminal reversal are a separate slice. Do not expose posting until
+   inventory, cash-ledger replay and source fingerprints, trade
    and import mutation guards, holdings, realized results, statistics, historical income
    entitlement, CGT report calculations and previously generated report behavior are covered.
    Test multiple parcels, earlier and later disposals, repeated actions, exactness, unchanged
@@ -443,12 +447,14 @@ Remaining slices:
    route; no history endpoint or frontend action exists, and other financial-write fences remain.
    Localhost tests cover multi-parcel exact effects, repeated splits, unchanged BUY records/cash,
    concurrent retries, accepted-head continuation, source drift and the continued write fence.
-   Backend full suite: 1,338 passed / 214 skipped; focused ledger/shared-reader coverage: 89.54%,
-   with 83.05% coverage on changed ledger executable lines. Build, lint, both context checks and
-   frontend contract check pass.
-   Next, complete remaining mutation/revision compatibility and holdings cost presentation,
-   statistics/history and saved-report protections before replacing the write fences. Posting/
-   history endpoints and frontend remain unavailable.
+   The read-only statistics reader now loads complete effective parcel trades and split
+   evidence, then uses the validated exact cost fraction for each sale in summary, realized
+   time series, distributions and closed-trade results. No-split calculations retain their
+   previous path; invalid or missing split effects reject the statistics read instead of
+   silently falling back to unsplit cost. Posting and capability remain blocked.
+   Next, complete remaining mutation/revision compatibility, split-aware holdings cost
+   presentation and historical/saved-report protections before replacing the write fences.
+   Posting/history endpoints and frontend remain unavailable.
    The standalone account command prepares a statement-confirmed, account-bound payload and
    reviews eligible parcels against a supplied effective snapshot, rejecting inconsistent
    quantities, unsupported assets, ambiguous dates and existing same-day/later sales or actions.

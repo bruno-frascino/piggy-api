@@ -77,12 +77,12 @@
 | POST | `/api/screener/saved-screens` | 🔒 | body ×2 | [src/controllers/screener.ts:344](../src/controllers/screener.ts#L344) |
 | DELETE | `/api/screener/saved-screens/:id` | 🔒 | param | [src/controllers/screener.ts:385](../src/controllers/screener.ts#L385) |
 | GET | `/api/screener/upcoming-dividends` | 🔒 | query ×3 | [src/controllers/screener.ts:233](../src/controllers/screener.ts#L233) |
-| GET | `/api/statistics/breakdowns` | 🔒 | , query ×2 | [src/controllers/statistics.ts:648](../src/controllers/statistics.ts#L648) |
-| GET | `/api/statistics/closed-trades` | 🔒 | , query ×4 | [src/controllers/statistics.ts:816](../src/controllers/statistics.ts#L816) |
+| GET | `/api/statistics/breakdowns` | 🔒 | , query ×2 | [src/controllers/statistics.ts:631](../src/controllers/statistics.ts#L631) |
+| GET | `/api/statistics/closed-trades` | 🔒 | , query ×4 | [src/controllers/statistics.ts:799](../src/controllers/statistics.ts#L799) |
 | GET | `/api/statistics/distributions` | 🔒 |  | [src/controllers/statistics.ts:454](../src/controllers/statistics.ts#L454) |
-| GET | `/api/statistics/risk` | 🔒 |  | [src/controllers/statistics.ts:554](../src/controllers/statistics.ts#L554) |
-| GET | `/api/statistics/summary` | 🔒 |  | [src/controllers/statistics.ts:185](../src/controllers/statistics.ts#L185) |
-| GET | `/api/statistics/timeseries` | 🔒 | , query ×2 | [src/controllers/statistics.ts:302](../src/controllers/statistics.ts#L302) |
+| GET | `/api/statistics/risk` | 🔒 |  | [src/controllers/statistics.ts:537](../src/controllers/statistics.ts#L537) |
+| GET | `/api/statistics/summary` | 🔒 |  | [src/controllers/statistics.ts:219](../src/controllers/statistics.ts#L219) |
+| GET | `/api/statistics/timeseries` | 🔒 | , query ×2 | [src/controllers/statistics.ts:319](../src/controllers/statistics.ts#L319) |
 | GET | `/api/stocks/quotes` | 🔒 | query | [src/controllers/stocks.ts:293](../src/controllers/stocks.ts#L293) |
 | GET | `/api/stocks/search` | — | — | [src/controllers/stocks.ts:163](../src/controllers/stocks.ts#L163) |
 | GET | `/api/tax-reports` | 🔒 | query | [src/controllers/tax-reports.ts:310](../src/controllers/tax-reports.ts#L310) |

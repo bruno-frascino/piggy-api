@@ -2583,121 +2583,121 @@
     "startLine": 4
   },
   {
-    "endLine": 34,
+    "endLine": 52,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "TypeAliasDeclaration",
     "name": "StatisticsTradeRow",
     "signature": "export type StatisticsTradeRow =",
-    "startLine": 21
+    "startLine": 39
   },
   {
-    "endLine": 40,
+    "endLine": 58,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "TypeAliasDeclaration",
     "name": "TimeSeriesPoint",
     "signature": "export type TimeSeriesPoint =",
-    "startLine": 36
-  },
-  {
-    "endLine": 46,
-    "file": "src/lib/statistics-engine.ts",
-    "jsdoc": "",
-    "kind": "TypeAliasDeclaration",
-    "name": "HistogramBucket",
-    "signature": "export type HistogramBucket =",
-    "startLine": 42
-  },
-  {
-    "endLine": 56,
-    "file": "src/lib/statistics-engine.ts",
-    "jsdoc": "",
-    "kind": "TypeAliasDeclaration",
-    "name": "StatisticsRisk",
-    "signature": "export type StatisticsRisk =",
-    "startLine": 48
+    "startLine": 54
   },
   {
     "endLine": 64,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "TypeAliasDeclaration",
-    "name": "BreakdownRow",
-    "signature": "export type BreakdownRow =",
-    "startLine": 58
+    "name": "HistogramBucket",
+    "signature": "export type HistogramBucket =",
+    "startLine": 60
+  },
+  {
+    "endLine": 74,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "StatisticsRisk",
+    "signature": "export type StatisticsRisk =",
+    "startLine": 66
   },
   {
     "endLine": 82,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "TypeAliasDeclaration",
-    "name": "SummaryOutput",
-    "signature": "export type SummaryOutput =",
-    "startLine": 71
+    "name": "BreakdownRow",
+    "signature": "export type BreakdownRow =",
+    "startLine": 76
   },
   {
-    "endLine": 127,
+    "endLine": 100,
+    "file": "src/lib/statistics-engine.ts",
+    "jsdoc": "",
+    "kind": "TypeAliasDeclaration",
+    "name": "SummaryOutput",
+    "signature": "export type SummaryOutput =",
+    "startLine": 89
+  },
+  {
+    "endLine": 173,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "mapTradeRows",
     "signature": "export function mapTradeRows(events: TradeEventInput[]): StatisticsTradeRow[]",
-    "startLine": 84
+    "startLine": 102
   },
   {
-    "endLine": 163,
+    "endLine": 259,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "computeSummary",
     "signature": "export function computeSummary(",
-    "startLine": 129
+    "startLine": 225
   },
   {
-    "endLine": 200,
+    "endLine": 296,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "bucketSnapshotSeries",
     "signature": "export function bucketSnapshotSeries( snapshots: Array<",
-    "startLine": 165
+    "startLine": 261
   },
   {
-    "endLine": 233,
+    "endLine": 329,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "bucketRealizedSeries",
     "signature": "export function bucketRealizedSeries( trades: StatisticsTradeRow[], granularity: 'day' | 'week' | 'month' ): TimeSeriesPoint[]",
-    "startLine": 202
+    "startLine": 298
   },
   {
-    "endLine": 261,
+    "endLine": 357,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "buildHistogram",
     "signature": "export function buildHistogram( values: number[], bins: number ): HistogramBucket[]",
-    "startLine": 235
+    "startLine": 331
   },
   {
-    "endLine": 318,
+    "endLine": 414,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "computeRiskFromEquitySeries",
     "signature": "export function computeRiskFromEquitySeries( points: Array<",
-    "startLine": 263
+    "startLine": 359
   },
   {
-    "endLine": 371,
+    "endLine": 467,
     "file": "src/lib/statistics-engine.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "computeBreakdowns",
     "signature": "export function computeBreakdowns( rows: Array<",
-    "startLine": 320
+    "startLine": 416
   },
   {
     "endLine": 91,
@@ -2727,22 +2727,31 @@
     "startLine": 114
   },
   {
-    "endLine": 268,
+    "endLine": 256,
+    "file": "src/lib/stored-parcel-inventory.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "storedParcelObservationDate",
+    "signature": "export function storedParcelObservationDate( position: Parameters<typeof projectStoredParcelInventory>[0] )",
+    "startLine": 238
+  },
+  {
+    "endLine": 276,
     "file": "src/lib/stored-parcel-inventory.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "reviewStoredParcelSale",
     "signature": "export function reviewStoredParcelSale( position: Parameters<typeof projectStoredParcelInventory>[0], sale:",
-    "startLine": 238
+    "startLine": 258
   },
   {
-    "endLine": 351,
+    "endLine": 359,
     "file": "src/lib/stored-parcel-inventory.ts",
     "jsdoc": "Internal read: the caller supplies an owned, locked account or consistent snapshot.",
     "kind": "FunctionDeclaration",
     "name": "readAccountAssetQuantityAt",
     "signature": "export async function readAccountAssetQuantityAt( db: SplitHistoryDb & Pick<typeof prisma, 'position' | 'transaction'>, userId: string, accountId: string, assetId: string, date: string, excludePositionId?: string )",
-    "startLine": 271
+    "startLine": 279
   },
   {
     "endLine": 150,

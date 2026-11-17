@@ -103,6 +103,32 @@ describe('statistics controller', () => {
           }),
         })
       )
+      expect(transactionFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: {
+            position: {
+              select: expect.objectContaining({
+                assetId: true,
+                splitEffects: { include: { action: true } },
+                transactions: expect.objectContaining({
+                  where: {
+                    type: { in: ['BUY', 'SELL'] },
+                    voidedAt: null,
+                  },
+                }),
+                asset: {
+                  select: expect.objectContaining({
+                    splitActions: {
+                      where: { account: { userId: 'u_1' } },
+                      orderBy: { effectiveDate: 'asc' },
+                    },
+                  }),
+                },
+              }),
+            },
+          },
+        })
+      )
     })
 
     it('returns validation errors for invalid asset types', async () => {

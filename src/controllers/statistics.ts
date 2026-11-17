@@ -98,6 +98,40 @@ const buildPositionScope = (req: Request) => {
   return where
 }
 
+const tradePositionSelect = (userId: string) => ({
+  id: true,
+  accountId: true,
+  assetId: true,
+  quantity: true,
+  entryPrice: true,
+  buyFees: true,
+  transactions: {
+    where: {
+      type: { in: ['BUY', 'SELL'] as ('BUY' | 'SELL')[] },
+      voidedAt: null,
+    },
+    select: {
+      id: true,
+      type: true,
+      date: true,
+      quantity: true,
+      voidedAt: true,
+    },
+  },
+  splitEffects: { include: { action: true } },
+  openDate: true,
+  asset: {
+    select: {
+      symbol: true,
+      splitActions: {
+        where: { account: { userId } },
+        orderBy: { effectiveDate: 'asc' as const },
+      },
+      exchange: { select: { code: true, currency: true } },
+    },
+  },
+})
+
 const commonValidation = [
   query('status')
     .optional()
@@ -201,24 +235,7 @@ router.get(
           position: positionScope,
         },
         include: {
-          position: {
-            select: {
-              id: true,
-              accountId: true,
-              quantity: true,
-              entryPrice: true,
-              buyFees: true,
-              // Total bought units: position.quantity is only what remains, so it can't prorate buy fees.
-              transactions: {
-                where: { type: 'BUY' as const },
-                select: { quantity: true },
-              },
-              openDate: true,
-              asset: {
-                select: { symbol: true, exchange: { select: { code: true } } },
-              },
-            },
-          },
+          position: { select: tradePositionSelect(req.user!.userId) },
         },
       }),
       prisma.position.findMany({
@@ -331,24 +348,7 @@ router.get(
           position: positionScope,
         },
         include: {
-          position: {
-            select: {
-              id: true,
-              accountId: true,
-              quantity: true,
-              entryPrice: true,
-              buyFees: true,
-              // Total bought units: position.quantity is only what remains, so it can't prorate buy fees.
-              transactions: {
-                where: { type: 'BUY' as const },
-                select: { quantity: true },
-              },
-              openDate: true,
-              asset: {
-                select: { symbol: true, exchange: { select: { code: true } } },
-              },
-            },
-          },
+          position: { select: tradePositionSelect(req.user!.userId) },
         },
       })
       const trades = mapTradeRows(events as never[])
@@ -469,24 +469,7 @@ router.get(
         position: positionScope,
       },
       include: {
-        position: {
-          select: {
-            id: true,
-            accountId: true,
-            quantity: true,
-            entryPrice: true,
-            buyFees: true,
-            // Total bought units: position.quantity is only what remains, so it can't prorate buy fees.
-            transactions: {
-              where: { type: 'BUY' as const },
-              select: { quantity: true },
-            },
-            openDate: true,
-            asset: {
-              select: { symbol: true, exchange: { select: { code: true } } },
-            },
-          },
-        },
+        position: { select: tradePositionSelect(req.user!.userId) },
       },
     })
 
@@ -853,27 +836,7 @@ router.get(
             position: positionScope,
           },
           include: {
-            position: {
-              select: {
-                id: true,
-                accountId: true,
-                quantity: true,
-                entryPrice: true,
-                buyFees: true,
-                // Total bought units: position.quantity is only what remains, so it can't prorate buy fees.
-                transactions: {
-                  where: { type: 'BUY' as const },
-                  select: { quantity: true },
-                },
-                openDate: true,
-                asset: {
-                  select: {
-                    symbol: true,
-                    exchange: { select: { code: true, currency: true } },
-                  },
-                },
-              },
-            },
+            position: { select: tradePositionSelect(req.user!.userId) },
           },
           orderBy: { date: sortDir },
           take: limit,
@@ -905,27 +868,7 @@ router.get(
         position: positionScope,
       },
       include: {
-        position: {
-          select: {
-            id: true,
-            accountId: true,
-            quantity: true,
-            entryPrice: true,
-            buyFees: true,
-            // Total bought units: position.quantity is only what remains, so it can't prorate buy fees.
-            transactions: {
-              where: { type: 'BUY' as const },
-              select: { quantity: true },
-            },
-            openDate: true,
-            asset: {
-              select: {
-                symbol: true,
-                exchange: { select: { code: true, currency: true } },
-              },
-            },
-          },
-        },
+        position: { select: tradePositionSelect(req.user!.userId) },
       },
     })
 
