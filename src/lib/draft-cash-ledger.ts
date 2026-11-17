@@ -47,6 +47,10 @@ import { prepareAccountCapitalFlow } from './account-capital-command.js'
 import { prepareAccountFxConversion } from './account-fx-command.js'
 import { prepareAccountIncomeReceipt } from './account-income-command.js'
 import { prepareAccountReinvestment } from './account-reinvestment-command.js'
+import {
+  prepareAccountSplit,
+  reviewAccountSplit,
+} from './account-split-command.js'
 import { prepareReinvestmentCorrection } from './reinvestment-correction.js'
 import {
   prepareAccountCashTransfer,
@@ -4202,6 +4206,281 @@ async function readLiveCashState(
     linkedTransactions,
     existingTrades,
     unsupportedEvents,
+  }
+}
+
+export async function postAccountSplit(
+  userId: string,
+  accountId: string,
+  raw: unknown
+) {
+  const now = new Date()
+  const prepared = prepareAccountSplit(raw, accountId, now)
+  try {
+    return await prisma.$transaction(
+      async (db) => {
+        await lockOwnedTradingAccount(db, userId, accountId)
+        const state = await readLiveCashState(
+          db,
+          userId,
+          accountId,
+          now,
+          undefined,
+          true
+        )
+        if (state.account.status !== 'ACTIVE' || state.account.isDemo)
+          conflict('Stock splits require an active real account')
+        if (state.unsupportedEvents.length > 0)
+          conflict(
+            'Resolve unsupported account activity before posting a stock split'
+          )
+        const source = await readAccountOpeningPreview(
+          db,
+          userId,
+          accountId,
+          state.opening,
+          new Date(`${state.sourceObservationDate}T01:00:00Z`)
+        )
+        if (source.sourceFingerprint !== state.acceptedFingerprint)
+          conflict(
+            'Account source changed outside its audited history. Refresh the source review before posting a split.'
+          )
+        if (
+          source.issues.some(
+            (issue) =>
+              issue.severity === 'BLOCKING' &&
+              issue.code !== 'SPLIT_REPLAY_UNSUPPORTED'
+          )
+        )
+          conflict(
+            'Resolve blocking account source issues before posting a split'
+          )
+
+        const prior = await db.accountSplitAction.findFirst({
+          where: { accountId, idempotencyKey: prepared.request.idempotencyKey },
+        })
+        if (prior) {
+          if (prior.payloadHash !== prepared.payloadHash)
+            conflict(
+              'Split idempotency key was reused with a different request'
+            )
+          if (
+            prior.auditNumber === null ||
+            prior.auditNumber > state.auditEventCount ||
+            prior.previousFingerprint === null ||
+            prior.nextFingerprint === null ||
+            prior.sourceFingerprint !== prior.previousFingerprint
+          )
+            conflict('Retried split does not match the accepted audit chain')
+          return {
+            created: false,
+            actionId: prior.id,
+            auditNumber: prior.auditNumber,
+            sourceFingerprint: prior.nextFingerprint,
+          }
+        }
+
+        const asset = await db.asset.findFirst({
+          where: { id: prepared.request.assetId },
+          select: { id: true, assetType: true },
+        })
+        if (!asset) conflict('Asset not found', 404)
+        const positions = await db.position.findMany({
+          where: {
+            userId,
+            accountId,
+            assetId: asset.id,
+            voidedAt: null,
+          },
+          orderBy: { id: 'asc' },
+          take: 5001,
+          select: {
+            id: true,
+            accountId: true,
+            assetId: true,
+            openDate: true,
+            quantity: true,
+            positionType: true,
+            transactions: {
+              where: { voidedAt: null, type: { in: ['BUY', 'SELL'] } },
+              orderBy: [{ date: 'asc' }, { id: 'asc' }],
+              select: {
+                id: true,
+                type: true,
+                date: true,
+                quantity: true,
+                voidedAt: true,
+              },
+            },
+            splitEffects: {
+              include: { action: true },
+            },
+            asset: {
+              select: {
+                splitActions: {
+                  where: { accountId },
+                },
+              },
+            },
+          },
+        })
+        if (positions.length > 5000)
+          conflict('Split review exceeds the supported parcel limit', 422)
+
+        const parcels = positions.map((position) => {
+          const buys = position.transactions.filter(
+            (trade) => trade.type === 'BUY'
+          )
+          if (buys.length !== 1)
+            conflict('Split parcel must have exactly one effective acquisition')
+          return {
+            id: position.id,
+            accountId: position.accountId,
+            assetId: position.assetId,
+            positionType:
+              position.positionType === 'LONG'
+                ? ('LONG' as const)
+                : position.positionType === 'SHORT'
+                  ? ('SHORT' as const)
+                  : conflict('Split parcel has an unsupported position type'),
+            acquisitionDate: sydneyCalendarDate(position.openDate),
+            acquisitionQuantity: new AccountingDecimal(
+              String(buys[0]!.quantity)
+            ).toFixed(),
+            recordedQuantity: String(position.quantity),
+            events: [
+              ...position.transactions
+                .filter((trade) => trade.type === 'SELL')
+                .map((trade) => ({
+                  id: `sell:${trade.id}`,
+                  type: 'SELL' as const,
+                  date: sydneyCalendarDate(trade.date),
+                  quantity: new AccountingDecimal(
+                    String(trade.quantity)
+                  ).toFixed(),
+                })),
+              ...position.splitEffects
+                .filter(
+                  (effect) =>
+                    effect.action.accountId === accountId &&
+                    effect.action.assetId === asset.id
+                )
+                .map((effect) => ({
+                  id: `split:${effect.action.id}`,
+                  type: 'SPLIT' as const,
+                  date: effect.action.effectiveDate.toISOString().slice(0, 10),
+                  newUnits: effect.action.newUnits.toFixed(),
+                  oldUnits: effect.action.oldUnits.toFixed(),
+                })),
+            ],
+          }
+        })
+        const reviewed = reviewAccountSplit(prepared, {
+          accountId,
+          assetType: asset.assetType ?? '',
+          openingDate: state.openingDate,
+          asOfDate: state.sourceObservationDate,
+          parcels,
+        })
+        const auditNumber = state.auditEventCount + 1
+        // The SQL check needs a distinct temporary head; the final preview replaces it before commit.
+        const provisionalNextFingerprint = `${
+          state.acceptedFingerprint[0] === '0' ? '1' : '0'
+        }${state.acceptedFingerprint.slice(1)}`
+        const action = await db.accountSplitAction.create({
+          data: {
+            accountId,
+            assetId: asset.id,
+            effectiveDate: new Date(prepared.request.effectiveDate),
+            newUnits: prepared.request.newUnits,
+            oldUnits: prepared.request.oldUnits,
+            sourceReference: prepared.request.sourceReference,
+            idempotencyKey: prepared.request.idempotencyKey,
+            payloadHash: prepared.payloadHash,
+            sourceFingerprint: state.acceptedFingerprint,
+            methodology: 'account-split-v1',
+            request: {
+              idempotencyKey: prepared.request.idempotencyKey,
+              assetId: prepared.request.assetId,
+              effectiveDate: prepared.request.effectiveDate,
+              newUnits: prepared.request.newUnits,
+              oldUnits: prepared.request.oldUnits,
+              sourceReference: prepared.request.sourceReference,
+              statementConfirmed: prepared.request.statementConfirmed,
+            },
+            auditNumber,
+            previousFingerprint: state.acceptedFingerprint,
+            nextFingerprint: provisionalNextFingerprint,
+            effects: {
+              create: reviewed.parcels.map((parcel) => ({
+                positionId: parcel.positionId,
+                beforeQuantity: parcel.beforeQuantity,
+                afterQuantity: parcel.afterQuantity,
+              })),
+            },
+          },
+        })
+        for (const parcel of reviewed.parcels) {
+          const result = await db.position.updateMany({
+            where: {
+              id: parcel.positionId,
+              accountId,
+              userId,
+              quantity: Number(parcel.beforeQuantity),
+            },
+            data: { quantity: Number(parcel.afterQuantity) },
+          })
+          if (result.count !== 1)
+            conflict(
+              'A split parcel changed during posting. Refresh and retry.'
+            )
+        }
+        const after = await readAccountOpeningPreview(
+          db,
+          userId,
+          accountId,
+          state.opening,
+          new Date(`${state.sourceObservationDate}T01:00:00Z`)
+        )
+        if (after.sourceFingerprint === state.acceptedFingerprint)
+          conflict(
+            'Split posting did not change the reviewed source fingerprint'
+          )
+        const finalized = await db.accountSplitAction.updateMany({
+          where: {
+            id: action.id,
+            accountId,
+            auditNumber,
+            previousFingerprint: state.acceptedFingerprint,
+          },
+          data: { nextFingerprint: after.sourceFingerprint },
+        })
+        if (finalized.count !== 1)
+          conflict('Split audit continuation changed during posting')
+        const ledgerUpdate = await db.accountCashLedger.updateMany({
+          where: {
+            accountId,
+            acceptedSourceFingerprint: state.acceptedFingerprint,
+          },
+          data: { acceptedSourceFingerprint: after.sourceFingerprint },
+        })
+        if (ledgerUpdate.count !== 1)
+          conflict('Account audit head changed during split posting')
+        return {
+          created: true,
+          actionId: action.id,
+          auditNumber,
+          sourceFingerprint: after.sourceFingerprint,
+          affectedParcels: reviewed.parcels.length,
+        }
+      },
+      { isolationLevel: 'ReadCommitted', timeout: 20000, maxWait: 5000 }
+    )
+  } catch (error) {
+    if (!isConcurrentConflict(error)) throw error
+    conflict(
+      'A concurrent split posting changed this account. Refresh and retry.'
+    )
   }
 }
 

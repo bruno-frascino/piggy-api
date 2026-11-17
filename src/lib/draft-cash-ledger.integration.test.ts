@@ -12,7 +12,8 @@ async function fixture(
   withTrade = false,
   withImportedTrade = false,
   withIncomeHolding = false,
-  extraCashBalances: { currency: string; amount: string }[] = []
+  extraCashBalances: { currency: string; amount: string }[] = [],
+  withSecondIncomeHolding = false
 ) {
   if (!userId) throw new Error('Missing isolated cash fixture')
   const account = await prisma.tradingAccount.create({
@@ -55,6 +56,31 @@ async function fixture(
         },
       },
     })
+    if (withSecondIncomeHolding) {
+      await prisma.position.create({
+        data: {
+          userId,
+          accountId: account.id,
+          assetId: asset.id,
+          openDate: new Date('2026-09-29T00:00:00Z'),
+          entryPrice: '40',
+          quantity: 3,
+          totalBuyValue: '120',
+          buyFees: '2',
+          capitalAllocated: '122',
+          transactions: {
+            create: {
+              type: 'BUY',
+              date: new Date('2026-09-29T00:00:00Z'),
+              quantity: 3,
+              price: '40',
+              totalValue: '120',
+              fees: '2',
+            },
+          },
+        },
+      })
+    }
   }
   if (withTrade) {
     if (!exchangeId) throw new Error('Missing fixture exchange')
@@ -2982,6 +3008,245 @@ describe.skipIf(!enabled)(
         mode: 'BLOCKED',
         reason: expect.stringMatching(/split history/),
       })
+    })
+    it('posts an exact split atomically, advances the accepted head and resolves concurrent retries', async () => {
+      const {
+        postAccountSplit,
+        postAccountCapitalFlow,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, true, [], true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture holding')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const parcels = await prisma.position.findMany({
+        where: { accountId: f.accountId, assetId: f.incomeAssetId },
+        include: { transactions: true },
+        orderBy: { id: 'asc' },
+      })
+      expect(parcels).toHaveLength(2)
+      const before = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        liveCapitalFlowInput({
+          effectiveDate: '2026-10-02',
+          amount: '10',
+        })
+      )
+      const cashBeforeSplit = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      const request = {
+        idempotencyKey: randomUUID(),
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-02',
+        newUnits: '3',
+        oldUnits: '2',
+        sourceReference: `split-statement-${randomUUID()}`,
+        statementConfirmed: true,
+      }
+      const [left, right] = await Promise.all([
+        postAccountSplit(f.userId, f.accountId, request),
+        postAccountSplit(f.userId, f.accountId, request),
+      ])
+      expect([left, right].filter((result) => result.created)).toHaveLength(1)
+      expect([left, right].filter((result) => !result.created)).toHaveLength(1)
+      const actionId = left.actionId
+      expect(right.actionId).toBe(actionId)
+      await expect(
+        postAccountSplit(f.userId, f.accountId, {
+          ...request,
+          newUnits: '2',
+          oldUnits: '1',
+        })
+      ).rejects.toThrow(
+        'Split idempotency key was reused with a different request'
+      )
+      const action = await prisma.accountSplitAction.findUniqueOrThrow({
+        where: { id: actionId },
+        include: { effects: { orderBy: { positionId: 'asc' } } },
+      })
+      expect(action).toMatchObject({
+        auditNumber: 2,
+        previousFingerprint: cashBeforeSplit.sourceFingerprint,
+        sourceFingerprint: cashBeforeSplit.sourceFingerprint,
+        nextFingerprint: left.sourceFingerprint,
+      })
+      expect(
+        action.effects.map((effect) => [
+          effect.positionId,
+          effect.beforeQuantity.toFixed(),
+          effect.afterQuantity.toFixed(),
+        ])
+      ).toEqual(
+        parcels.map((parcel) => [
+          parcel.id,
+          String(parcel.quantity),
+          String(parcel.quantity * 1.5),
+        ])
+      )
+      for (const parcel of parcels) {
+        const updated = await prisma.position.findUniqueOrThrow({
+          where: { id: parcel.id },
+          include: { transactions: true },
+        })
+        expect(updated.quantity).toBe(parcel.quantity * 1.5)
+        expect(updated.transactions).toEqual(parcel.transactions)
+      }
+      const after = await prisma.accountCashLedger.findUniqueOrThrow({
+        where: { accountId: f.accountId },
+      })
+      expect(after.acceptedSourceFingerprint).toBe(left.sourceFingerprint)
+      expect(after.openingSourceFingerprint).toBe(
+        before.openingSourceFingerprint
+      )
+      const secondRequest = {
+        idempotencyKey: randomUUID(),
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-03',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `split-statement-${randomUUID()}`,
+        statementConfirmed: true,
+      }
+      const secondSplit = await postAccountSplit(
+        f.userId,
+        f.accountId,
+        secondRequest
+      )
+      expect(secondSplit).toMatchObject({
+        created: true,
+        auditNumber: 3,
+      })
+      const afterSecondSplit = await prisma.accountCashLedger.findUniqueOrThrow(
+        {
+          where: { accountId: f.accountId },
+        }
+      )
+      expect(afterSecondSplit.acceptedSourceFingerprint).toBe(
+        secondSplit.sourceFingerprint
+      )
+      expect(
+        await postAccountSplit(f.userId, f.accountId, request)
+      ).toMatchObject({
+        created: false,
+        actionId,
+        auditNumber: 2,
+        sourceFingerprint: left.sourceFingerprint,
+      })
+      await expect(
+        postAccountCapitalFlow(
+          f.userId,
+          f.accountId,
+          liveCapitalFlowInput({ amount: '10' })
+        )
+      ).rejects.toMatchObject({ status: 409, message: /split history/ })
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(1)
+      const history = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(history).toMatchObject({
+        auditNumber: 3,
+        auditTotal: 1,
+        sourceFreshness: { status: 'CURRENT' },
+        cashCompleteness: 'INCOMPLETE',
+      })
+      expect(history.replay).toEqual(cashBeforeSplit.replay)
+    })
+    it('rejects source drift before creating a split action or changing inventory', async () => {
+      const { postAccountSplit } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture holding')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const position = await prisma.position.findFirstOrThrow({
+        where: { accountId: f.accountId, assetId: f.incomeAssetId },
+      })
+      await prisma.position.update({
+        where: { id: position.id },
+        data: { quantity: 2 },
+      })
+      const request = {
+        idempotencyKey: randomUUID(),
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-02',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `stale-split-${randomUUID()}`,
+        statementConfirmed: true,
+      }
+      await expect(
+        postAccountSplit(f.userId, f.accountId, request)
+      ).rejects.toThrow(/source changed outside its audited history/)
+      expect(
+        await prisma.accountSplitAction.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(0)
+      expect(
+        (
+          await prisma.position.findUniqueOrThrow({
+            where: { id: position.id },
+          })
+        ).quantity
+      ).toBe(2)
+    })
+    it('rejects closed accounts and unsupported unlinked trades before split mutation', async () => {
+      const { postAccountSplit } = await import('./draft-cash-ledger.js')
+      const closed = await fixture('100', false, false, true)
+      if (!closed.incomeAssetId) throw new Error('Missing fixture holding')
+      await confirmCashLedger(closed.accountId, closed.statementId)
+      await prisma.tradingAccount.update({
+        where: { id: closed.accountId },
+        data: { status: 'CLOSED' },
+      })
+      const closedRequest = {
+        idempotencyKey: randomUUID(),
+        assetId: closed.incomeAssetId,
+        effectiveDate: '2026-10-02',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `closed-split-${randomUUID()}`,
+        statementConfirmed: true,
+      }
+      await expect(
+        postAccountSplit(closed.userId, closed.accountId, closedRequest)
+      ).rejects.toThrow('Stock splits require an active real account')
+      expect(
+        await prisma.accountSplitAction.count({
+          where: { accountId: closed.accountId },
+        })
+      ).toBe(0)
+
+      const unsupported = await fixture('100', true, false, true)
+      if (!unsupported.incomeAssetId)
+        throw new Error('Missing unsupported fixture holding')
+      await confirmCashLedger(unsupported.accountId, unsupported.statementId)
+      const unsupportedRequest = {
+        idempotencyKey: randomUUID(),
+        assetId: unsupported.incomeAssetId,
+        effectiveDate: '2026-10-02',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `unsupported-split-${randomUUID()}`,
+        statementConfirmed: true,
+      }
+      await expect(
+        postAccountSplit(
+          unsupported.userId,
+          unsupported.accountId,
+          unsupportedRequest
+        )
+      ).rejects.toThrow('Resolve unsupported account activity')
+      expect(
+        await prisma.accountSplitAction.count({
+          where: { accountId: unsupported.accountId },
+        })
+      ).toBe(0)
     })
     it('continues the shared audit chain across a split without changing cash or enabling writes', async () => {
       const {

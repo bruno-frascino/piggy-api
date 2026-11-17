@@ -267,6 +267,13 @@ metadata preserves staged records but never silently adopts them; SQL requires e
 complete valid metadata. Cash audit lists/totals remain cash-only, while the account audit number
 includes audited split events. Source freshness is still independently checked against retained
 inventory/evidence. A valid chain can report `CURRENT` without certifying cash completeness.
+An internal writer now performs statement-confirmed split application under the owned account lock.
+It requires an active real account, a current accepted source fingerprint, no unsupported account
+activity or unrelated blocking preview issues, and a complete exact parcel review with no effective
+later disposals. It atomically stores the action and parcel effects, updates only remaining parcel
+quantities, and advances the accepted source/audit head; it does not create cash activity or alter
+the original BUY. Exact retries and repeated splits are supported. This service is not exposed by a
+route, and no existing financial-write fence is removed.
 Until the remaining dependent writers support splits, retained history places a
 temporary account-wide 409 fence on legacy financial mutations, moves at either endpoint,
 new financial import steps, draft source-verified writes and live-ledger writes. Notes remain

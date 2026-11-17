@@ -10,7 +10,7 @@
     },
     "module-graph.json": {
       "path": "context/module-graph.json",
-      "sha256": "82cd2c5f813b8ad5260e0ff272c3d4bda3b9b762a651bac6eebd9368d4adcf4b"
+      "sha256": "8a3543852bc587b4c701570f2d8172ee0ea2f01eef103953ce40b73531893359"
     },
     "module-graph.md": {
       "path": "context/module-graph.md",
@@ -22,13 +22,13 @@
     },
     "symbol-index.json": {
       "path": "context/symbol-index.json",
-      "sha256": "e1a6562116c021c49493e40840208882a30140c7a29a2d094e55357bd1aa8018"
+      "sha256": "25724a145697e53333e91dd15c8b6f69712069d196c593eb090b4768699f3469"
     },
     "unused.json": {
       "path": "context/unused.json",
       "sha256": "53e7167340a6faa6c45ac1250d16a2547f1bf9af80ae679b59f90d843101a12e"
     }
   },
-  "generatedAt": "2026-11-16T11:43:33.246Z",
+  "generatedAt": "2026-11-17T00:46:27.105Z",
   "generatorVersion": 1
 }

@@ -248,6 +248,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./account-split-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-command.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./account-trade-command.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/account-trade-command.ts",
@@ -691,9 +708,9 @@
         "src/lib/account-cash-transfer.ts",
         "src/lib/account-income-command.ts",
         "src/lib/account-reinvestment-command.ts",
+        "src/lib/account-split-command.ts",
         "src/lib/accounting-preview-service.ts",
         "src/lib/stored-parcel-inventory.ts",
-        "src/lib/account-split-command.ts",
         "src/lib/cash-revisions.ts",
         "src/lib/draft-cash-evidence.ts",
         "src/lib/position-service.ts",
@@ -717,10 +734,10 @@
         "src/lib/account-income-command.ts",
         "src/lib/account-reinvestment-command.ts",
         "src/lib/account-trade-command.ts",
-        "src/lib/accounting-preview-service.ts",
-        "src/lib/stored-parcel-inventory.ts",
         "src/lib/account-split-command.ts",
         "src/lib/parcel-inventory.ts",
+        "src/lib/accounting-preview-service.ts",
+        "src/lib/stored-parcel-inventory.ts",
         "src/lib/cash-revisions.ts",
         "src/lib/draft-trade-command.ts",
         "src/lib/execution-correction.ts",
@@ -1107,6 +1124,105 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./parcel-inventory.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/parcel-inventory.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/stored-parcel-inventory.ts",
+        "src/controllers/accounting-preview.test.ts",
+        "src/lib/account-split-command.test.ts",
+        "src/lib/cgt-engine.test.ts",
+        "src/lib/cgt-split.integration.test.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
+        "src/lib/draft-cash-ledger.test.ts",
+        "src/lib/position-service.test.ts",
+        "src/lib/stored-parcel-inventory.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/account-split-command.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/lib/account-split-command.ts",
+        "src/lib/stored-parcel-inventory.ts",
+        "src/lib/parcel-inventory.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/parcel-inventory.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./prisma.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
@@ -1273,104 +1389,6 @@
       ],
       "orphan": false,
       "source": "src/lib/stored-parcel-inventory.ts",
-      "valid": true
-    },
-    {
-      "dependencies": [
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./accounting-preview.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/accounting-preview.ts",
-          "valid": true
-        },
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./accounting-values.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/accounting-values.ts",
-          "valid": true
-        },
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./parcel-inventory.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/parcel-inventory.ts",
-          "valid": true
-        }
-      ],
-      "dependents": [
-        "src/lib/stored-parcel-inventory.ts",
-        "src/controllers/accounting-preview.test.ts",
-        "src/lib/account-split-command.test.ts",
-        "src/lib/cgt-engine.test.ts",
-        "src/lib/cgt-split.integration.test.ts",
-        "src/lib/draft-cash-ledger.integration.test.ts",
-        "src/lib/draft-cash-ledger.test.ts",
-        "src/lib/position-service.test.ts",
-        "src/lib/stored-parcel-inventory.test.ts"
-      ],
-      "orphan": false,
-      "source": "src/lib/account-split-command.ts",
-      "valid": true
-    },
-    {
-      "dependencies": [
-        {
-          "circular": false,
-          "coreModule": false,
-          "couldNotResolve": false,
-          "dependencyTypes": [
-            "local",
-            "import"
-          ],
-          "dynamic": false,
-          "exoticallyRequired": false,
-          "followable": true,
-          "matchesDoNotFollow": false,
-          "module": "./accounting-values.js",
-          "moduleSystem": "es6",
-          "resolved": "src/lib/accounting-values.ts",
-          "valid": true
-        }
-      ],
-      "dependents": [
-        "src/lib/stored-parcel-inventory.ts",
-        "src/lib/account-split-command.ts",
-        "src/lib/parcel-inventory.test.ts"
-      ],
-      "orphan": false,
-      "source": "src/lib/parcel-inventory.ts",
       "valid": true
     },
     {
@@ -8665,7 +8683,7 @@
       ]
     },
     "totalCruised": 158,
-    "totalDependenciesCruised": 403,
+    "totalDependenciesCruised": 404,
     "violations": [],
     "warn": 0
   }
