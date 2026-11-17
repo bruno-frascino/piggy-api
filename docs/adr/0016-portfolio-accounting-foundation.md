@@ -279,6 +279,12 @@ then allocate original acquisition cost using the validated exact sale cost frac
 realized time series, distributions and closed-trade results use this path; no-split calculations
 retain their previous formula. Missing or inconsistent split evidence fails closed rather than
 falling back to nominal unsplit units.
+The existing positions read route also returns an optional `splitAdjustedInventory` projection
+for affected parcels: remaining quantity, remaining cost basis, remaining acquisition fees and
+average unit cost as decimal strings. The frontend uses this projection for split-adjusted held
+units and open-cost/return calculations while preserving original `buyPrice` and acquisition
+fees as historical facts; raw split actions/effects are not exposed in the response. No-split
+holdings keep their prior calculation.
 Until the remaining dependent writers support splits, retained history places a
 temporary account-wide 409 fence on legacy financial mutations, moves at either endpoint,
 new financial import steps, draft source-verified writes and live-ledger writes. Notes remain
@@ -286,10 +292,9 @@ editable, and completed legacy import retries without financial steps remain pos
 Opening review explicitly reports `SPLIT_REPLAY_UNSUPPORTED`; opening confirmation is blocked,
 trade capability is `BLOCKED`, and readable live cash history is marked `INCOMPLETE`.
 These protections do not implement split-aware corrections or authorize posting.
-Production support must still complete remaining mutation/revision workflows, split-aware
-holdings cost presentation and historical/saved-report protections before activation; see step 3H
-in the delivery plan. Separate cost-base
-adjustments and complex corporate actions remain outside this slice.
+Production support must still complete remaining mutation/revision workflows and
+historical/saved-report protections before activation; see step 3H in the delivery plan.
+Separate cost-base adjustments and complex corporate actions remain outside this slice.
 
 ### Exact metric contracts
 

@@ -31,6 +31,7 @@ import {
   createPosition,
   updatePositionAcquisition,
 } from '../lib/position-mutations.js'
+import { projectStoredParcelCostBasis } from '../lib/stored-parcel-inventory.js'
 
 const router = Router()
 router.use(authenticateToken)
@@ -94,7 +95,11 @@ const CLOSE_REASONS = ['STOP_LOSS', 'TARGET', 'MANUAL', 'OTHER']
  *     responses:
  *       200:
  *         description: >
- *           Paginated list of positions. Eligible live manual acquisitions include
+ *           Paginated list of positions. Split-bearing parcels also include
+ *           `splitAdjustedInventory` with decimal-string remaining quantity, cost basis,
+ *           remaining acquisition fees and average unit cost (null when fully disposed).
+ *           Original acquisition price and fee fields are not rewritten. Eligible live
+ *           manual acquisitions include
  *           acquisitionCorrection metadata with transactionId, operationId, expectedRevisionId,
  *           expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string
  *           quantity (total bought units), price and fees. Eligible live imported Kraken
@@ -162,8 +167,16 @@ router.get(
         where,
         include: {
           account: true,
-          asset: { include: { exchange: true } },
+          asset: {
+            include: {
+              exchange: true,
+              splitActions: {
+                where: { account: { userId: req.user!.userId } },
+              },
+            },
+          },
           transactions: { where: { voidedAt: null }, orderBy: { date: 'asc' } },
+          splitEffects: { include: { action: true } },
         },
         orderBy: { openDate: 'desc' },
         take: limit,
@@ -187,8 +200,20 @@ router.get(
         (transaction) =>
           transaction.type === 'BUY' && importedCorrections.has(transaction.id)
       )
+      const { splitEffects, asset, ...positionData } = position
+      const { splitActions, ...publicAsset } = asset ?? {}
+      const splitAdjustedInventory =
+        Array.isArray(splitEffects) && Array.isArray(splitActions)
+          ? projectStoredParcelCostBasis({
+              ...positionData,
+              splitEffects,
+              asset: { ...asset, splitActions },
+            })
+          : null
       return {
-        ...position,
+        ...positionData,
+        ...(asset ? { asset: publicAsset } : {}),
+        ...(splitAdjustedInventory ? { splitAdjustedInventory } : {}),
         ...(corrections.has(position.id)
           ? { acquisitionCorrection: corrections.get(position.id) }
           : {}),

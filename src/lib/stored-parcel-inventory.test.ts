@@ -19,6 +19,7 @@ vi.mock('./prisma.js', () => ({
 }))
 import { prisma } from './prisma.js'
 import {
+  projectStoredParcelCostBasis,
   readAccountAssetQuantityAt,
   readStoredSplitHistory,
   reviewStoredParcelSale,
@@ -44,13 +45,13 @@ function fixture() {
     sourceReference: request.sourceReference,
     idempotencyKey: request.idempotencyKey,
     payloadHash: prepareAccountSplit(request, 'a1').payloadHash,
-    sourceFingerprint: 'verified-fixture-source',
+    sourceFingerprint: 'a'.repeat(64),
     methodology: 'account-split-v1',
     request,
     recordedAt: new Date('2025-08-02'),
-    auditNumber: null,
-    previousFingerprint: null,
-    nextFingerprint: null,
+    auditNumber: 1,
+    previousFingerprint: 'a'.repeat(64),
+    nextFingerprint: 'b'.repeat(64),
   }
   const effect = {
     id: 'effect1',
@@ -323,5 +324,82 @@ describe('proposed sales against retained split history', () => {
         { id: 'proposed', date: new Date('2025-11-01'), quantity: 1 }
       )
     ).toBeNull()
+  })
+})
+
+describe('split-adjusted holding cost basis', () => {
+  it('projects remaining quantity, cost, fees, and average unit cost after sales and a split', () => {
+    const { position } = fixture()
+    expect(
+      projectStoredParcelCostBasis({
+        ...position,
+        quantity: 12,
+        entryPrice: new AccountingDecimal(10),
+        buyFees: new AccountingDecimal(10),
+      })
+    ).toEqual({
+      remainingQuantity: '12',
+      remainingCostBasis: '66.000000000000',
+      remainingBuyFees: '6.000000000000',
+      averageUnitCost: '5.500000000000',
+    })
+  })
+
+  it('returns a null average unit cost for a fully disposed split parcel', () => {
+    const { position } = fixture()
+    const transactions = position.transactions.map((transaction) =>
+      transaction.id === 'later'
+        ? { ...transaction, quantity: 16 }
+        : transaction
+    )
+    expect(
+      projectStoredParcelCostBasis({
+        ...position,
+        transactions,
+        quantity: 0,
+        entryPrice: new AccountingDecimal(10),
+        buyFees: new AccountingDecimal(10),
+      })
+    ).toMatchObject({
+      remainingQuantity: '0',
+      remainingCostBasis: '0.000000000000',
+      remainingBuyFees: '0.000000000000',
+      averageUnitCost: null,
+    })
+  })
+
+  it('rejects a stored quantity that disagrees with effective split history', () => {
+    const { position } = fixture()
+    expect(() =>
+      projectStoredParcelCostBasis({
+        ...position,
+        quantity: 11,
+        entryPrice: new AccountingDecimal(10),
+        buyFees: new AccountingDecimal(10),
+      })
+    ).toThrow('Stored parcel quantity does not match split inventory')
+  })
+
+  it('does not adopt a split without a valid audited continuation', () => {
+    const { action, position } = fixture()
+    const unauditedAction = {
+      ...action,
+      auditNumber: null,
+      previousFingerprint: null,
+      nextFingerprint: null,
+    }
+    expect(() =>
+      projectStoredParcelCostBasis({
+        ...position,
+        quantity: 16,
+        entryPrice: new AccountingDecimal(10),
+        buyFees: new AccountingDecimal(10),
+        splitEffects: position.splitEffects.map((effect) => ({
+          ...effect,
+          action: unauditedAction,
+        })),
+        asset: { splitActions: [unauditedAction] },
+      })
+    ).toThrow('Split action has no valid audited continuation')
   })
 })

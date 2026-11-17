@@ -63,15 +63,15 @@
 | GET | `/api/portfolio/history` | 🔒 | query ×2 | [src/controllers/portfolio.ts:30](../src/controllers/portfolio.ts#L30) |
 | GET | `/api/portfolio/realized-pnl` | 🔒 | query ×2 | [src/controllers/portfolio.ts:106](../src/controllers/portfolio.ts#L106) |
 | POST | `/api/portfolio/snapshot` | 🔒 | body ×2 | [src/controllers/portfolio.ts:151](../src/controllers/portfolio.ts#L151) |
-| GET | `/api/positions` | 🔒 | query ×6 | [src/controllers/positions.ts:108](../src/controllers/positions.ts#L108) |
-| POST | `/api/positions` | 🔒 | body ×22 | [src/controllers/positions.ts:310](../src/controllers/positions.ts#L310) |
-| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1524](../src/controllers/positions.ts#L1524) |
-| PATCH | `/api/positions/:id` | 🔒 | param, body ×24 | [src/controllers/positions.ts:1126](../src/controllers/positions.ts#L1126) |
-| POST | `/api/positions/:id/check-stop-loss` | 🔒 | param, body | [src/controllers/positions.ts:969](../src/controllers/positions.ts#L969) |
-| POST | `/api/positions/:id/close` | 🔒 | param, body ×6 | [src/controllers/positions.ts:1443](../src/controllers/positions.ts#L1443) |
-| POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:863](../src/controllers/positions.ts#L863) |
-| GET | `/api/positions/close-events` | 🔒 | query ×5 | [src/controllers/positions.ts:534](../src/controllers/positions.ts#L534) |
-| PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×5 | [src/controllers/positions.ts:790](../src/controllers/positions.ts#L790) |
+| GET | `/api/positions` | 🔒 | query ×6 | [src/controllers/positions.ts:113](../src/controllers/positions.ts#L113) |
+| POST | `/api/positions` | 🔒 | body ×22 | [src/controllers/positions.ts:335](../src/controllers/positions.ts#L335) |
+| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1549](../src/controllers/positions.ts#L1549) |
+| PATCH | `/api/positions/:id` | 🔒 | param, body ×24 | [src/controllers/positions.ts:1151](../src/controllers/positions.ts#L1151) |
+| POST | `/api/positions/:id/check-stop-loss` | 🔒 | param, body | [src/controllers/positions.ts:994](../src/controllers/positions.ts#L994) |
+| POST | `/api/positions/:id/close` | 🔒 | param, body ×6 | [src/controllers/positions.ts:1468](../src/controllers/positions.ts#L1468) |
+| POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:888](../src/controllers/positions.ts#L888) |
+| GET | `/api/positions/close-events` | 🔒 | query ×5 | [src/controllers/positions.ts:559](../src/controllers/positions.ts#L559) |
+| PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×5 | [src/controllers/positions.ts:815](../src/controllers/positions.ts#L815) |
 | GET | `/api/screener` | 🔒 | query ×10 | [src/controllers/screener.ts:124](../src/controllers/screener.ts#L124) |
 | GET | `/api/screener/saved-screens` | 🔒 | — | [src/controllers/screener.ts:301](../src/controllers/screener.ts#L301) |
 | POST | `/api/screener/saved-screens` | 🔒 | body ×2 | [src/controllers/screener.ts:344](../src/controllers/screener.ts#L344) |

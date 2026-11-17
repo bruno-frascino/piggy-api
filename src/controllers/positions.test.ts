@@ -2,6 +2,8 @@ import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { AccountingDecimal } from '../lib/accounting-values.js'
+import { prepareAccountSplit } from '../lib/account-split-command.js'
 vi.mock('../lib/user-lock.js', () => ({ lockActiveUser: vi.fn() }))
 const acquisitionCorrections = vi.hoisted(() => ({ read: vi.fn() }))
 vi.mock('../lib/live-acquisition-corrections.js', () => ({
@@ -188,6 +190,104 @@ describe('positions controller', () => {
       expect(positionFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { userId: 'u_1', voidedAt: null, account: { isDemo: false } },
+        })
+      )
+    })
+
+    it('returns derived split cost without exposing retained action/effect records', async () => {
+      const requestData = {
+        idempotencyKey: 'split-key',
+        assetId: 'asset1',
+        effectiveDate: '2025-08-01',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: 'statement-1',
+        statementConfirmed: true,
+      }
+      const action = {
+        id: 'split1',
+        accountId: 'acc_1',
+        assetId: 'asset1',
+        effectiveDate: new Date(requestData.effectiveDate),
+        newUnits: new AccountingDecimal(2),
+        oldUnits: new AccountingDecimal(1),
+        sourceReference: requestData.sourceReference,
+        idempotencyKey: requestData.idempotencyKey,
+        payloadHash: prepareAccountSplit(requestData, 'acc_1').payloadHash,
+        sourceFingerprint: 'a'.repeat(64),
+        methodology: 'account-split-v1',
+        request: requestData,
+        recordedAt: new Date('2025-08-02'),
+        auditNumber: 1,
+        previousFingerprint: 'a'.repeat(64),
+        nextFingerprint: 'b'.repeat(64),
+      }
+      const effect = {
+        id: 'effect1',
+        actionId: action.id,
+        positionId: 'p_split',
+        beforeQuantity: new AccountingDecimal(8),
+        afterQuantity: new AccountingDecimal(16),
+        action,
+      }
+      positionFindManyMock.mockResolvedValue([
+        {
+          id: 'p_split',
+          accountId: 'acc_1',
+          assetId: 'asset1',
+          openDate: new Date('2025-01-01'),
+          quantity: 16,
+          entryPrice: new AccountingDecimal(10),
+          buyFees: new AccountingDecimal(10),
+          transactions: [
+            {
+              id: 'buy1',
+              type: 'BUY',
+              date: new Date('2025-01-01'),
+              quantity: 10,
+              voidedAt: null,
+            },
+            {
+              id: 'sell1',
+              type: 'SELL',
+              date: new Date('2025-07-01'),
+              quantity: 2,
+              voidedAt: null,
+            },
+          ],
+          splitEffects: [effect],
+          asset: {
+            symbol: 'AAA',
+            exchange: { code: 'ASX', currency: 'AUD' },
+            splitActions: [action],
+          },
+        },
+      ])
+      positionCountMock.mockResolvedValue(1)
+
+      const response = await request(createApp()).get('/api/positions')
+
+      expect(response.status).toBe(200)
+      expect(response.body.data[0].splitAdjustedInventory).toEqual({
+        remainingQuantity: '16',
+        remainingCostBasis: '88.000000000000',
+        remainingBuyFees: '8.000000000000',
+        averageUnitCost: '5.500000000000',
+      })
+      expect(response.body.data[0]).not.toHaveProperty('splitEffects')
+      expect(response.body.data[0].asset).not.toHaveProperty('splitActions')
+      expect(positionFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            splitEffects: { include: { action: true } },
+            asset: {
+              include: expect.objectContaining({
+                splitActions: {
+                  where: { account: { userId: 'u_1' } },
+                },
+              }),
+            },
+          }),
         })
       )
     })

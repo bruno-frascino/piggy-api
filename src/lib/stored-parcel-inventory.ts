@@ -255,6 +255,80 @@ export function storedParcelObservationDate(
   )
 }
 
+export function projectStoredParcelCostBasis(
+  position: Parameters<typeof projectStoredParcelInventory>[0] & {
+    quantity: number
+    entryPrice: string | number | { toString(): string }
+    buyFees: string | number | { toString(): string }
+  }
+) {
+  const projection = projectStoredParcelInventory(
+    position,
+    storedParcelObservationDate(position)
+  )
+  if (!projection) return null
+
+  const acquisitionDate = sydneyCalendarDate(position.openDate)
+  const relevantActions = new Map(
+    [
+      ...position.splitEffects.map((effect) => effect.action),
+      ...position.asset.splitActions.filter(
+        (action) =>
+          action.accountId === position.accountId &&
+          action.effectiveDate.toISOString().slice(0, 10) >= acquisitionDate
+      ),
+    ].map((action) => [action.id, action])
+  )
+  for (const action of relevantActions.values()) {
+    if (
+      action.auditNumber === null ||
+      !Number.isSafeInteger(action.auditNumber) ||
+      action.auditNumber < 1 ||
+      !/^[a-f0-9]{64}$/.test(action.previousFingerprint ?? '') ||
+      !/^[a-f0-9]{64}$/.test(action.nextFingerprint ?? '') ||
+      action.sourceFingerprint !== action.previousFingerprint ||
+      action.previousFingerprint === action.nextFingerprint
+    )
+      throw new Error('Split action has no valid audited continuation')
+  }
+
+  if (
+    !new AccountingDecimal(String(position.quantity)).eq(
+      projection.remainingQuantity
+    )
+  )
+    throw new Error('Stored parcel quantity does not match split inventory')
+
+  const acquisition = position.transactions.find(
+    (trade) => trade.type === 'BUY' && !trade.voidedAt
+  )
+  if (!acquisition)
+    throw new Error('Split parcel must have exactly one effective acquisition')
+
+  const costFraction = projection.remainingCostFraction
+  const originalFees = new AccountingDecimal(String(position.buyFees))
+  const originalCostBasis = new AccountingDecimal(String(position.entryPrice))
+    .mul(String(acquisition.quantity))
+    .plus(originalFees)
+  const remainingCostBasis = originalCostBasis
+    .mul(costFraction.numerator)
+    .div(costFraction.denominator)
+  const remainingQuantity = new AccountingDecimal(projection.remainingQuantity)
+  const averageUnitCost = remainingQuantity.gt(0)
+    ? remainingCostBasis.div(remainingQuantity).toFixed(12)
+    : null
+
+  return {
+    remainingQuantity: projection.remainingQuantity,
+    remainingCostBasis: remainingCostBasis.toFixed(12),
+    remainingBuyFees: originalFees
+      .mul(costFraction.numerator)
+      .div(costFraction.denominator)
+      .toFixed(12),
+    averageUnitCost,
+  }
+}
+
 export function reviewStoredParcelSale(
   position: Parameters<typeof projectStoredParcelInventory>[0],
   sale: { id: string; date: Date; quantity: number }

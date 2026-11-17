@@ -7145,7 +7145,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Paginated list of positions. Eligible live manual acquisitions include acquisitionCorrection metadata with transactionId, operationId, expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string quantity (total bought units), price and fees. Eligible live imported Kraken BUY executions also include importedExecutionCorrection metadata containing eventId, transactionId, operationId, expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence, price, fees and currency. Demo and legacy executions do not receive correction controls.\n"
+            "description": "Paginated list of positions. Split-bearing parcels also include `splitAdjustedInventory` with decimal-string remaining quantity, cost basis, remaining acquisition fees and average unit cost (null when fully disposed). Original acquisition price and fee fields are not rewritten. Eligible live manual acquisitions include acquisitionCorrection metadata with transactionId, operationId, expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string quantity (total bought units), price and fees. Eligible live imported Kraken BUY executions also include importedExecutionCorrection metadata containing eventId, transactionId, operationId, expectedRevisionId, expectedSourceFingerprint, effectiveDate, sequence, price, fees and currency. Demo and legacy executions do not receive correction controls.\n"
           },
           "401": {
             "description": "Unauthorized"

@@ -72,13 +72,13 @@
     "startLine": 11
   },
   {
-    "endLine": 35,
+    "endLine": 36,
     "file": "src/controllers/positions.ts",
     "jsdoc": "",
     "kind": "VariableDeclaration",
     "name": "default",
     "signature": "router = Router()",
-    "startLine": 35
+    "startLine": 36
   },
   {
     "endLine": 17,
@@ -2736,22 +2736,31 @@
     "startLine": 238
   },
   {
-    "endLine": 276,
+    "endLine": 330,
+    "file": "src/lib/stored-parcel-inventory.ts",
+    "jsdoc": "",
+    "kind": "FunctionDeclaration",
+    "name": "projectStoredParcelCostBasis",
+    "signature": "export function projectStoredParcelCostBasis( position: Parameters<typeof projectStoredParcelInventory>[0] &",
+    "startLine": 258
+  },
+  {
+    "endLine": 350,
     "file": "src/lib/stored-parcel-inventory.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "reviewStoredParcelSale",
     "signature": "export function reviewStoredParcelSale( position: Parameters<typeof projectStoredParcelInventory>[0], sale:",
-    "startLine": 258
+    "startLine": 332
   },
   {
-    "endLine": 359,
+    "endLine": 433,
     "file": "src/lib/stored-parcel-inventory.ts",
     "jsdoc": "Internal read: the caller supplies an owned, locked account or consistent snapshot.",
     "kind": "FunctionDeclaration",
     "name": "readAccountAssetQuantityAt",
     "signature": "export async function readAccountAssetQuantityAt( db: SplitHistoryDb & Pick<typeof prisma, 'position' | 'transaction'>, userId: string, accountId: string, assetId: string, date: string, excludePositionId?: string )",
-    "startLine": 279
+    "startLine": 353
   },
   {
     "endLine": 150,
