@@ -1,6 +1,6 @@
 import type { prisma } from './prisma.js'
 
-/** Call under the account lock until writers can replay and audit split history. */
+/** Call under the account lock for write paths not yet split-aware. */
 export async function requireNoSplitHistory(
   db: Pick<typeof prisma, 'accountSplitAction'>,
   accountIds: readonly string[]
@@ -12,7 +12,7 @@ export async function requireNoSplitHistory(
   if (action) {
     throw Object.assign(
       new Error(
-        'This account has retained stock split history. Financial writes, imports, moves and deletion require split-aware accounting, which is not yet available. Notes remain editable.'
+        'This account has retained stock split history. This financial change, import, move or deletion is not supported with the current split-aware accounting scope. Notes remain editable.'
       ),
       { status: 409, name: 'Accounting Conflict' }
     )

@@ -2917,7 +2917,7 @@ describe.skipIf(!enabled)(
         },
       })
     }
-    it('blocks live writes after a retained split and marks the cash read incomplete', async () => {
+    it('rejects cash writes when retained split history is unaudited', async () => {
       const {
         postAccountCapitalFlow,
         readLiveCapitalOperations,
@@ -2975,7 +2975,10 @@ describe.skipIf(!enabled)(
           f.accountId,
           liveCapitalFlowInput({ amount: '10' })
         )
-      ).rejects.toMatchObject({ status: 409, message: /split history/ })
+      ).rejects.toMatchObject({
+        status: 409,
+        message: /source changed outside its audited live cash history/,
+      })
       expect(
         await prisma.accountCashOperation.count({
           where: { accountId: f.accountId },
@@ -3137,26 +3140,218 @@ describe.skipIf(!enabled)(
         auditNumber: 2,
         sourceFingerprint: left.sourceFingerprint,
       })
-      await expect(
-        postAccountCapitalFlow(
-          f.userId,
-          f.accountId,
-          liveCapitalFlowInput({ amount: '10' })
-        )
-      ).rejects.toMatchObject({ status: 409, message: /split history/ })
+      const postSplitFlow = liveCapitalFlowInput({ amount: '10' })
+      const postedFlow = await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        postSplitFlow
+      )
+      expect(postedFlow.created).toBe(true)
+      expect(
+        await postAccountCapitalFlow(f.userId, f.accountId, postSplitFlow)
+      ).toMatchObject({
+        created: false,
+        operationId: postedFlow.operationId,
+      })
       expect(
         await prisma.accountCashOperation.count({
           where: { accountId: f.accountId },
         })
-      ).toBe(1)
+      ).toBe(2)
       const history = await readLiveCapitalOperations(f.userId, f.accountId)
       expect(history).toMatchObject({
-        auditNumber: 3,
-        auditTotal: 1,
+        auditNumber: 4,
+        auditTotal: 2,
         sourceFreshness: { status: 'CURRENT' },
         cashCompleteness: 'INCOMPLETE',
       })
-      expect(history.replay).toEqual(cashBeforeSplit.replay)
+      expect(history.replay.balances[0]?.endingAmount).toBe('120')
+      expect(cashBeforeSplit.replay.balances[0]?.endingAmount).toBe('110')
+    })
+    it('posts and corrects statement income using split-adjusted entitlement history', async () => {
+      const {
+        postAccountSplit,
+        postAccountIncomeReceipt,
+        correctLiveIncomeReceipt,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture income asset')
+      await confirmCashLedger(f.accountId, f.statementId)
+      await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: `split-${randomUUID()}`,
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-02',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `split-statement-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+
+      const incomeInput = {
+        idempotencyKey: `income-${randomUUID()}`,
+        assetId: f.incomeAssetId,
+        entitlementDate: '2026-10-01',
+        paymentDate: '2026-10-15',
+        sequence: 1,
+        currency: 'AUD',
+        grossAmount: '100',
+        withholdingAmount: '15',
+        frankedAmount: '60',
+        unfrankedAmount: '40',
+        frankingCreditAud: '25.714285714286',
+        sourceReference: `income-statement-${randomUUID()}`,
+      }
+      await expect(
+        postAccountIncomeReceipt(f.userId, f.accountId, {
+          ...incomeInput,
+          idempotencyKey: `ineligible-${randomUUID()}`,
+          entitlementDate: '2026-09-29',
+        })
+      ).rejects.toMatchObject({
+        status: 422,
+        message: /eligible historical holdings/,
+      })
+
+      const posted = await postAccountIncomeReceipt(
+        f.userId,
+        f.accountId,
+        incomeInput
+      )
+      expect(posted.created).toBe(true)
+      const review = await readLiveCapitalOperations(f.userId, f.accountId)
+      const audit = review.auditOperations[0]
+      if (!audit) throw new Error('Missing income audit record')
+      const correction = {
+        idempotencyKey: `income-correction-${randomUUID()}`,
+        expectedRevisionId: audit.expectedRevisionId,
+        expectedAuditNumber: review.auditNumber,
+        expectedSourceFingerprint: review.sourceFingerprint,
+        reason: 'Correct issuer-statement withholding',
+        replacement: {
+          entitlementDate: '2026-10-01',
+          paymentDate: '2026-10-16',
+          sequence: 2,
+          grossAmount: '100',
+          withholdingAmount: '20',
+          frankedAmount: '60',
+          unfrankedAmount: '40',
+          frankingCreditAud: '25.714285714286',
+        },
+      }
+      await expect(
+        correctLiveIncomeReceipt(f.userId, f.accountId, posted.operationId, {
+          ...correction,
+          idempotencyKey: `ineligible-correction-${randomUUID()}`,
+          replacement: {
+            ...correction.replacement,
+            entitlementDate: '2026-09-29',
+          },
+        })
+      ).rejects.toMatchObject({
+        status: 422,
+        message: /eligible historical holdings/,
+      })
+      const corrected = await correctLiveIncomeReceipt(
+        f.userId,
+        f.accountId,
+        posted.operationId,
+        correction
+      )
+      expect(corrected.created).toBe(true)
+      expect(
+        await correctLiveIncomeReceipt(
+          f.userId,
+          f.accountId,
+          posted.operationId,
+          correction
+        )
+      ).toMatchObject({ created: false, revisionId: corrected.revisionId })
+      const after = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(after).toMatchObject({
+        sourceFreshness: { status: 'CURRENT' },
+        cashCompleteness: 'INCOMPLETE',
+        auditNumber: review.auditNumber + 1,
+      })
+      expect(after.auditOperations[0]?.currentIncomeReceipt).toMatchObject({
+        entitlementDate: '2026-10-01',
+        paymentDate: '2026-10-16',
+        withholdingAmount: '20',
+        netAmount: '80',
+      })
+    })
+    it('posts and corrects paired cash transfers on audited split history', async () => {
+      const {
+        postAccountSplit,
+        postAccountCashTransfer,
+        readLiveCashTransferReview,
+        correctLiveCashTransfer,
+      } = await import('./draft-cash-ledger.js')
+      const source = await fixture('100', false, false, true)
+      const destination = await fixture('0')
+      if (!source.incomeAssetId) throw new Error('Missing fixture income asset')
+      await confirmCashLedger(source.accountId, source.statementId)
+      await confirmCashLedger(destination.accountId, destination.statementId)
+      await postAccountSplit(source.userId, source.accountId, {
+        idempotencyKey: `split-${randomUUID()}`,
+        assetId: source.incomeAssetId,
+        effectiveDate: '2026-10-02',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `split-statement-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      const input = {
+        toAccountId: destination.accountId,
+        idempotencyKey: `transfer-${randomUUID()}`,
+        effectiveDate: currentSydneyDate(),
+        sourceSequence: 1,
+        destinationSequence: 1,
+        currency: 'AUD',
+        amount: '10',
+        fee: '1',
+        sourceReference: `transfer-statement-${randomUUID()}`,
+      }
+      const posted = await postAccountCashTransfer(
+        source.userId,
+        source.accountId,
+        input
+      )
+      expect(posted.created).toBe(true)
+      expect(
+        await postAccountCashTransfer(source.userId, source.accountId, input)
+      ).toMatchObject({
+        created: false,
+        sourceOperationId: posted.sourceOperationId,
+        destinationOperationId: posted.destinationOperationId,
+      })
+      const review = await readLiveCashTransferReview(
+        source.userId,
+        source.accountId,
+        posted.sourceOperationId
+      )
+      const correction = {
+        idempotencyKey: `transfer-correction-${randomUUID()}`,
+        reason: 'Correct transfer from statement',
+        sourceHead: review.sourceHead,
+        destinationHead: review.destinationHead,
+        replacement: {
+          effectiveDate: input.effectiveDate,
+          sourceSequence: 2,
+          destinationSequence: 2,
+          amount: '9',
+          fee: '2',
+        },
+      }
+      const corrected = await correctLiveCashTransfer(
+        source.userId,
+        source.accountId,
+        posted.sourceOperationId,
+        correction
+      )
+      expect(corrected.created).toBe(true)
+      expect(corrected.sourceReplay.balances[0]?.endingAmount).toBe('89')
+      expect(corrected.destinationReplay.balances[0]?.endingAmount).toBe('9')
     })
     it('reverses a terminal split retroactively, preserves audit evidence and permits corrected source/date reuse', async () => {
       const {
@@ -3288,13 +3483,12 @@ describe.skipIf(!enabled)(
         sourceFreshness: { status: 'CURRENT' },
         cashCompleteness: 'INCOMPLETE',
       })
-      await expect(
-        postAccountCapitalFlow(
-          f.userId,
-          f.accountId,
-          liveCapitalFlowInput({ amount: '10' })
-        )
-      ).rejects.toMatchObject({ status: 409, message: /split history/ })
+      const fundingAfterReversal = await postAccountCapitalFlow(
+        f.userId,
+        f.accountId,
+        liveCapitalFlowInput({ amount: '10' })
+      )
+      expect(fundingAfterReversal.created).toBe(true)
 
       const corrected = await postAccountSplit(f.userId, f.accountId, {
         ...originalRequest,
@@ -3304,7 +3498,7 @@ describe.skipIf(!enabled)(
       })
       expect(corrected).toMatchObject({
         created: true,
-        auditNumber: reversed.auditNumber + 1,
+        auditNumber: reversed.auditNumber + 2,
       })
       expect(
         await prisma.position.findUniqueOrThrow({
@@ -3534,7 +3728,7 @@ describe.skipIf(!enabled)(
         })
       ).toBe(0)
     })
-    it('continues the shared audit chain and permits split-aware trades only', async () => {
+    it('continues the shared audit chain for split-aware trades and cash', async () => {
       const {
         postAccountTrade,
         postAccountCapitalFlow,
@@ -3603,7 +3797,7 @@ describe.skipIf(!enabled)(
         statementConfirmed: true,
       }
       const prepared = prepareAccountSplit(request, f.accountId)
-      // Only this disposable fixture bypasses the still-disabled split writer.
+      // This fixture seeds a mismatched source head to exercise replay validation.
       const split = await prisma.$transaction(async (db) => {
         const action = await db.accountSplitAction.create({
           data: {
@@ -3712,8 +3906,12 @@ describe.skipIf(!enabled)(
         ).transactions
       ).toEqual(position.transactions)
       await expect(
-        postAccountCapitalFlow(f.userId, f.accountId, liveCapitalFlowInput())
-      ).rejects.toMatchObject({ status: 409, message: /split history/ })
+        postAccountCapitalFlow(
+          f.userId,
+          f.accountId,
+          liveCapitalFlowInput({ sequence: 2 })
+        )
+      ).resolves.toMatchObject({ created: true })
       expect(
         await readAccountTradeCapability(f.userId, f.accountId, '2026-10-05')
       ).toMatchObject({ mode: 'LIVE_LEDGER', nextSequence: 1 })
@@ -3820,12 +4018,12 @@ describe.skipIf(!enabled)(
       expect(laterAcquisition.created).toBe(true)
       const afterSale = await readLiveCapitalOperations(f.userId, f.accountId)
       expect(afterSale).toMatchObject({
-        auditNumber: 6,
+        auditNumber: 7,
         cashCompleteness: 'INCOMPLETE',
         sourceFreshness: { status: 'CURRENT' },
         replay: {
           funded: true,
-          balances: [{ currency: 'AUD', endingAmount: '186' }],
+          balances: [{ currency: 'AUD', endingAmount: '286' }],
         },
       })
       expect(

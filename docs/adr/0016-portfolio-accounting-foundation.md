@@ -277,21 +277,22 @@ the original BUY. Exact retries and repeated splits are supported. This service 
 route. The coordinated manual BUY/SELL writer now permits active real accounts with valid, current
 split history, using the same inventory replay and account audit/cash chain. New acquisitions on
 or before an active split date are rejected to avoid ambiguous same-day order and mutation of
-retained parcel effects. Other financial writers remain fenced.
+retained parcel effects. Validated split history also permits audited cash-only operations,
+paired cash transfers and statement-income receipts/corrections. Imports, reinvestment, legacy
+financial mutations, moves and deletion remain fenced pending the historical release gates.
 An internal terminal reversal preserves the original action and parcel effects and appends a
 separate reversal record to the same account audit/source chain. It retroactively excludes the
 reversed action from effective inventory, restores each affected stored quantity to its captured
 pre-action amount, and changes no acquisition or cash record. It requires the current audit head
 and rejects a later active split or a same-day or later sale of an affected parcel. Later
 statement-backed asset-income receipts and their cash postings remain unchanged by the reversal;
-receipt corrections or reversals use their separate audited flow but remain subject to the
-account-wide split-history write fence. Exact retries are idempotent. After reversal, a corrected
-action may
+receipt corrections or reversals use their separate audited flow. Exact retries are idempotent.
+After reversal, a corrected action may
 reuse the source reference and effective date with a new idempotency key; original idempotency keys
 remain reserved. Reversal and corrected posting both run under the account lock and advance the
-accepted source fingerprint atomically. The account-wide financial-write fence deliberately remains
-in place for writers other than split-aware manual BUY/SELL until the other split-dependent writers
-and historical protections are complete. No route or UI exposes either split operation.
+accepted source fingerprint atomically. The financial-write fence remains for imports,
+reinvestment, legacy mutations, moves and deletion until their split-dependent protections and the
+broader historical release gates are complete. No route or UI exposes either split operation.
 Read-only realized-trade statistics now load effective parcel trades and retained split evidence,
 then allocate original acquisition cost using the validated exact sale cost fraction. Summary,
 realized time series, distributions and closed-trade results use this path; no-split calculations

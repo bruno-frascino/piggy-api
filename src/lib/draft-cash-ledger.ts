@@ -3041,7 +3041,7 @@ async function readLiveCashState(
   now: Date,
   excludedImportBatchId?: string,
   readOnly = false,
-  allowSplitAwareTrade = false
+  splitAwareWrite: 'TRADE' | 'CASH' | null = null
 ) {
   const account = await db.tradingAccount.findFirst({
     where: { id: accountId, userId, user: { deletedAt: null } },
@@ -3057,7 +3057,7 @@ async function readLiveCashState(
     conflict(
       'This legacy account has no active confirmed cash ledger. Existing trade creation remains unchanged.'
     )
-  if (!readOnly && !allowSplitAwareTrade)
+  if (!readOnly && splitAwareWrite === null)
     await requireNoSplitHistory(db, [accountId])
   const statement = await readStatement(
     db,
@@ -4253,6 +4253,15 @@ async function readLiveCashState(
   }
 }
 
+function readSplitAwareCashState(
+  db: DraftCashTransaction,
+  userId: string,
+  accountId: string,
+  now: Date
+) {
+  return readLiveCashState(db, userId, accountId, now, undefined, false, 'CASH')
+}
+
 export async function postAccountSplit(
   userId: string,
   accountId: string,
@@ -5243,7 +5252,7 @@ function accountTradeTransaction(
       now,
       undefined,
       false,
-      true
+      'TRADE'
     )
     const {
       opening,
@@ -5583,7 +5592,7 @@ function incomeReceiptTransaction(
 ) {
   return async (db: DraftCashTransaction) => {
     await lockOwnedTradingAccount(db, userId, accountId)
-    const state = await readLiveCashState(db, userId, accountId, now)
+    const state = await readSplitAwareCashState(db, userId, accountId, now)
     const commands = [
       ...[...state.history.effective.values()].filter(
         (command): command is CashCommand => command !== null
@@ -5622,6 +5631,18 @@ function incomeReceiptTransaction(
     if (!assetPosition)
       conflict(
         'Income receipts require an equity or ETF already held in this account',
+        422
+      )
+    const eligible = await readAccountAssetQuantityAt(
+      db,
+      userId,
+      accountId,
+      request.assetId,
+      request.entitlementDate
+    )
+    if (!eligible.gt(0))
+      conflict(
+        'Income receipts require eligible historical holdings on the statement entitlement date',
         422
       )
 
@@ -6270,7 +6291,7 @@ export async function correctLiveIncomeReceipt(
   return prisma.$transaction(
     async (db) => {
       await lockOwnedTradingAccount(db, userId, accountId)
-      const state = await readLiveCashState(db, userId, accountId, now)
+      const state = await readSplitAwareCashState(db, userId, accountId, now)
       const operation = state.cashLedgerOps.find(
         (row) =>
           row.id === operationId &&
@@ -6351,8 +6372,21 @@ export async function correctLiveIncomeReceipt(
 
       const replacement = prepared.request.replacement
       if (replacement) {
+        if (replacement.kind !== 'INCOME')
+          conflict('Corrected live operation must remain an income receipt')
+        const eligible = await readAccountAssetQuantityAt(
+          db,
+          userId,
+          accountId,
+          replacement.income.assetId,
+          replacement.income.entitlementDate
+        )
+        if (!eligible.gt(0))
+          conflict(
+            'Corrected income requires eligible historical holdings on the statement entitlement date',
+            422
+          )
         if (
-          replacement.kind !== 'INCOME' ||
           replacement.effectiveDate <= state.openingDate ||
           replacement.effectiveDate > state.sourceObservationDate
         )
@@ -6474,8 +6508,8 @@ async function lockAndReadLiveTransfer(
   )
   for (const id of [accountId, transfer.request.toAccountId].sort())
     await lockOwnedTradingAccount(db, userId, id)
-  const source = await readLiveCashState(db, userId, accountId, now)
-  const destination = await readLiveCashState(
+  const source = await readSplitAwareCashState(db, userId, accountId, now)
+  const destination = await readSplitAwareCashState(
     db,
     userId,
     transfer.request.toAccountId,
@@ -6756,8 +6790,13 @@ export async function postAccountCashTransfer(
     async (db) => {
       for (const id of [fromAccountId, request.toAccountId].sort())
         await lockOwnedTradingAccount(db, userId, id)
-      const source = await readLiveCashState(db, userId, fromAccountId, now)
-      const destination = await readLiveCashState(
+      const source = await readSplitAwareCashState(
+        db,
+        userId,
+        fromAccountId,
+        now
+      )
+      const destination = await readSplitAwareCashState(
         db,
         userId,
         request.toAccountId,
@@ -6900,7 +6939,7 @@ async function postLiveCashOnlyOperation(
   return prisma.$transaction(
     async (db) => {
       await lockOwnedTradingAccount(db, userId, accountId)
-      const state = await readLiveCashState(db, userId, accountId, now)
+      const state = await readSplitAwareCashState(db, userId, accountId, now)
       const commands = [
         ...[...state.history.effective.values()].filter(
           (command): command is CashCommand => command !== null
@@ -7462,7 +7501,7 @@ export async function readLiveFxConversionReview(
   return prisma.$transaction(
     async (db) => {
       await lockOwnedTradingAccount(db, userId, accountId)
-      const state = await readLiveCashState(db, userId, accountId, now)
+      const state = await readSplitAwareCashState(db, userId, accountId, now)
       const operation = state.cashLedgerOps.find(
         (row) => row.id === operationId && row.kind === 'FX_CONVERSION'
       )
@@ -7513,7 +7552,7 @@ async function correctLiveCashOnlyOperation(
   return prisma.$transaction(
     async (db) => {
       await lockOwnedTradingAccount(db, userId, accountId)
-      const state = await readLiveCashState(db, userId, accountId, now)
+      const state = await readSplitAwareCashState(db, userId, accountId, now)
       const operation = state.cashLedgerOps.find(
         (row) =>
           row.id === operationId &&

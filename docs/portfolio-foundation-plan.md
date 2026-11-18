@@ -37,16 +37,20 @@ it retroactively removes the action from effective inventory, retains the origin
 appends an audited reversal, restores affected quantities, and allows a corrected event to reuse
 the same source reference/date with a new idempotency key. It is rejected when later active splits
 or same/later affected-parcel sales depend on the action. Later statement-backed income receipts
-and their cash postings remain unchanged; receipt corrections/reversals use their separate audited
-flow but remain subject to the account-wide split-history write fence. Split reversal changes
-neither acquisition records nor cash. Valid audited split history now permits the coordinated
+and their cash postings remain unchanged when a split is reversed; receipt corrections/reversals
+use their separate audited flow. Split reversal changes neither acquisition records nor cash.
+Valid audited split history now permits the coordinated
 manual BUY/SELL writer to use split-aware inventory and the shared audit/cash replay; acquisitions
-on or before a retained split date are rejected to protect immutable effects. Other financial writers remain
-fenced. The split writer and reversal are not exposed through an API; broader historical
+on or before a retained split date are rejected to protect immutable effects. Validated histories
+also permit audited deposits/withdrawals, same-account FX conversions, paired cash transfers, and
+statement-supported cash-income receipts and corrections. Income eligibility uses split-adjusted
+historical holdings on the entitlement date. Cash review remains incomplete; reinvestments,
+imports, legacy financial mutations, moves and deletion remain fenced. The split writer and
+reversal are not exposed through an API; broader historical
 protections and corporate-action
 posting/history endpoints and UI remain unavailable. Legacy accounts retain their existing
 behavior.
-Date: 17 November 2026.
+Date: 18 November 2026.
 Scope: piggy-api and sibling piggy-fe.
 
 ## Start here when resuming
@@ -117,7 +121,17 @@ the remaining unsupported-writer fences as explicit cutover gates.
 | 3E. Audited FX revisions                      | Done    | 3D                                                      | Fixed account/currency pair/direction/source; editable exchanged amounts, fees, date and sequence. Current revision/audit/fingerprint and reason protect immutable inverse/replacement legs, reserved historical slots and funded replay in both currencies. Reversal is terminal; identity changes require reversal plus a new record. Backend full suite 1,240 passed / 200 skipped; all 95 disposable-localhost ledger tests pass, including exact FX correction/reversal legs, old retries after later activity/terminal reversal, funding rollback in either currency, no-op/opening guards, concurrent/stale heads, reserved slots, archived audits and tampered revision postings. Frontend full suite 656 passed, including exact fees/amounts/retry keys, reason/acknowledgement, privacy/offline/pending/error/terminal guards, conflict refresh, keyed form reset, encoded review API and account-scoped invalidation. Both builds/lints, frontend type-check, contract check and both context checks pass; contract drift is zero. No new schema or real-account activation                                                                                                                                                                                                                                           |
 | 3F. Statement-supported dividend reinvestment | Done    | 3A, 3E                                                  | User-approved posting/history first, account-paid residual only. Atomic new equity/ETF income and a separate BUY parcel share statement identity, retained counterpart IDs and full dated replay. Net income exactly funds consideration, fees and residual; no issuer-held credits, extra funding, relinking existing receipts or independent income/acquisition revisions/voids. Historical entitlement and statement tax figures are retained; current quantities do not determine income. Backend full suite 1,244 passed / 204 skipped; all 99 disposable-localhost ledger tests pass, including concurrent exact retries, separate new parcel/tax attributes, ordinary subsequent sales, one-sided revision guards, occupied-slot rollback, later-allotment funding, historical entitlement after disposal, duplicate statement rejection and removed-link tampering. Frontend full suite 669 passed, including exact fractional tax/residual amounts, identical ambiguous-error retry keys, acknowledgement, privacy/offline/pending/stale/error/legacy guards, dashboard entry, masked linked history, encoded API transport and cash/holdings/review invalidation. Both builds/lints, frontend type-check, contract check and both context checks pass; contract drift is zero. No new schema or real-account activation |
 | 3G. Paired audited reinvestment revisions     | Done    | 3F                                                      | Fixed account/asset/currency/source identity; editable statement/tax figures, acquisition units/price/fees, dates/sequences and account-cash residual. Corrections and terminal paired reversals require both current revision heads, account audit/fingerprint, reason, no effective parcel SELLs, reserved historical slots and full funded replay. Exact inverse/replacement postings and source/parcel updates commit atomically; both original and revision retries remain idempotent. Backend full suite 1,254 passed / 207 skipped before the final additional integration case; all 103 localhost ledger tests pass, including competing revisions, reserved slots, archived history, concurrent retries, tax-only changes, terminal reversal, effective-sale/void guard, stale heads, identity/no-op guards, unfunded rollback and tampered postings. Frontend full suite 683 passed, including paired-head submission, exact retry, terminal acknowledgement, sale/offline/privacy/pending/error guards, conflict refresh/reset, encoded API and mock parity. Both builds/lints, frontend type-check, contract check and both context checks pass; contract drift zero. No schema change or activation                                                                                                                  |
-| 3H. Stock splits/consolidations               | Partial | 3G; approved methodology                                | Statement-supported posting, audit/source replay, split-aware CGT/statistics and holdings cost/return presentation are implemented internally. Valid audited splits now permit coordinated manual BUY/SELL trades with split-aware parcel review and shared audit/cash replay; acquisitions on or before a retained split date fail closed to protect immutable parcel effects. Terminal reversal is append-only and retroactive, restores quantities only with no later active split or same/later affected-parcel sale, and permits corrected source/date reuse with a new idempotency key. Later statement-backed income receipts and cash postings remain unchanged; receipt corrections/reversals use their separate audited flow but remain subject to the account-wide split-history write fence. Exact retries, audit/source continuity, unchanged cash/acquisitions and dependency guards pass localhost tests. Other financial writers remain fenced. No corporate-action API/UI exists; opening confirmation remains blocked and cash review incomplete. Broader historical protections remain before release. Do not enable or claim full support                                                                                                                                                                     |
+| 3H. Stock splits/consolidations               | Partial | 3G; approved methodology                                | Internal posting, audit/source replay, split-aware CGT/statistics and holdings presentation are implemented. Validated split history permits coordinated manual BUY/SELL, audited deposits/withdrawals and FX, paired cash transfers, and statement-income receipts/corrections; income requires split-adjusted holdings at entitlement. Terminal reversal remains append-only with dependency guards. Localhost integration tests pass. Reinvestment, imports, legacy financial mutations, moves and deletion remain fenced. Cash completeness/opening confirmation remain blocked; no corporate-action API/UI exists. Finish the release-gate review before exposing posting/history. Do not enable or claim full support                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+3H progress update (18 November 2026): Split-aware manual BUY/SELL, cash-only deposits,
+withdrawals and FX, paired cash transfers, and audited statement-income receipt revisions now
+validate the shared split/cash audit chain and current source under account locks. Income receipts
+and replacements require positive split-adjusted holdings at entitlement. The localhost
+integration file passes 113 tests; `yarn build` passes. Cash completeness/opening confirmation
+remain blocked, and reinvestment, imports, legacy financial mutations, moves and deletion remain
+fenced. Next: finish and verify the remaining historical compatibility/release gates, then expose
+the approved split posting/history API and UI; do not broaden those existing fences without a
+separate reviewed slice.
 
 Status meanings: **Pending** = not started; **In progress** = actively being implemented;
 **Partial** = some deliverables exist but exit criteria remain; **Blocked** = an explicit
@@ -437,7 +451,7 @@ Remaining slices:
    The shared bounded history loader is now also used for dated account/asset entitlement.
    Reinvestment entry and paired correction use exact split-adjusted holdings at the entitlement
    date, not current quantities; correction excludes its own reinvestment parcel, and voided
-   trades/parcels are excluded by the source queries. These income writers remain fenced. The sale
+   trades/parcels are excluded by the source queries. Those reinvestment writers remain fenced. The sale
    writer includes retained effects
    in proposed-sale review and validates the complete timeline, reserving units for later sales
    and rejecting backdated changes to immutable split snapshots and ambiguous split-day sales.
@@ -473,20 +487,21 @@ Remaining slices:
    evidence, then uses the validated exact cost fraction for each sale in summary, realized
    time series, distributions and closed-trade results. No-split calculations retain their
    previous path; invalid or missing split effects reject the statistics read instead of
-   silently falling back to unsplit cost. Split posting remains internal; capability permits only
-   the split-aware manual trade writer when retained history and source freshness validate.
+   silently falling back to unsplit cost. Split posting remains internal; capability permits the
+   split-aware manual trade writer and audited cash/income writers when retained history and source
+   freshness validate.
    Saved tax-report revisions remain append-only: when split-adjusted CGT changes, regeneration
    creates a new revision without changing the prior PDF or line items. A focused regression test
    covers this behavior. Internal terminal reversal now retroactively removes the action from
    effective inventory while retaining its evidence and appending an account audit event; it
    restores quantities only when there are no later active splits or same/later parcel sales.
-   Later statement-backed asset-income receipts and their cash postings remain unchanged; receipt
-   corrections/reversals use their separate audited flow but remain subject to the account-wide
-   split-history write fence. Exact reversal retries, income preservation and corrected action
+   Later statement-backed asset-income receipts and their cash postings remain unchanged when a
+   split is reversed; receipt corrections/reversals use their separate audited flow. Exact reversal
+   retries, income preservation and corrected action
    reuse of the source/date with a new idempotency key are covered by localhost tests. No cash or
    acquisition records change.
-   The write fence remains by design. Broader historical protections and public posting/history
-   endpoints and UI remain before release.
+   The write fence remains for unsupported writers by design. Broader historical protections and
+   public posting/history endpoints and UI remain before release.
    Posting/history endpoints and frontend remain unavailable.
    The standalone account command prepares a statement-confirmed, account-bound payload and
    reviews eligible parcels against a supplied effective snapshot, rejecting inconsistent
