@@ -3006,7 +3006,7 @@ describe.skipIf(!enabled)(
         )
       ).toMatchObject({
         mode: 'BLOCKED',
-        reason: expect.stringMatching(/split history/),
+        reason: expect.stringMatching(/source history has changed/),
       })
     })
     it('posts an exact split atomically, advances the accepted head and resolves concurrent retries', async () => {
@@ -3534,8 +3534,9 @@ describe.skipIf(!enabled)(
         })
       ).toBe(0)
     })
-    it('continues the shared audit chain across a split without changing cash or enabling writes', async () => {
+    it('continues the shared audit chain and permits split-aware trades only', async () => {
       const {
+        postAccountTrade,
         postAccountCapitalFlow,
         correctLiveCapitalOperation,
         readLiveCapitalOperations,
@@ -3714,12 +3715,8 @@ describe.skipIf(!enabled)(
         postAccountCapitalFlow(f.userId, f.accountId, liveCapitalFlowInput())
       ).rejects.toMatchObject({ status: 409, message: /split history/ })
       expect(
-        await readAccountTradeCapability(
-          f.userId,
-          f.accountId,
-          currentSydneyDate()
-        )
-      ).toMatchObject({ mode: 'BLOCKED' })
+        await readAccountTradeCapability(f.userId, f.accountId, '2026-10-05')
+      ).toMatchObject({ mode: 'LIVE_LEDGER', nextSequence: 1 })
 
       for (const auditNumber of [1, 4]) {
         await prisma.accountSplitAction.update({
@@ -3783,6 +3780,59 @@ describe.skipIf(!enabled)(
         where: { id: split.id },
         data: { recordedAt: split.recordedAt },
       })
+      for (const [effectiveDate, sequence] of [
+        ['2026-10-02', 2],
+        ['2026-10-03', 1],
+      ] as const)
+        await expect(
+          postAccountTrade(f.userId, f.accountId, {
+            kind: 'BUY',
+            assetId: f.incomeAssetId,
+            idempotencyKey: randomUUID(),
+            effectiveDate,
+            sequence,
+            quantity: '1',
+            price: '10',
+            fees: '0',
+          })
+        ).rejects.toThrow(/on or before a retained stock split date/)
+      const sale = await postAccountTrade(f.userId, f.accountId, {
+        kind: 'SELL',
+        positionId: position.id,
+        idempotencyKey: randomUUID(),
+        effectiveDate: '2026-10-05',
+        sequence: 1,
+        quantity: '1',
+        price: '80',
+        fees: '1',
+      })
+      expect(sale.created).toBe(true)
+      const laterAcquisition = await postAccountTrade(f.userId, f.accountId, {
+        kind: 'BUY',
+        assetId: f.incomeAssetId,
+        idempotencyKey: randomUUID(),
+        effectiveDate: '2026-10-06',
+        sequence: 1,
+        quantity: '1',
+        price: '10',
+        fees: '0',
+      })
+      expect(laterAcquisition.created).toBe(true)
+      const afterSale = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(afterSale).toMatchObject({
+        auditNumber: 6,
+        cashCompleteness: 'INCOMPLETE',
+        sourceFreshness: { status: 'CURRENT' },
+        replay: {
+          funded: true,
+          balances: [{ currency: 'AUD', endingAmount: '186' }],
+        },
+      })
+      expect(
+        await prisma.position.findUniqueOrThrow({
+          where: { id: position.id },
+        })
+      ).toMatchObject({ quantity: 1 })
       await prisma.accountSplitParcelEffect.deleteMany({
         where: { actionId: split.id },
       })

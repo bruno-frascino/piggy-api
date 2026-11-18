@@ -3040,7 +3040,8 @@ async function readLiveCashState(
   accountId: string,
   now: Date,
   excludedImportBatchId?: string,
-  readOnly = false
+  readOnly = false,
+  allowSplitAwareTrade = false
 ) {
   const account = await db.tradingAccount.findFirst({
     where: { id: accountId, userId, user: { deletedAt: null } },
@@ -3056,7 +3057,8 @@ async function readLiveCashState(
     conflict(
       'This legacy account has no active confirmed cash ledger. Existing trade creation remains unchanged.'
     )
-  if (!readOnly) await requireNoSplitHistory(db, [accountId])
+  if (!readOnly && !allowSplitAwareTrade)
+    await requireNoSplitHistory(db, [accountId])
   const statement = await readStatement(
     db,
     userId,
@@ -4819,20 +4821,6 @@ export async function readAccountTradeCapability(
         select: { id: true, status: true, isDemo: true },
       })
       if (!account) conflict('Trading account not found', 404)
-      const split = await db.accountSplitAction.findFirst({
-        where: { accountId },
-        select: { id: true },
-      })
-      if (split)
-        return {
-          accountId,
-          mode: 'BLOCKED' as const,
-          reason:
-            'Retained stock split history requires split-aware accounting before financial writes.',
-          openingDate: null,
-          effectiveDate,
-          nextSequence: null,
-        }
       if (account.isDemo)
         return {
           accountId,
@@ -5248,7 +5236,15 @@ function accountTradeTransaction(
   const payloadHash = accountTradePayloadHash(input)
   return async (db: DraftCashTransaction & Pick<typeof prisma, 'asset'>) => {
     await lockOwnedTradingAccount(db, userId, accountId)
-    const state = await readLiveCashState(db, userId, accountId, now)
+    const state = await readLiveCashState(
+      db,
+      userId,
+      accountId,
+      now,
+      undefined,
+      false,
+      true
+    )
     const {
       opening,
       openingDate,
@@ -5328,6 +5324,19 @@ function accountTradeTransaction(
         include: { exchange: true },
       })
       if (!asset) conflict('Trade asset not found', 404)
+      const laterSplit = await db.accountSplitAction.findFirst({
+        where: {
+          accountId,
+          assetId: asset.id,
+          effectiveDate: { gte: new Date(`${input.effectiveDate}T00:00:00Z`) },
+          reversal: { is: null },
+        },
+        select: { id: true },
+      })
+      if (laterSplit)
+        conflict(
+          'An acquisition on or before a retained stock split date would alter its parcel snapshot'
+        )
       assetId = asset.id
       currency = asset.exchange.currency
       positionId = randomUUID()

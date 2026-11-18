@@ -274,7 +274,10 @@ activity or unrelated blocking preview issues, and a complete exact parcel revie
 later disposals. It atomically stores the action and parcel effects, updates only remaining parcel
 quantities, and advances the accepted source/audit head; it does not create cash activity or alter
 the original BUY. Exact retries and repeated splits are supported. This service is not exposed by a
-route, and no existing financial-write fence is removed.
+route. The coordinated manual BUY/SELL writer now permits active real accounts with valid, current
+split history, using the same inventory replay and account audit/cash chain. New acquisitions on
+or before an active split date are rejected to avoid ambiguous same-day order and mutation of
+retained parcel effects. Other financial writers remain fenced.
 An internal terminal reversal preserves the original action and parcel effects and appends a
 separate reversal record to the same account audit/source chain. It retroactively excludes the
 reversed action from effective inventory, restores each affected stored quantity to its captured
@@ -286,9 +289,9 @@ account-wide split-history write fence. Exact retries are idempotent. After reve
 action may
 reuse the source reference and effective date with a new idempotency key; original idempotency keys
 remain reserved. Reversal and corrected posting both run under the account lock and advance the
-accepted source fingerprint atomically. The account-wide financial-write fence deliberately
-remains in place until the other split-dependent writers and historical protections are complete.
-No route or UI exposes either operation.
+accepted source fingerprint atomically. The account-wide financial-write fence deliberately remains
+in place for writers other than split-aware manual BUY/SELL until the other split-dependent writers
+and historical protections are complete. No route or UI exposes either split operation.
 Read-only realized-trade statistics now load effective parcel trades and retained split evidence,
 then allocate original acquisition cost using the validated exact sale cost fraction. Summary,
 realized time series, distributions and closed-trade results use this path; no-split calculations
