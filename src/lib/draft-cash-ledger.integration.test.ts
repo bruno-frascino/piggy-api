@@ -3371,6 +3371,79 @@ describe.skipIf(!enabled)(
         })
       ).toMatchObject({ quantity: 3 })
     })
+    it('rejects split reversal when retained history contains a later parcel sale', async () => {
+      const {
+        postAccountSplit,
+        reverseAccountSplit,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const { previewAccountOpening } =
+        await import('./accounting-preview-service.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture holding')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const split = await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: `split-${randomUUID()}`,
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-02',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `statement-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      const position = await prisma.position.findFirstOrThrow({
+        where: { accountId: f.accountId, assetId: f.incomeAssetId },
+      })
+      await prisma.transaction.create({
+        data: {
+          positionId: position.id,
+          type: 'SELL',
+          date: new Date('2026-10-03T00:00:00Z'),
+          quantity: 0.5,
+          price: '80',
+          totalValue: '40',
+          fees: '1',
+        },
+      })
+      await prisma.position.update({
+        where: { id: position.id },
+        data: { quantity: 1.5 },
+      })
+      const preview = await previewAccountOpening(f.userId, f.accountId, {
+        openingDate: '2026-10-01',
+        cashBalances: [{ currency: 'AUD', amount: '100' }],
+      })
+      await prisma.accountSplitAction.update({
+        where: { id: split.actionId },
+        data: { nextFingerprint: preview.sourceFingerprint },
+      })
+      await prisma.accountCashLedger.update({
+        where: { accountId: f.accountId },
+        data: { acceptedSourceFingerprint: preview.sourceFingerprint },
+      })
+      const head = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(head.sourceFreshness).toMatchObject({ status: 'CURRENT' })
+      await expect(
+        reverseAccountSplit(f.userId, f.accountId, {
+          idempotencyKey: `reverse-${randomUUID()}`,
+          actionId: split.actionId,
+          expectedAuditNumber: head.auditNumber,
+          expectedSourceFingerprint: head.sourceFingerprint,
+          reason: 'Protect a retained later sale',
+          reversalConfirmed: true,
+        })
+      ).rejects.toThrow(/same-day or later sale/)
+      expect(
+        await prisma.accountSplitReversal.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(0)
+      expect(
+        await prisma.position.findUniqueOrThrow({
+          where: { id: position.id },
+        })
+      ).toMatchObject({ quantity: 1.5 })
+    })
     it('rejects source drift before creating a split action or changing inventory', async () => {
       const { postAccountSplit } = await import('./draft-cash-ledger.js')
       const f = await fixture('100', false, false, true)
