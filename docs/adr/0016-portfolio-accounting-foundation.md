@@ -258,7 +258,8 @@ split snapshots. It reserves units for later sales and rejects proposed sales th
 retained split quantities or introduce ambiguous split-day ordering. Reinvestment entry and
 paired correction share dated split-aware entitlement inventory; correction excludes its own
 reinvestment parcel. The bounded history loader and source-fingerprint representation are shared
-with opening review. These integrations remain behind the write fence, not a posting authorization.
+with opening review. These writers use validated split-aware cash state and the shared audit/source
+chain; a reinvestment acquisition on or before a split date is rejected.
 Retained audited split actions now validate in the shared account sequence with cash operations and
 revisions, advancing the accepted fingerprint and audit count without cash commands, postings or
 reserved cash sequence slots. The action must be post-opening, with a positive consecutive audit
@@ -278,8 +279,10 @@ route. The coordinated manual BUY/SELL writer now permits active real accounts w
 split history, using the same inventory replay and account audit/cash chain. New acquisitions on
 or before an active split date are rejected to avoid ambiguous same-day order and mutation of
 retained parcel effects. Validated split history also permits audited cash-only operations,
-paired cash transfers and statement-income receipts/corrections. Imports, reinvestment, legacy
-financial mutations, moves and deletion remain fenced pending the historical release gates.
+paired cash transfers, statement-income receipts/corrections, and dividend reinvestments with
+paired corrections/reversal. Reinvestment entitlement uses split-adjusted holdings, and its
+acquisition must follow the split date. Imports, legacy financial mutations, moves and deletion
+remain fenced pending the historical release gates.
 An internal terminal reversal preserves the original action and parcel effects and appends a
 separate reversal record to the same account audit/source chain. It retroactively excludes the
 reversed action from effective inventory, restores each affected stored quantity to its captured
@@ -290,9 +293,9 @@ receipt corrections or reversals use their separate audited flow. Exact retries 
 After reversal, a corrected action may
 reuse the source reference and effective date with a new idempotency key; original idempotency keys
 remain reserved. Reversal and corrected posting both run under the account lock and advance the
-accepted source fingerprint atomically. The financial-write fence remains for imports,
-reinvestment, legacy mutations, moves and deletion until their split-dependent protections and the
-broader historical release gates are complete. No route or UI exposes either split operation.
+accepted source fingerprint atomically. The financial-write fence remains for imports, legacy
+mutations, moves and deletion until their split-dependent protections and the broader historical
+release gates are complete. No route or UI exposes either split operation.
 Read-only realized-trade statistics now load effective parcel trades and retained split evidence,
 then allocate original acquisition cost using the validated exact sale cost fraction. Summary,
 realized time series, distributions and closed-trade results use this path; no-split calculations
@@ -304,14 +307,15 @@ average unit cost as decimal strings. The frontend uses this projection for spli
 units and open-cost/return calculations while preserving original `buyPrice` and acquisition
 fees as historical facts; raw split actions/effects are not exposed in the response. No-split
 holdings keep their prior calculation.
-Until the remaining dependent writers support splits, retained history places a
-temporary account-wide 409 fence on legacy financial mutations, moves at either endpoint,
-new financial import steps, draft source-verified writes and live-ledger writes. Notes remain
-editable, and completed legacy import retries without financial steps remain possible.
+Retained history continues to place a temporary account-wide 409 fence on legacy financial
+mutations, moves at either endpoint, new financial import steps, and other unsupported writers.
+Notes remain editable, and completed legacy import retries without financial steps remain possible.
 Opening review explicitly reports `SPLIT_REPLAY_UNSUPPORTED`; opening confirmation is blocked,
-trade capability is `BLOCKED`, and readable live cash history is marked `INCOMPLETE`.
-The internal terminal reversal is the only supported split correction; in-place edits and
-replacement revisions remain unsupported, and the financial-write fence still blocks posting.
+while trade capability is `LIVE_LEDGER` only for the supported split-aware writers described above.
+Readable live cash history remains marked `INCOMPLETE`. The internal terminal reversal is the only
+supported correction to a split action itself; in-place edits and replacement revisions remain
+unsupported. This does not block the separately validated manual trades, cash operations, income,
+and reinvestment workflows described above.
 Saved tax-report revisions remain append-only when split-adjusted CGT changes: regeneration
 creates a new revision without changing the prior PDF or line items, covered by a controller
 regression test. Production support must still complete broader historical protections and review

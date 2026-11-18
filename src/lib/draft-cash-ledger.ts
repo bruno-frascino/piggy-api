@@ -5213,6 +5213,27 @@ export async function beginLiveImportPosting(
   }
 }
 
+async function requireAcquisitionAfterRetainedSplits(
+  db: DraftCashTransaction,
+  accountId: string,
+  assetId: string,
+  effectiveDate: string
+) {
+  const laterSplit = await db.accountSplitAction.findFirst({
+    where: {
+      accountId,
+      assetId,
+      effectiveDate: { gte: new Date(`${effectiveDate}T00:00:00Z`) },
+      reversal: { is: null },
+    },
+    select: { id: true },
+  })
+  if (laterSplit)
+    conflict(
+      'An acquisition on or before a retained stock split date would alter its parcel snapshot'
+    )
+}
+
 /** Posts one new manual trade only after an explicit confirmed ledger exists. */
 export async function postAccountTrade(
   userId: string,
@@ -5333,19 +5354,12 @@ function accountTradeTransaction(
         include: { exchange: true },
       })
       if (!asset) conflict('Trade asset not found', 404)
-      const laterSplit = await db.accountSplitAction.findFirst({
-        where: {
-          accountId,
-          assetId: asset.id,
-          effectiveDate: { gte: new Date(`${input.effectiveDate}T00:00:00Z`) },
-          reversal: { is: null },
-        },
-        select: { id: true },
-      })
-      if (laterSplit)
-        conflict(
-          'An acquisition on or before a retained stock split date would alter its parcel snapshot'
-        )
+      await requireAcquisitionAfterRetainedSplits(
+        db,
+        accountId,
+        asset.id,
+        input.effectiveDate
+      )
       assetId = asset.id
       currency = asset.exchange.currency
       positionId = randomUUID()
@@ -5727,7 +5741,7 @@ export async function postAccountReinvestment(
   return prisma.$transaction(
     async (db) => {
       await lockOwnedTradingAccount(db, userId, accountId)
-      const state = await readLiveCashState(db, userId, accountId, now)
+      const state = await readSplitAwareCashState(db, userId, accountId, now)
       const existing = state.cashLedgerOps.find(
         (row) => row.idempotencyKey === prepared.request.idempotencyKey
       )
@@ -5845,7 +5859,7 @@ export async function postAccountReinvestment(
           },
         })
       }
-      await readLiveCashState(db, userId, accountId, now)
+      await readSplitAwareCashState(db, userId, accountId, now)
       return {
         incomeOperationId: income.operationId,
         acquisitionOperationId: acquisition.operationId,
@@ -5902,7 +5916,7 @@ export async function readLiveReinvestmentReview(
     async (db) => {
       await lockOwnedTradingAccount(db, userId, accountId)
       const now = new Date()
-      const state = await readLiveCashState(db, userId, accountId, now)
+      const state = await readSplitAwareCashState(db, userId, accountId, now)
       const pair = reinvestmentPair(state, operationId, now)
       const positionId = pair.acquisition.transaction!.positionId
       const sales = await db.transaction.count({
@@ -5940,7 +5954,7 @@ export async function correctLiveReinvestment(
   return prisma.$transaction(
     async (db) => {
       await lockOwnedTradingAccount(db, userId, accountId)
-      const state = await readLiveCashState(db, userId, accountId, now)
+      const state = await readSplitAwareCashState(db, userId, accountId, now)
       const { income, acquisition, original, current } = reinvestmentPair(
         state,
         operationId,
@@ -6033,6 +6047,12 @@ export async function correctLiveReinvestment(
       if (JSON.stringify(input.replacement) === JSON.stringify(current))
         conflict('Correction must change the statement or acquisition', 400)
       if (next) {
+        await requireAcquisitionAfterRetainedSplits(
+          db,
+          accountId,
+          original.request.income.assetId,
+          next.trade.effectiveDate
+        )
         const eligibility = await readAccountAssetQuantityAt(
           db,
           userId,
@@ -6267,7 +6287,7 @@ export async function correctLiveReinvestment(
         where: { accountId },
         data: { acceptedSourceFingerprint: preview.sourceFingerprint },
       })
-      await readLiveCashState(db, userId, accountId, now)
+      await readSplitAwareCashState(db, userId, accountId, now)
       return {
         incomeOperationId: income.id,
         acquisitionOperationId: acquisition.id,

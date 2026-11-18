@@ -6165,6 +6165,7 @@ describe.skipIf(!enabled)(
 
     it('posts one linked reinvestment parcel with exact retained income and concurrent retries, then permits sales', async () => {
       const {
+        postAccountSplit,
         postAccountReinvestment,
         readLiveCapitalOperations,
         postAccountTrade,
@@ -6174,11 +6175,42 @@ describe.skipIf(!enabled)(
       } = await import('./draft-cash-ledger.js')
       const f = await fixture('0', false, false, true)
       if (!f.incomeAssetId) throw new Error('Missing fixture asset')
-      const input = reinvestmentInput(f.incomeAssetId)
+      const base = reinvestmentInput(f.incomeAssetId)
+      const input = {
+        ...base,
+        acquisition: {
+          ...base.acquisition,
+          effectiveDate: '2026-10-17',
+        },
+      }
       await expect(
         postAccountReinvestment(f.userId, f.accountId, input)
       ).rejects.toThrow(/confirmed|ledger/)
       await confirmCashLedger(f.accountId, f.statementId)
+      await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: `split-${randomUUID()}`,
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-16',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `split-statement-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      await expect(
+        postAccountReinvestment(f.userId, f.accountId, {
+          ...input,
+          idempotencyKey: `before-split-${randomUUID()}`,
+          acquisition: {
+            ...input.acquisition,
+            effectiveDate: '2026-10-16',
+          },
+        })
+      ).rejects.toThrow(/on or before a retained stock split date/)
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(0)
       const posted = await Promise.all([
         postAccountReinvestment(f.userId, f.accountId, input),
         postAccountReinvestment(f.userId, f.accountId, input),
@@ -6217,7 +6249,7 @@ describe.skipIf(!enabled)(
         idempotencyKey: randomUUID(),
         expectedRevisionId: posted[0].acquisitionOperationId,
         expectedSourceFingerprint: head.acceptedSourceFingerprint,
-        effectiveDate: '2026-10-15',
+        effectiveDate: '2026-10-17',
         sequence: 2,
         quantity: '4',
         price: '19',
@@ -6231,7 +6263,7 @@ describe.skipIf(!enabled)(
           parcel.transactions[0].id,
           correction
         )
-      ).rejects.toThrow(/paired audited/)
+      ).rejects.toThrow(/retained stock split history/)
       await expect(
         voidLiveManualTrade(f.userId, f.accountId, parcel.transactions[0].id, {
           idempotencyKey: randomUUID(),
@@ -6239,7 +6271,7 @@ describe.skipIf(!enabled)(
           expectedSourceFingerprint: head.acceptedSourceFingerprint,
           reason: 'Unsupported independent void',
         })
-      ).rejects.toThrow(/paired audited/)
+      ).rejects.toThrow(/retained stock split history/)
       await expect(
         correctLiveIncomeReceipt(
           f.userId,
@@ -6260,7 +6292,7 @@ describe.skipIf(!enabled)(
           kind: 'SELL',
           positionId: parcel.id,
           idempotencyKey: randomUUID(),
-          effectiveDate: '2026-10-15',
+          effectiveDate: '2026-10-17',
           sequence: 3,
           quantity: '1',
           price: '21',
@@ -6460,6 +6492,7 @@ describe.skipIf(!enabled)(
 
     it('audits paired reinvestment corrections and terminal reversal with exact retained retries', async () => {
       const {
+        postAccountSplit,
         postAccountReinvestment,
         readLiveReinvestmentReview,
         correctLiveReinvestment,
@@ -6468,7 +6501,17 @@ describe.skipIf(!enabled)(
       const f = await fixture('0', false, false, true)
       if (!f.incomeAssetId) throw new Error('Missing fixture asset')
       await confirmCashLedger(f.accountId, f.statementId)
+      await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: `split-${randomUUID()}`,
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-16',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `split-statement-${randomUUID()}`,
+        statementConfirmed: true,
+      })
       const original = reinvestmentInput(f.incomeAssetId)
+      original.acquisition.effectiveDate = '2026-10-17'
       const posted = await postAccountReinvestment(
         f.userId,
         f.accountId,
@@ -6479,6 +6522,28 @@ describe.skipIf(!enabled)(
         f.accountId,
         posted.acquisitionOperationId
       )
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedIncomeRevisionId: head.expectedIncomeRevisionId,
+            expectedAcquisitionRevisionId: head.expectedAcquisitionRevisionId,
+            expectedAuditNumber: head.expectedAuditNumber,
+            expectedSourceFingerprint: head.expectedSourceFingerprint,
+            reason: 'Unsupported split-date acquisition correction',
+            replacement: {
+              ...head.current!,
+              acquisition: {
+                ...head.current!.acquisition,
+                effectiveDate: '2026-10-16',
+              },
+            },
+          }
+        )
+      ).rejects.toThrow(/on or before a retained stock split date/)
       const request = {
         idempotencyKey: randomUUID(),
         expectedIncomeRevisionId: head.expectedIncomeRevisionId,

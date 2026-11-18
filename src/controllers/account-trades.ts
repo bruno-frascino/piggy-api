@@ -37,7 +37,7 @@ router.use(authenticateToken)
  * /api/accounts/{id}/reinvestments/{operationId}/corrections:
  *   get:
  *     summary: Review a paired reinvestment and current account audit head
- *     description: Requires an owned fresh active real ledger. Either linked operation ID resolves both current revision heads, fixed statement identity and effective-sale restriction. Terminal reversal returns current null. Archived retained audits use cash-operations.
+ *     description: Requires an owned fresh active real ledger. Either linked operation ID resolves both current revision heads, fixed statement identity and effective-sale restriction. With validated split history, entitlement uses split-adjusted holdings and acquisition must follow the split date. Terminal reversal returns current null. Archived retained audits use cash-operations.
  *     tags: [Accounts]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -134,7 +134,7 @@ router.get(
  * /api/accounts/{id}/reinvestments/{operationId}/corrections:
  *   post:
  *     summary: Correct or terminally reverse both reinvestment effects atomically
- *     description: Fixed account, asset, currency and statement reference. Requires both current revision heads, audit number, source fingerprint and reason. No effective SELL may remain on the new parcel. Corrections update statement tax figures and acquisition/date/order/residual together, retain all slots and require funded replay; reversal removes the effective income and parcel without a disposal. Issuer-held credits and one-sided changes remain blocked. Exact retained retries survive later activity.
+ *     description: Fixed account, asset, currency and statement reference. Requires both current revision heads, audit number, source fingerprint and reason. No effective SELL may remain on the new parcel. Corrections update statement tax figures and acquisition/date/order/residual together, retain all slots and require funded replay; reversal removes the effective income and parcel without a disposal. With validated split history, entitlement uses split-adjusted holdings and acquisition must follow the split date. Issuer-held credits and one-sided changes remain blocked. Exact retained retries survive later activity.
  *     tags: [Accounts]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -197,7 +197,7 @@ router.post(
  * /api/accounts/{id}/reinvestments:
  *   post:
  *     summary: Record statement-supported dividend reinvestment atomically
- *     description: Creates exactly one equity/ETF income receipt and a new BUY parcel in the same account/currency. Statement-confirmed entitlement and tax figures are authoritative; eligible historical holdings are required. Exact net income must equal acquisition consideration plus fees plus an explicit account-paid residual; issuer-held credits, extra funding, existing-receipt relinking and AMIT components are unsupported. Acquisition follows income in date/sequence order. Paired immutable links and full funded replay protect both records. Independent income revisions, acquisition corrections/voids and direct deletion are blocked; use the dedicated paired revision workflow. No activation or external capital is created.
+ *     description: Creates exactly one equity/ETF income receipt and a new BUY parcel in the same account/currency. Statement-confirmed entitlement and tax figures are authoritative; eligible historical holdings are required. Exact net income must equal acquisition consideration plus fees plus an explicit account-paid residual; issuer-held credits, extra funding, existing-receipt relinking and AMIT components are unsupported. Acquisition follows income in date/sequence order and, with validated split history, must follow the split date. Paired immutable links and full funded replay protect both records. Independent income revisions, acquisition corrections/voids and direct deletion are blocked; use the dedicated paired revision workflow. No activation or external capital is created.
  *     tags: [Accounts]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -955,7 +955,7 @@ router.post(
  * /api/accounts/{id}/trade-capability:
  *   get:
  *     summary: Resolve the server-owned trade-write capability for an account
- *     description: Distinguishes active confirmed ledgers from legacy, demo, archived and blocked accounts. Validated retained split history supports coordinated manual BUY/SELL, audited cash-only operations and statement-income receipts/corrections, but not imports, reinvestment, legacy financial mutations, moves or deletion. Cash-completeness certification and opening confirmation remain blocked pending broader historical protections and release review. This read never activates an account.
+ *     description: Distinguishes active confirmed ledgers from legacy, demo, archived and blocked accounts. Validated retained split history supports coordinated manual BUY/SELL, audited cash-only operations, statement-income receipts/corrections and paired dividend-reinvestment workflows; reinvestment entitlement uses split-adjusted holdings and acquisition must follow the split date. Imports, legacy financial mutations, moves and deletion remain blocked. Cash-completeness certification and opening confirmation remain blocked pending broader historical protections and release review. This read never activates an account.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
