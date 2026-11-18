@@ -302,6 +302,7 @@ describe('retained split audit continuation', () => {
     expect(mocks.splitFindMany).toHaveBeenCalledWith({
       where: { accountId: 'a1' },
       orderBy: { id: 'asc' },
+      include: { reversal: true },
       take: 501,
     })
   })

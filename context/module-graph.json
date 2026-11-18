@@ -265,6 +265,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./account-split-reversal.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-reversal.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./account-trade-command.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/account-trade-command.ts",
@@ -1181,6 +1198,18 @@
       "valid": true
     },
     {
+      "dependencies": [],
+      "dependents": [
+        "src/lib/draft-cash-ledger.ts",
+        "src/lib/stored-parcel-inventory.ts",
+        "src/lib/account-split-reversal.test.ts",
+        "src/lib/stored-parcel-inventory.test.ts"
+      ],
+      "orphan": false,
+      "source": "src/lib/account-split-reversal.ts",
+      "valid": true
+    },
+    {
       "dependencies": [
         {
           "circular": false,
@@ -1330,6 +1359,23 @@
           "module": "./account-split-command.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/account-split-command.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./account-split-reversal.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-reversal.ts",
           "valid": true
         },
         {
@@ -6047,6 +6093,31 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./account-split-reversal.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-reversal.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/lib/account-split-reversal.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./account-trade-command.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/account-trade-command.ts",
@@ -8352,6 +8423,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./account-split-reversal.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-reversal.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./accounting-values.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/accounting-values.ts",
@@ -8809,8 +8897,8 @@
         }
       ]
     },
-    "totalCruised": 158,
-    "totalDependenciesCruised": 411,
+    "totalCruised": 160,
+    "totalDependenciesCruised": 415,
     "violations": [],
     "warn": 0
   }

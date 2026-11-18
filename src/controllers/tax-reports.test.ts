@@ -201,16 +201,36 @@ describe('tax-reports controller', () => {
       expect(taxReportUpdateMock).not.toHaveBeenCalled()
     })
 
-    it('supersedes the current revision and stores the next version', async () => {
-      taxReportFindFirstMock.mockResolvedValue({
+    it('keeps a saved report unchanged when split-adjusted CGT creates a new revision', async () => {
+      const previousPdf = Buffer.from('%PDF-previous-report')
+      const previousLineItems = [{ symbol: 'CBA', costBaseForeign: 404 }]
+      const previousReport = {
+        ...SAMPLE_REPORT_ROW,
         id: 'r1',
         version: 2,
         contentHash: 'stale-hash',
-      })
+        pdfData: previousPdf,
+        lineItems: previousLineItems,
+      }
+      const splitAdjustedLineItems = [{ symbol: 'CBA', costBaseForeign: 202 }]
+      const splitAdjustedResult = {
+        ...SAMPLE_RESULT,
+        lineItems: splitAdjustedLineItems,
+        totalCostBaseAud: 920,
+        totalCapitalGainGrossAud: 570,
+        discountAppliedAud: 285,
+        netCapitalGainAud: 285,
+      }
+      const nextPdf = Buffer.from('%PDF-split-adjusted-report')
+      taxReportFindFirstMock.mockResolvedValue(previousReport)
+      computeCapitalGainsReportMock.mockResolvedValue(splitAdjustedResult)
+      buildCapitalGainsPdfMock.mockResolvedValue(nextPdf)
       taxReportCreateMock.mockResolvedValue({
         ...SAMPLE_REPORT_ROW,
         id: 'r2',
         version: 3,
+        lineItems: splitAdjustedLineItems,
+        pdfData: nextPdf,
       })
 
       const response = await request(createApp())
@@ -225,9 +245,25 @@ describe('tax-reports controller', () => {
       })
       expect(taxReportCreateMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ version: 3 }),
+          data: expect.objectContaining({
+            version: 3,
+            lineItems: splitAdjustedLineItems,
+            pdfData: new Uint8Array(nextPdf),
+          }),
         })
       )
+      expect(previousReport.pdfData).toEqual(previousPdf)
+      expect(previousReport.lineItems).toEqual(previousLineItems)
+
+      taxReportFindFirstMock.mockResolvedValue(previousReport)
+      const previousDetail = await request(createApp()).get(
+        '/api/tax-reports/r1'
+      )
+      expect(previousDetail.body.data.lineItems).toEqual(previousLineItems)
+      const previousDownload = await request(createApp()).get(
+        '/api/tax-reports/r1/download'
+      )
+      expect(previousDownload.body).toEqual(previousPdf)
     })
 
     it('creates a new revision for the date format change even when financial data is unchanged', async () => {

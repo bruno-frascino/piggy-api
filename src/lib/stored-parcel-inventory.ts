@@ -6,11 +6,15 @@ import {
   projectParcelInventory,
   type ParcelInventoryEvent,
 } from './parcel-inventory.js'
+import {
+  prepareStoredAccountSplitReversal,
+  type StoredAccountSplitReversal,
+} from './account-split-reversal.js'
 import type { prisma } from './prisma.js'
 
 type StoredAction = NonNullable<
   Awaited<ReturnType<typeof prisma.accountSplitAction.findUnique>>
->
+> & { reversal?: StoredAccountSplitReversal | null }
 type StoredEffect = NonNullable<
   Awaited<ReturnType<typeof prisma.accountSplitParcelEffect.findUnique>>
 > & { action: StoredAction }
@@ -29,6 +33,7 @@ export async function readStoredSplitHistory(
   const actions = await db.accountSplitAction.findMany({
     where,
     orderBy: { id: 'asc' },
+    include: { reversal: true },
     take: 501,
   })
   if (actions.length > 500)
@@ -66,22 +71,43 @@ export async function readStoredSplitHistory(
     ? createHash('sha256')
         .update(
           JSON.stringify({
-            actions: actions.map((action) => ({
+            actions: actions.map((action) => {
               // Keep the original source representation; audit heads cannot hash themselves.
-              id: action.id,
-              accountId: action.accountId,
-              assetId: action.assetId,
-              effectiveDate: action.effectiveDate,
-              newUnits: action.newUnits,
-              oldUnits: action.oldUnits,
-              sourceReference: action.sourceReference,
-              idempotencyKey: action.idempotencyKey,
-              payloadHash: action.payloadHash,
-              sourceFingerprint: action.sourceFingerprint,
-              methodology: action.methodology,
-              request: prepareStoredAccountSplit(action, accountId).request,
-              recordedAt: action.recordedAt,
-            })),
+              const original = {
+                id: action.id,
+                accountId: action.accountId,
+                assetId: action.assetId,
+                effectiveDate: action.effectiveDate,
+                newUnits: action.newUnits,
+                oldUnits: action.oldUnits,
+                sourceReference: action.sourceReference,
+                idempotencyKey: action.idempotencyKey,
+                payloadHash: action.payloadHash,
+                sourceFingerprint: action.sourceFingerprint,
+                methodology: action.methodology,
+                request: prepareStoredAccountSplit(action, accountId).request,
+                recordedAt: action.recordedAt,
+              }
+              return action.reversal
+                ? {
+                    ...original,
+                    reversal: {
+                      id: action.reversal.id,
+                      accountId: action.reversal.accountId,
+                      actionId: action.reversal.actionId,
+                      idempotencyKey: action.reversal.idempotencyKey,
+                      payloadHash: action.reversal.payloadHash,
+                      reason: action.reversal.reason,
+                      request: prepareStoredAccountSplitReversal(
+                        action.reversal,
+                        accountId,
+                        action.id
+                      ).request,
+                      recordedAt: action.reversal.recordedAt,
+                    },
+                  }
+                : original
+            }),
             effects,
           })
         )
@@ -108,6 +134,8 @@ export function prepareStoredAccountSplit(
     prepared.request.oldUnits !== action.oldUnits.toFixed()
   )
     throw new Error('Invalid split action source or parcel identity')
+  if (action.reversal)
+    prepareStoredAccountSplitReversal(action.reversal, accountId, action.id)
   return prepared
 }
 
@@ -132,16 +160,7 @@ export function projectStoredParcelInventory(
   if (!isAccountingDate(asOfDate))
     throw new Error('Invalid parcel observation date')
   const acquisitionDate = sydneyCalendarDate(position.openDate)
-  const applicableEffects = position.splitEffects
-    .filter(
-      (effect) =>
-        effect.action.effectiveDate.toISOString().slice(0, 10) <= asOfDate
-    )
-    .sort(
-      (a, b) =>
-        a.action.effectiveDate.getTime() - b.action.effectiveDate.getTime()
-    )
-  const applicableActions = position.asset.splitActions.filter((action) => {
+  const allApplicableActions = position.asset.splitActions.filter((action) => {
     const actionDay = action.effectiveDate.toISOString().slice(0, 10)
     return (
       action.accountId === position.accountId &&
@@ -149,6 +168,21 @@ export function projectStoredParcelInventory(
       actionDay <= asOfDate
     )
   })
+  for (const action of allApplicableActions)
+    prepareStoredAccountSplit(action, position.accountId)
+  const applicableEffects = position.splitEffects
+    .filter(
+      (effect) =>
+        !effect.action.reversal &&
+        effect.action.effectiveDate.toISOString().slice(0, 10) <= asOfDate
+    )
+    .sort(
+      (a, b) =>
+        a.action.effectiveDate.getTime() - b.action.effectiveDate.getTime()
+    )
+  const applicableActions = allApplicableActions.filter(
+    (action) => !action.reversal
+  )
   if (!applicableEffects.length && !applicableActions.length) return null
 
   const effectiveTrades = position.transactions.filter(
@@ -244,10 +278,14 @@ export function storedParcelObservationDate(
       .filter((trade) => !trade.voidedAt)
       .map((trade) => sydneyCalendarDate(trade.date)),
     ...position.splitEffects.map((effect) =>
-      effect.action.effectiveDate.toISOString().slice(0, 10)
+      effect.action.reversal
+        ? sydneyCalendarDate(position.openDate)
+        : effect.action.effectiveDate.toISOString().slice(0, 10)
     ),
     ...position.asset.splitActions
-      .filter((action) => action.accountId === position.accountId)
+      .filter(
+        (action) => action.accountId === position.accountId && !action.reversal
+      )
       .map((action) => action.effectiveDate.toISOString().slice(0, 10)),
   ].reduce(
     (latest, date) => (date > latest ? date : latest),

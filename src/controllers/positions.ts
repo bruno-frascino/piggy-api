@@ -172,11 +172,14 @@ router.get(
               exchange: true,
               splitActions: {
                 where: { account: { userId: req.user!.userId } },
+                include: { reversal: true },
               },
             },
           },
           transactions: { where: { voidedAt: null }, orderBy: { date: 'asc' } },
-          splitEffects: { include: { action: true } },
+          splitEffects: {
+            include: { action: { include: { reversal: true } } },
+          },
         },
         orderBy: { openDate: 'desc' },
         take: limit,

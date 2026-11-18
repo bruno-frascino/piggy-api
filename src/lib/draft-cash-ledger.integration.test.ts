@@ -3158,6 +3158,219 @@ describe.skipIf(!enabled)(
       })
       expect(history.replay).toEqual(cashBeforeSplit.replay)
     })
+    it('reverses a terminal split retroactively, preserves audit evidence and permits corrected source/date reuse', async () => {
+      const {
+        postAccountSplit,
+        reverseAccountSplit,
+        postAccountIncomeReceipt,
+        readLiveCapitalOperations,
+        postAccountCapitalFlow,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture holding')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const position = await prisma.position.findFirstOrThrow({
+        where: { accountId: f.accountId, assetId: f.incomeAssetId },
+        include: { transactions: true },
+      })
+      const acquisitionSnapshot = position.transactions
+      const sourceReference = `split-statement-${randomUUID()}`
+      const originalRequest = {
+        idempotencyKey: `split-${randomUUID()}`,
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-02',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference,
+        statementConfirmed: true,
+      }
+      const income = await postAccountIncomeReceipt(f.userId, f.accountId, {
+        idempotencyKey: `income-${randomUUID()}`,
+        assetId: f.incomeAssetId,
+        entitlementDate: '2026-10-03',
+        paymentDate: '2026-10-15',
+        sequence: 1,
+        currency: 'AUD',
+        grossAmount: '100',
+        withholdingAmount: '15',
+        frankedAmount: '60',
+        unfrankedAmount: '40',
+        frankingCreditAud: '25.714285714286',
+        sourceReference: `income-statement-${randomUUID()}`,
+      })
+      const incomeBeforeReversal =
+        await prisma.accountCashOperation.findUniqueOrThrow({
+          where: { id: income.operationId },
+          include: { postings: true, incomeReceipt: true },
+        })
+      const original = await postAccountSplit(
+        f.userId,
+        f.accountId,
+        originalRequest
+      )
+      const beforeReversal = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      const reversalRequest = {
+        idempotencyKey: `reverse-${randomUUID()}`,
+        actionId: original.actionId,
+        expectedAuditNumber: beforeReversal.auditNumber,
+        expectedSourceFingerprint: beforeReversal.sourceFingerprint,
+        reason: 'Corrected statement evidence',
+        reversalConfirmed: true,
+      }
+      const reversed = await reverseAccountSplit(
+        f.userId,
+        f.accountId,
+        reversalRequest
+      )
+      expect(reversed).toMatchObject({
+        created: true,
+        actionId: original.actionId,
+        auditNumber: beforeReversal.auditNumber + 1,
+        affectedParcels: 1,
+      })
+      const retry = await reverseAccountSplit(
+        f.userId,
+        f.accountId,
+        reversalRequest
+      )
+      expect(retry).toMatchObject({
+        created: false,
+        reversalId: reversed.reversalId,
+        actionId: original.actionId,
+        auditNumber: reversed.auditNumber,
+        sourceFingerprint: reversed.sourceFingerprint,
+      })
+      const action = await prisma.accountSplitAction.findUniqueOrThrow({
+        where: { id: original.actionId },
+        include: { effects: true, reversal: true },
+      })
+      expect(action.reversal).toMatchObject({
+        auditNumber: reversed.auditNumber,
+        previousFingerprint: beforeReversal.sourceFingerprint,
+        nextFingerprint: reversed.sourceFingerprint,
+      })
+      expect(action.effects).toHaveLength(1)
+      expect(
+        await prisma.position.findUniqueOrThrow({
+          where: { id: position.id },
+          include: { transactions: true },
+        })
+      ).toMatchObject({
+        quantity: 1,
+        transactions: acquisitionSnapshot,
+      })
+      expect(
+        await prisma.accountCashOperation.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(1)
+      const incomeAfterReversal =
+        await prisma.accountCashOperation.findUniqueOrThrow({
+          where: { id: income.operationId },
+          include: { postings: true, incomeReceipt: true },
+        })
+      expect(incomeAfterReversal.incomeReceipt).toEqual(
+        incomeBeforeReversal.incomeReceipt
+      )
+      expect(incomeAfterReversal.postings).toEqual(
+        incomeBeforeReversal.postings
+      )
+      const afterReversal = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      expect(afterReversal).toMatchObject({
+        auditNumber: reversed.auditNumber,
+        sourceFingerprint: reversed.sourceFingerprint,
+        sourceFreshness: { status: 'CURRENT' },
+        cashCompleteness: 'INCOMPLETE',
+      })
+      await expect(
+        postAccountCapitalFlow(
+          f.userId,
+          f.accountId,
+          liveCapitalFlowInput({ amount: '10' })
+        )
+      ).rejects.toMatchObject({ status: 409, message: /split history/ })
+
+      const corrected = await postAccountSplit(f.userId, f.accountId, {
+        ...originalRequest,
+        idempotencyKey: `corrected-${randomUUID()}`,
+        newUnits: '3',
+        oldUnits: '2',
+      })
+      expect(corrected).toMatchObject({
+        created: true,
+        auditNumber: reversed.auditNumber + 1,
+      })
+      expect(
+        await prisma.position.findUniqueOrThrow({
+          where: { id: position.id },
+        })
+      ).toMatchObject({ quantity: 1.5 })
+      expect(
+        await prisma.accountSplitAction.count({
+          where: {
+            accountId: f.accountId,
+            assetId: f.incomeAssetId,
+            sourceReference,
+            effectiveDate: new Date(originalRequest.effectiveDate),
+          },
+        })
+      ).toBe(2)
+    })
+    it('rejects reversal while a later active split depends on the target action', async () => {
+      const {
+        postAccountSplit,
+        reverseAccountSplit,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture holding')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const first = await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: `split-${randomUUID()}`,
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-02',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `statement-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: `split-${randomUUID()}`,
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-03',
+        newUnits: '3',
+        oldUnits: '2',
+        sourceReference: `statement-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      const head = await readLiveCapitalOperations(f.userId, f.accountId)
+      await expect(
+        reverseAccountSplit(f.userId, f.accountId, {
+          idempotencyKey: `reverse-${randomUUID()}`,
+          actionId: first.actionId,
+          expectedAuditNumber: head.auditNumber,
+          expectedSourceFingerprint: head.sourceFingerprint,
+          reason: 'Test dependency guard',
+          reversalConfirmed: true,
+        })
+      ).rejects.toThrow(/later active splits first/)
+      expect(
+        await prisma.accountSplitReversal.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(0)
+      expect(
+        await prisma.position.findFirstOrThrow({
+          where: { accountId: f.accountId, assetId: f.incomeAssetId },
+        })
+      ).toMatchObject({ quantity: 3 })
+    })
     it('rejects source drift before creating a split action or changing inventory', async () => {
       const { postAccountSplit } = await import('./draft-cash-ledger.js')
       const f = await fixture('100', false, false, true)

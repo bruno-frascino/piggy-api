@@ -118,7 +118,9 @@ const tradePositionSelect = (userId: string) => ({
       voidedAt: true,
     },
   },
-  splitEffects: { include: { action: true } },
+  splitEffects: {
+    include: { action: { include: { reversal: true } } },
+  },
   openDate: true,
   asset: {
     select: {
@@ -126,6 +128,7 @@ const tradePositionSelect = (userId: string) => ({
       splitActions: {
         where: { account: { userId } },
         orderBy: { effectiveDate: 'asc' as const },
+        include: { reversal: true },
       },
       exchange: { select: { code: true, currency: true } },
     },

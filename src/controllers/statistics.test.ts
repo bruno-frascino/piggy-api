@@ -109,7 +109,9 @@ describe('statistics controller', () => {
             position: {
               select: expect.objectContaining({
                 assetId: true,
-                splitEffects: { include: { action: true } },
+                splitEffects: {
+                  include: { action: { include: { reversal: true } } },
+                },
                 transactions: expect.objectContaining({
                   where: {
                     type: { in: ['BUY', 'SELL'] },
@@ -121,6 +123,7 @@ describe('statistics controller', () => {
                     splitActions: {
                       where: { account: { userId: 'u_1' } },
                       orderBy: { effectiveDate: 'asc' },
+                      include: { reversal: true },
                     },
                   }),
                 },

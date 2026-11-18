@@ -121,6 +121,7 @@ export async function computeCapitalGainsReport(
               exchange: true,
               splitActions: {
                 where: { accountId: { in: accountIds } },
+                include: { reversal: true },
               },
             },
           },
@@ -129,7 +130,9 @@ export async function computeCapitalGainsReport(
             where: { type: { in: ['BUY', 'SELL'] }, voidedAt: null },
             select: { id: true, type: true, date: true, quantity: true },
           },
-          splitEffects: { include: { action: true } },
+          splitEffects: {
+            include: { action: { include: { reversal: true } } },
+          },
         },
       },
     },

@@ -11,7 +11,7 @@
   reversals are implemented. The delivery plan owns remaining-step
   status.
 - **Date**: 2026-10-31
-- **Last reviewed**: 2026-11-14
+- **Last reviewed**: 2026-11-17
 - **Implementation**: executable reference specification, read-only opening preview, persistent
   inactive drafts, a gated atomic trade/cash writer, audited manual/imported BUY/SELL
   corrections, manual voids with retained audit access, capability-aware ordinary trade-entry
@@ -240,9 +240,10 @@ than guessing. Block posting when affected parcels have effective later sales; e
 must be voided and re-entered after posting. Ambiguous same-day ordering must fail closed.
 
 The internal locked writer applies statement-supported actions atomically, but public
-posting/history endpoints and UI are not available; audited corrections and terminal reversal
-are deferred. Additive action/effect storage, split-aware CGT and position recomputation are
-implemented. Both readers share linked action identity, request hash and parcel quantity
+posting/history endpoints and UI are not available. An internal terminal reversal is implemented;
+there is no in-place revision or replacement workflow. Additive action/effect storage,
+split-aware CGT and position recomputation are implemented. Both readers share linked action
+identity, request hash and parcel quantity
 validation and reject missing effects; existing report revisions remain unchanged. Position
 recomputation updates remaining units, realized P&L and status without rewriting acquisition
 fields. Opening/current source inventory now uses the same validated split replay without
@@ -274,6 +275,20 @@ later disposals. It atomically stores the action and parcel effects, updates onl
 quantities, and advances the accepted source/audit head; it does not create cash activity or alter
 the original BUY. Exact retries and repeated splits are supported. This service is not exposed by a
 route, and no existing financial-write fence is removed.
+An internal terminal reversal preserves the original action and parcel effects and appends a
+separate reversal record to the same account audit/source chain. It retroactively excludes the
+reversed action from effective inventory, restores each affected stored quantity to its captured
+pre-action amount, and changes no acquisition or cash record. It requires the current audit head
+and rejects a later active split or a same-day or later sale of an affected parcel. Later
+statement-backed asset-income receipts and their cash postings remain unchanged by the reversal;
+receipt corrections or reversals use their separate audited flow but remain subject to the
+account-wide split-history write fence. Exact retries are idempotent. After reversal, a corrected
+action may
+reuse the source reference and effective date with a new idempotency key; original idempotency keys
+remain reserved. Reversal and corrected posting both run under the account lock and advance the
+accepted source fingerprint atomically. The account-wide financial-write fence deliberately
+remains in place until the other split-dependent writers and historical protections are complete.
+No route or UI exposes either operation.
 Read-only realized-trade statistics now load effective parcel trades and retained split evidence,
 then allocate original acquisition cost using the validated exact sale cost fraction. Summary,
 realized time series, distributions and closed-trade results use this path; no-split calculations
@@ -291,9 +306,12 @@ new financial import steps, draft source-verified writes and live-ledger writes.
 editable, and completed legacy import retries without financial steps remain possible.
 Opening review explicitly reports `SPLIT_REPLAY_UNSUPPORTED`; opening confirmation is blocked,
 trade capability is `BLOCKED`, and readable live cash history is marked `INCOMPLETE`.
-These protections do not implement split-aware corrections or authorize posting.
-Production support must still complete remaining mutation/revision workflows and
-historical/saved-report protections before activation; see step 3H in the delivery plan.
+The internal terminal reversal is the only supported split correction; in-place edits and
+replacement revisions remain unsupported, and the financial-write fence still blocks posting.
+Saved tax-report revisions remain append-only when split-adjusted CGT changes: regeneration
+creates a new revision without changing the prior PDF or line items, covered by a controller
+regression test. Production support must still complete broader historical protections and review
+the release gates before exposing corporate-action posting/history; see step 3H in the delivery plan.
 Separate cost-base adjustments and complex corporate actions remain outside this slice.
 
 ### Exact metric contracts

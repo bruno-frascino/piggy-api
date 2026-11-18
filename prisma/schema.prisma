@@ -100,6 +100,7 @@ model TradingAccount {
   openingStatements  AccountOpeningStatement[]
   cashLedger         AccountCashLedger?
   splitActions       AccountSplitAction[]
+  splitReversals     AccountSplitReversal[]
 
   @@unique([userId, name])
   @@map("trading_accounts")
@@ -576,16 +577,41 @@ model AccountSplitAction {
   previousFingerprint String?
   nextFingerprint     String?
 
-  account TradingAccount             @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  asset   Asset                      @relation(fields: [assetId], references: [id])
-  effects AccountSplitParcelEffect[]
+  account  TradingAccount             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  asset    Asset                      @relation(fields: [assetId], references: [id])
+  effects  AccountSplitParcelEffect[]
+  reversal AccountSplitReversal?
 
   @@unique([accountId, idempotencyKey])
-  @@unique([accountId, assetId, sourceReference])
-  @@unique([accountId, assetId, effectiveDate])
+  @@unique([accountId, id])
   @@unique([accountId, auditNumber])
   @@index([accountId, effectiveDate])
+  @@index([accountId, assetId, sourceReference])
+  @@index([accountId, assetId, effectiveDate])
   @@map("account_split_actions")
+}
+
+model AccountSplitReversal {
+  id                  String   @id @default(cuid())
+  accountId           String
+  actionId            String   @unique
+  idempotencyKey      String
+  payloadHash         String
+  reason              String
+  request             Json
+  auditNumber         Int
+  previousFingerprint String
+  nextFingerprint     String
+  recordedAt          DateTime @default(now())
+
+  account TradingAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  action  AccountSplitAction @relation(fields: [accountId, actionId], references: [accountId, id], onDelete: Cascade)
+
+  @@unique([accountId, id])
+  @@unique([accountId, actionId])
+  @@unique([accountId, idempotencyKey])
+  @@unique([accountId, auditNumber])
+  @@map("account_split_reversals")
 }
 
 model AccountSplitParcelEffect {

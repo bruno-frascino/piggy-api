@@ -43,6 +43,8 @@ erDiagram
     TradingAccount ||--o{ Position : "account"
     TradingAccount ||--o{ AccountSplitAction : "account"
     Asset ||--o{ AccountSplitAction : "asset"
+    TradingAccount ||--o{ AccountSplitReversal : "account"
+    AccountSplitAction ||--o{ AccountSplitReversal : "action"
     AccountSplitAction ||--o{ AccountSplitParcelEffect : "action"
     Position ||--o{ AccountSplitParcelEffect : "position"
     Position ||--o{ Transaction : "position"
@@ -144,6 +146,7 @@ Constraints: `@@index([purgeAfter])`
 | openingStatements | `AccountOpeningStatement[]` | — |
 | cashLedger | `AccountCashLedger?` | — |
 | splitActions | `AccountSplitAction[]` | — |
+| splitReversals | `AccountSplitReversal[]` | — |
 
 Constraints: `@@unique([userId, name])`
 
@@ -587,8 +590,29 @@ Constraints: `@@unique([userId, assetId, openDate, entryPrice, accountId, extern
 | account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
 | asset | `Asset` | @relation(fields: [assetId], references: [id]) |
 | effects | `AccountSplitParcelEffect[]` | — |
+| reversal | `AccountSplitReversal?` | — |
 
-Constraints: `@@unique([accountId, idempotencyKey])`, `@@unique([accountId, assetId, sourceReference])`, `@@unique([accountId, assetId, effectiveDate])`, `@@unique([accountId, auditNumber])`, `@@index([accountId, effectiveDate])`
+Constraints: `@@unique([accountId, idempotencyKey])`, `@@unique([accountId, id])`, `@@unique([accountId, auditNumber])`, `@@index([accountId, effectiveDate])`, `@@index([accountId, assetId, sourceReference])`, `@@index([accountId, assetId, effectiveDate])`
+
+### `AccountSplitReversal` (table: `account_split_reversals`)
+
+| Field | Type | Attributes |
+| ----- | ---- | ---------- |
+| id | `String` | @id @default(cuid()) |
+| accountId | `String` | — |
+| actionId | `String` | @unique |
+| idempotencyKey | `String` | — |
+| payloadHash | `String` | — |
+| reason | `String` | — |
+| request | `Json` | — |
+| auditNumber | `Int` | — |
+| previousFingerprint | `String` | — |
+| nextFingerprint | `String` | — |
+| recordedAt | `DateTime` | @default(now()) |
+| account | `TradingAccount` | @relation(fields: [accountId], references: [id], onDelete: Cascade) |
+| action | `AccountSplitAction` | @relation(fields: [accountId, actionId], references: [accountId, id], onDelete: Cascade) |
+
+Constraints: `@@unique([accountId, id])`, `@@unique([accountId, actionId])`, `@@unique([accountId, idempotencyKey])`, `@@unique([accountId, auditNumber])`
 
 ### `AccountSplitParcelEffect` (table: `account_split_parcel_effects`)
 
@@ -834,3 +858,4 @@ Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, s
 - `20261115103553_account_split_actions`
 - `20261115105034_defer_split_effect_fk`
 - `20261116093000_split_audit_continuation`
+- `20261117200742_audited_split_reversals`

@@ -181,8 +181,10 @@ export async function recomputePositionFromTransactions(
     where: { id: positionId },
     include: {
       transactions: { orderBy: { date: 'asc' } },
-      splitEffects: { include: { action: true } },
-      asset: { include: { splitActions: true } },
+      splitEffects: { include: { action: { include: { reversal: true } } } },
+      asset: {
+        include: { splitActions: { include: { reversal: true } } },
+      },
     },
   })
   if (!position) return null

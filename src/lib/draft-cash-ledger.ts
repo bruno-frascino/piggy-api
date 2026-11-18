@@ -51,6 +51,10 @@ import {
   prepareAccountSplit,
   reviewAccountSplit,
 } from './account-split-command.js'
+import {
+  prepareAccountSplitReversal,
+  prepareStoredAccountSplitReversal,
+} from './account-split-reversal.js'
 import { prepareReinvestmentCorrection } from './reinvestment-correction.js'
 import {
   prepareAccountCashTransfer,
@@ -148,8 +152,10 @@ type DraftCashTransaction = Pick<
   | 'accountOpeningStatement'
   | 'accountCashLedger'
   | 'accountSplitAction'
+  | 'accountSplitReversal'
   | 'accountSplitParcelEffect'
   | 'accountCashOperation'
+  | 'accountIncomeReceipt'
   | 'draftCashOperation'
   | 'draftOperationTradeLink'
   | 'draftCashPosting'
@@ -3134,6 +3140,7 @@ async function readLiveCashState(
   const splitActions = await db.accountSplitAction.findMany({
     where: { accountId },
     orderBy: { id: 'asc' },
+    include: { reversal: true },
     take: 501,
   })
   if (splitActions.length > 500)
@@ -3143,8 +3150,11 @@ async function readLiveCashState(
       action.auditNumber === null &&
       action.previousFingerprint === null &&
       action.nextFingerprint === null
-    )
+    ) {
+      if (action.reversal)
+        conflict('Unaudited split action cannot have a reversal')
       return []
+    }
     const prepared = prepareStoredAccountSplit(action, accountId)
     if (
       action.auditNumber === null ||
@@ -3160,7 +3170,25 @@ async function readLiveCashState(
       prepared.request.effectiveDate > sydneyCalendarDate(now)
     )
       conflict('Stored split audit continuation is inconsistent')
-    return [{ auditNumber: action.auditNumber, split: action }]
+    const events: (
+      | { auditNumber: number; split: typeof action }
+      | {
+          auditNumber: number
+          reversal: NonNullable<typeof action.reversal>
+          actionId: string
+        }
+    )[] = [{ auditNumber: action.auditNumber, split: action }]
+    if (action.reversal) {
+      prepareStoredAccountSplitReversal(action.reversal, accountId, action.id)
+      if (action.reversal.auditNumber <= action.auditNumber)
+        conflict('Stored split reversal audit sequence is inconsistent')
+      events.push({
+        auditNumber: action.reversal.auditNumber,
+        reversal: action.reversal,
+        actionId: action.id,
+      })
+    }
+    return events
   })
   const linkedTransactions = new Set(
     [...history.effective.values()].flatMap((command) =>
@@ -3934,6 +3962,20 @@ async function readLiveCashState(
       expectedAuditNumber += 1
       continue
     }
+    if ('reversal' in event) {
+      if (
+        event.auditNumber !== expectedAuditNumber ||
+        event.reversal.accountId !== accountId ||
+        event.reversal.actionId !== event.actionId ||
+        event.reversal.previousFingerprint !== acceptedFingerprint
+      )
+        conflict(
+          'Live split reversal audit sequence or fingerprint chain is inconsistent'
+        )
+      acceptedFingerprint = event.reversal.nextFingerprint
+      expectedAuditNumber += 1
+      continue
+    }
     const operation = event.operation
     if (
       event.auditNumber !== expectedAuditNumber ||
@@ -4258,6 +4300,7 @@ export async function postAccountSplit(
 
         const prior = await db.accountSplitAction.findFirst({
           where: { accountId, idempotencyKey: prepared.request.idempotencyKey },
+          include: { reversal: true },
         })
         if (prior) {
           if (prior.payloadHash !== prepared.payloadHash)
@@ -4277,8 +4320,26 @@ export async function postAccountSplit(
             actionId: prior.id,
             auditNumber: prior.auditNumber,
             sourceFingerprint: prior.nextFingerprint,
+            reversed: Boolean(prior.reversal),
           }
         }
+
+        const conflictingIdentity = await db.accountSplitAction.findFirst({
+          where: {
+            accountId,
+            assetId: prepared.request.assetId,
+            reversal: { is: null },
+            OR: [
+              { effectiveDate: new Date(prepared.request.effectiveDate) },
+              { sourceReference: prepared.request.sourceReference },
+            ],
+          },
+          select: { id: true },
+        })
+        if (conflictingIdentity)
+          conflict(
+            'An active split already uses this asset date or statement reference'
+          )
 
         const asset = await db.asset.findFirst({
           where: { id: prepared.request.assetId },
@@ -4313,12 +4374,13 @@ export async function postAccountSplit(
               },
             },
             splitEffects: {
-              include: { action: true },
+              include: { action: { include: { reversal: true } } },
             },
             asset: {
               select: {
                 splitActions: {
                   where: { accountId },
+                  include: { reversal: true },
                 },
               },
             },
@@ -4363,7 +4425,8 @@ export async function postAccountSplit(
                 .filter(
                   (effect) =>
                     effect.action.accountId === accountId &&
-                    effect.action.assetId === asset.id
+                    effect.action.assetId === asset.id &&
+                    !effect.action.reversal
                 )
                 .map((effect) => ({
                   id: `split:${effect.action.id}`,
@@ -4480,6 +4543,262 @@ export async function postAccountSplit(
     if (!isConcurrentConflict(error)) throw error
     conflict(
       'A concurrent split posting changed this account. Refresh and retry.'
+    )
+  }
+}
+
+export async function reverseAccountSplit(
+  userId: string,
+  accountId: string,
+  raw: unknown
+) {
+  const prepared = prepareAccountSplitReversal(raw, accountId)
+  try {
+    return await prisma.$transaction(
+      async (db) => {
+        await lockOwnedTradingAccount(db, userId, accountId)
+        const now = new Date()
+        const state = await readLiveCashState(
+          db,
+          userId,
+          accountId,
+          now,
+          undefined,
+          true
+        )
+        if (state.account.status !== 'ACTIVE' || state.account.isDemo)
+          conflict('Stock split reversals require an active real account')
+        const source = await readAccountOpeningPreview(
+          db,
+          userId,
+          accountId,
+          state.opening,
+          new Date(`${state.sourceObservationDate}T01:00:00Z`)
+        )
+        if (source.sourceFingerprint !== state.acceptedFingerprint)
+          conflict(
+            'Account source changed outside its audited history. Refresh the source review before reversing a split.'
+          )
+        if (
+          source.issues.some(
+            (issue) =>
+              issue.severity === 'BLOCKING' &&
+              issue.code !== 'SPLIT_REPLAY_UNSUPPORTED'
+          )
+        )
+          conflict(
+            'Resolve blocking account source issues before reversing a split'
+          )
+
+        const prior = await db.accountSplitReversal.findFirst({
+          where: {
+            accountId,
+            idempotencyKey: prepared.request.idempotencyKey,
+          },
+        })
+        if (prior) {
+          if (prior.payloadHash !== prepared.payloadHash)
+            conflict(
+              'Split reversal idempotency key was reused with a different request'
+            )
+          if (
+            prior.auditNumber > state.auditEventCount ||
+            prior.previousFingerprint === prior.nextFingerprint
+          )
+            conflict(
+              'Retried split reversal does not match the accepted audit chain'
+            )
+          return {
+            created: false,
+            reversalId: prior.id,
+            actionId: prior.actionId,
+            auditNumber: prior.auditNumber,
+            sourceFingerprint: prior.nextFingerprint,
+          }
+        }
+        if (
+          prepared.request.expectedAuditNumber !== state.auditEventCount ||
+          prepared.request.expectedSourceFingerprint !==
+            state.acceptedFingerprint
+        )
+          conflict(
+            'Account audit head changed before split reversal. Refresh and retry.'
+          )
+
+        const action = await db.accountSplitAction.findFirst({
+          where: { id: prepared.request.actionId, accountId },
+          include: {
+            effects: { orderBy: { positionId: 'asc' } },
+            reversal: true,
+          },
+        })
+        if (!action) conflict('Stock split action not found', 404)
+        if (action.reversal)
+          conflict('Stock split action has already been reversed')
+        const stored = prepareStoredAccountSplit(action, accountId)
+        const effectiveDate = stored.request.effectiveDate
+        if (
+          !action.effects.length ||
+          action.auditNumber === null ||
+          action.auditNumber > state.auditEventCount
+        )
+          conflict(
+            'Stock split action has no reversible audited parcel effects'
+          )
+
+        const dependentSplit = await db.accountSplitAction.findFirst({
+          where: {
+            accountId,
+            assetId: action.assetId,
+            id: { not: action.id },
+            effectiveDate: { gte: action.effectiveDate },
+            reversal: { is: null },
+          },
+          select: { id: true },
+        })
+        if (dependentSplit)
+          conflict(
+            'Reverse later active splits first; this action has dependent split history'
+          )
+        const positionIds = action.effects.map((effect) => effect.positionId)
+        const laterSales = await db.transaction.findMany({
+          where: {
+            positionId: { in: positionIds },
+            type: 'SELL',
+            voidedAt: null,
+          },
+          select: { id: true, date: true },
+          take: 50001,
+        })
+        if (laterSales.length > 50000)
+          conflict(
+            'Split reversal dependency review exceeds the supported limit',
+            422
+          )
+        if (
+          laterSales.some(
+            (trade) => sydneyCalendarDate(trade.date) >= effectiveDate
+          )
+        )
+          conflict(
+            'This split has a same-day or later sale; correct dependent sales first'
+          )
+
+        const positions = await db.position.findMany({
+          where: {
+            id: { in: positionIds },
+            userId,
+            accountId,
+            assetId: action.assetId,
+            voidedAt: null,
+          },
+          select: { id: true, quantity: true },
+        })
+        const positionById = new Map(
+          positions.map((position) => [position.id, position])
+        )
+        if (positionById.size !== action.effects.length)
+          conflict('Split parcel inventory changed before reversal')
+        for (const effect of action.effects) {
+          const position = positionById.get(effect.positionId)
+          if (
+            !position ||
+            !new AccountingDecimal(String(position.quantity)).eq(
+              effect.afterQuantity.toFixed()
+            )
+          )
+            conflict(
+              'A split parcel no longer matches the terminal reversal snapshot'
+            )
+        }
+
+        const auditNumber = state.auditEventCount + 1
+        const provisionalNextFingerprint = `${
+          state.acceptedFingerprint[0] === '0' ? '1' : '0'
+        }${state.acceptedFingerprint.slice(1)}`
+        const reversal = await db.accountSplitReversal.create({
+          data: {
+            accountId,
+            actionId: action.id,
+            idempotencyKey: prepared.request.idempotencyKey,
+            payloadHash: prepared.payloadHash,
+            reason: prepared.request.reason,
+            request: {
+              idempotencyKey: prepared.request.idempotencyKey,
+              actionId: prepared.request.actionId,
+              expectedAuditNumber: prepared.request.expectedAuditNumber,
+              expectedSourceFingerprint:
+                prepared.request.expectedSourceFingerprint,
+              reason: prepared.request.reason,
+              reversalConfirmed: prepared.request.reversalConfirmed,
+            },
+            auditNumber,
+            previousFingerprint: state.acceptedFingerprint,
+            nextFingerprint: provisionalNextFingerprint,
+          },
+        })
+        for (const effect of action.effects) {
+          const position = positionById.get(effect.positionId)!
+          const updated = await db.position.updateMany({
+            where: {
+              id: position.id,
+              userId,
+              accountId,
+              quantity: position.quantity,
+            },
+            data: { quantity: Number(effect.beforeQuantity) },
+          })
+          if (updated.count !== 1)
+            conflict(
+              'A split parcel changed during reversal. Refresh and retry.'
+            )
+        }
+        const after = await readAccountOpeningPreview(
+          db,
+          userId,
+          accountId,
+          state.opening,
+          new Date(`${state.sourceObservationDate}T01:00:00Z`)
+        )
+        if (after.sourceFingerprint === state.acceptedFingerprint)
+          conflict(
+            'Split reversal did not change the reviewed source fingerprint'
+          )
+        const finalized = await db.accountSplitReversal.updateMany({
+          where: {
+            id: reversal.id,
+            accountId,
+            auditNumber,
+            previousFingerprint: state.acceptedFingerprint,
+          },
+          data: { nextFingerprint: after.sourceFingerprint },
+        })
+        if (finalized.count !== 1)
+          conflict('Split reversal audit continuation changed during posting')
+        const ledgerUpdate = await db.accountCashLedger.updateMany({
+          where: {
+            accountId,
+            acceptedSourceFingerprint: state.acceptedFingerprint,
+          },
+          data: { acceptedSourceFingerprint: after.sourceFingerprint },
+        })
+        if (ledgerUpdate.count !== 1)
+          conflict('Account audit head changed during split reversal')
+        return {
+          created: true,
+          reversalId: reversal.id,
+          actionId: action.id,
+          auditNumber,
+          sourceFingerprint: after.sourceFingerprint,
+          affectedParcels: action.effects.length,
+        }
+      },
+      { isolationLevel: 'ReadCommitted', timeout: 20000, maxWait: 5000 }
+    )
+  } catch (error) {
+    if (!isConcurrentConflict(error)) throw error
+    conflict(
+      'A concurrent account change interrupted split reversal. Refresh and retry.'
     )
   }
 }
@@ -5018,9 +5337,17 @@ function accountTradeTransaction(
         where: { id: input.positionId, userId, accountId, voidedAt: null },
         include: {
           asset: {
-            include: { exchange: true, splitActions: { where: { accountId } } },
+            include: {
+              exchange: true,
+              splitActions: {
+                where: { accountId },
+                include: { reversal: true },
+              },
+            },
           },
-          splitEffects: { include: { action: true } },
+          splitEffects: {
+            include: { action: { include: { reversal: true } } },
+          },
           transactions: {
             where: { voidedAt: null },
             orderBy: { date: 'asc' },

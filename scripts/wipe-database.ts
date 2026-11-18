@@ -66,6 +66,7 @@ export async function wipeDatabase(args: string[]): Promise<void> {
         public."account_cash_operations",
         public."account_cash_ledgers",
         public."account_split_parcel_effects",
+        public."account_split_reversals",
         public."account_split_actions",
         public."opening_parcel_balances",
         public."opening_cash_balances",

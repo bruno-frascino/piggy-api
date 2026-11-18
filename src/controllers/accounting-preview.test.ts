@@ -187,6 +187,7 @@ describe('opening preview endpoint and read-only service', () => {
       expect(mocks.split).toHaveBeenCalledWith({
         where: { accountId: 'a1' },
         orderBy: { id: 'asc' },
+        include: { reversal: true },
         take: 501,
       })
     }

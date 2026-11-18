@@ -64,25 +64,25 @@
 | GET | `/api/portfolio/realized-pnl` | 🔒 | query ×2 | [src/controllers/portfolio.ts:106](../src/controllers/portfolio.ts#L106) |
 | POST | `/api/portfolio/snapshot` | 🔒 | body ×2 | [src/controllers/portfolio.ts:151](../src/controllers/portfolio.ts#L151) |
 | GET | `/api/positions` | 🔒 | query ×6 | [src/controllers/positions.ts:113](../src/controllers/positions.ts#L113) |
-| POST | `/api/positions` | 🔒 | body ×22 | [src/controllers/positions.ts:335](../src/controllers/positions.ts#L335) |
-| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1549](../src/controllers/positions.ts#L1549) |
-| PATCH | `/api/positions/:id` | 🔒 | param, body ×24 | [src/controllers/positions.ts:1151](../src/controllers/positions.ts#L1151) |
-| POST | `/api/positions/:id/check-stop-loss` | 🔒 | param, body | [src/controllers/positions.ts:994](../src/controllers/positions.ts#L994) |
-| POST | `/api/positions/:id/close` | 🔒 | param, body ×6 | [src/controllers/positions.ts:1468](../src/controllers/positions.ts#L1468) |
-| POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:888](../src/controllers/positions.ts#L888) |
-| GET | `/api/positions/close-events` | 🔒 | query ×5 | [src/controllers/positions.ts:559](../src/controllers/positions.ts#L559) |
-| PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×5 | [src/controllers/positions.ts:815](../src/controllers/positions.ts#L815) |
+| POST | `/api/positions` | 🔒 | body ×22 | [src/controllers/positions.ts:338](../src/controllers/positions.ts#L338) |
+| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1552](../src/controllers/positions.ts#L1552) |
+| PATCH | `/api/positions/:id` | 🔒 | param, body ×24 | [src/controllers/positions.ts:1154](../src/controllers/positions.ts#L1154) |
+| POST | `/api/positions/:id/check-stop-loss` | 🔒 | param, body | [src/controllers/positions.ts:997](../src/controllers/positions.ts#L997) |
+| POST | `/api/positions/:id/close` | 🔒 | param, body ×6 | [src/controllers/positions.ts:1471](../src/controllers/positions.ts#L1471) |
+| POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:891](../src/controllers/positions.ts#L891) |
+| GET | `/api/positions/close-events` | 🔒 | query ×5 | [src/controllers/positions.ts:562](../src/controllers/positions.ts#L562) |
+| PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×5 | [src/controllers/positions.ts:818](../src/controllers/positions.ts#L818) |
 | GET | `/api/screener` | 🔒 | query ×10 | [src/controllers/screener.ts:124](../src/controllers/screener.ts#L124) |
 | GET | `/api/screener/saved-screens` | 🔒 | — | [src/controllers/screener.ts:301](../src/controllers/screener.ts#L301) |
 | POST | `/api/screener/saved-screens` | 🔒 | body ×2 | [src/controllers/screener.ts:344](../src/controllers/screener.ts#L344) |
 | DELETE | `/api/screener/saved-screens/:id` | 🔒 | param | [src/controllers/screener.ts:385](../src/controllers/screener.ts#L385) |
 | GET | `/api/screener/upcoming-dividends` | 🔒 | query ×3 | [src/controllers/screener.ts:233](../src/controllers/screener.ts#L233) |
-| GET | `/api/statistics/breakdowns` | 🔒 | , query ×2 | [src/controllers/statistics.ts:631](../src/controllers/statistics.ts#L631) |
-| GET | `/api/statistics/closed-trades` | 🔒 | , query ×4 | [src/controllers/statistics.ts:799](../src/controllers/statistics.ts#L799) |
-| GET | `/api/statistics/distributions` | 🔒 |  | [src/controllers/statistics.ts:454](../src/controllers/statistics.ts#L454) |
-| GET | `/api/statistics/risk` | 🔒 |  | [src/controllers/statistics.ts:537](../src/controllers/statistics.ts#L537) |
-| GET | `/api/statistics/summary` | 🔒 |  | [src/controllers/statistics.ts:219](../src/controllers/statistics.ts#L219) |
-| GET | `/api/statistics/timeseries` | 🔒 | , query ×2 | [src/controllers/statistics.ts:319](../src/controllers/statistics.ts#L319) |
+| GET | `/api/statistics/breakdowns` | 🔒 | , query ×2 | [src/controllers/statistics.ts:634](../src/controllers/statistics.ts#L634) |
+| GET | `/api/statistics/closed-trades` | 🔒 | , query ×4 | [src/controllers/statistics.ts:802](../src/controllers/statistics.ts#L802) |
+| GET | `/api/statistics/distributions` | 🔒 |  | [src/controllers/statistics.ts:457](../src/controllers/statistics.ts#L457) |
+| GET | `/api/statistics/risk` | 🔒 |  | [src/controllers/statistics.ts:540](../src/controllers/statistics.ts#L540) |
+| GET | `/api/statistics/summary` | 🔒 |  | [src/controllers/statistics.ts:222](../src/controllers/statistics.ts#L222) |
+| GET | `/api/statistics/timeseries` | 🔒 | , query ×2 | [src/controllers/statistics.ts:322](../src/controllers/statistics.ts#L322) |
 | GET | `/api/stocks/quotes` | 🔒 | query | [src/controllers/stocks.ts:293](../src/controllers/stocks.ts#L293) |
 | GET | `/api/stocks/search` | — | — | [src/controllers/stocks.ts:163](../src/controllers/stocks.ts#L163) |
 | GET | `/api/tax-reports` | 🔒 | query | [src/controllers/tax-reports.ts:310](../src/controllers/tax-reports.ts#L310) |

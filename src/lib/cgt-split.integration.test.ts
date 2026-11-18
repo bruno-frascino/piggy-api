@@ -194,9 +194,16 @@ describe.skipIf(!enabled)(
         where: { id: position.id },
         include: {
           transactions: true,
-          splitEffects: { include: { action: true } },
+          splitEffects: {
+            include: { action: { include: { reversal: true } } },
+          },
           asset: {
-            include: { splitActions: { where: { accountId: account.id } } },
+            include: {
+              splitActions: {
+                where: { accountId: account.id },
+                include: { reversal: true },
+              },
+            },
           },
         },
       })

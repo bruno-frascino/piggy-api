@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { AccountingDecimal } from './accounting-values.js'
 import { prepareAccountSplit } from './account-split-command.js'
+import { prepareAccountSplitReversal } from './account-split-reversal.js'
 
 const mocks = vi.hoisted(() => ({
   positions: vi.fn(),
@@ -135,6 +136,52 @@ describe('split source fingerprint stability', () => {
       (await readStoredSplitHistory(prisma, 'a1')).sourceFingerprint
     ).not.toBe(expected)
   })
+
+  it('includes reversal evidence in source identity but excludes its audit head', async () => {
+    const { action, effect } = fixture()
+    const request = {
+      idempotencyKey: 'reverse-key',
+      actionId: action.id,
+      expectedAuditNumber: 1,
+      expectedSourceFingerprint: action.nextFingerprint,
+      reason: 'Corrected statement evidence',
+      reversalConfirmed: true as const,
+    }
+    const prepared = prepareAccountSplitReversal(request, 'a1')
+    const reversal = {
+      id: 'reversal1',
+      accountId: 'a1',
+      actionId: action.id,
+      idempotencyKey: request.idempotencyKey,
+      payloadHash: prepared.payloadHash,
+      reason: request.reason,
+      request,
+      auditNumber: 2,
+      previousFingerprint: 'b'.repeat(64),
+      nextFingerprint: 'c'.repeat(64),
+      recordedAt: new Date('2025-08-03'),
+    }
+    const reversedAction = { ...action, reversal }
+    mocks.actions.mockResolvedValue([reversedAction])
+    const withReversal = (await readStoredSplitHistory(prisma, 'a1'))
+      .sourceFingerprint
+    mocks.actions.mockResolvedValue([
+      {
+        ...reversedAction,
+        reversal: {
+          ...reversal,
+          nextFingerprint: 'e'.repeat(64),
+        },
+      },
+    ])
+    expect((await readStoredSplitHistory(prisma, 'a1')).sourceFingerprint).toBe(
+      withReversal
+    )
+    mocks.effects.mockResolvedValue([{ ...effect, id: 'changed-effect' }])
+    expect(
+      (await readStoredSplitHistory(prisma, 'a1')).sourceFingerprint
+    ).not.toBe(withReversal)
+  })
 })
 
 describe('dated account/asset entitlement inventory', () => {
@@ -211,6 +258,51 @@ describe('dated account/asset entitlement inventory', () => {
       ).toFixed()
     ).toBe('8')
     expect(mocks.effects).not.toHaveBeenCalled()
+  })
+
+  it('retroactively removes a reversed split from effective inventory', async () => {
+    const { action, effect, transactions } = fixture()
+    const request = {
+      idempotencyKey: 'reverse-key',
+      actionId: action.id,
+      expectedAuditNumber: 1,
+      expectedSourceFingerprint: action.nextFingerprint,
+      reason: 'Corrected statement evidence',
+      reversalConfirmed: true as const,
+    }
+    const prepared = prepareAccountSplitReversal(request, 'a1')
+    mocks.actions.mockResolvedValue([
+      {
+        ...action,
+        reversal: {
+          id: 'reversal1',
+          accountId: 'a1',
+          actionId: action.id,
+          idempotencyKey: request.idempotencyKey,
+          payloadHash: prepared.payloadHash,
+          reason: request.reason,
+          request,
+          auditNumber: 2,
+          previousFingerprint: 'b'.repeat(64),
+          nextFingerprint: 'c'.repeat(64),
+          recordedAt: new Date('2025-08-03'),
+        },
+      },
+    ])
+    const effectiveTrades = transactions.filter((trade) => trade.id !== 'later')
+    mocks.trades.mockResolvedValue(effectiveTrades)
+    mocks.effects.mockResolvedValue([effect])
+    expect(
+      (
+        await readAccountAssetQuantityAt(
+          prisma,
+          'u1',
+          'a1',
+          'asset1',
+          '2025-08-01'
+        )
+      ).toFixed()
+    ).toBe('8')
   })
 
   it('rejects missing effects rather than inventing entitlement units', async () => {

@@ -92,17 +92,22 @@ Next milestone: complete the approved stock-split/consolidation foundation befor
 policy and reference examples exist; user-facing corporate-action posting/history is not
 implemented. Retained split history temporarily blocks unsupported financial writes and opening
 confirmation. Opening/source inventory replays retained splits and fingerprints their evidence
-without changing trade cash;
-proposed-sale review and dated reinvestment entitlement share the validated inventory behind
-the write guards. Audited retained splits now advance the shared source/audit chain without cash
-postings; unaudited records are not adopted. An internal locked, source-fresh atomic split writer
-is implemented but has no API route, and other financial writes remain fenced. Cash review remains
-incomplete even with a current source. Read-only realized-trade statistics now use the validated
-split-adjusted parcel cost fraction. The existing positions read route and frontend now present
-validated split-adjusted holdings cost and returns without rewriting historical acquisition
-fields. Remaining work includes mutation/revision compatibility and historical/saved-report
-protections. Sourced valuations and cash-flow-adjusted returns follow later.
-Existing demos remain legacy practice accounts, excluded from real aggregates and tax.
+without changing trade cash; proposed-sale review and dated reinvestment entitlement share the
+validated inventory behind the write guards. Audited retained splits now advance the shared
+source/audit chain without cash postings; unaudited records are not adopted. The internal locked,
+source-fresh split writer and a terminal retroactive reversal are implemented but have no API
+route. Reversal retains the original action/effects, restores affected quantities only when no
+later active split or same/later affected-parcel sale depends on it, and allows corrected
+source/date reuse with a new idempotency key. Later statement-backed income receipts and their
+cash postings remain unchanged; receipt corrections/reversals use their separate audited flow,
+still subject to the account-wide split-history write fence. Split reversal does not change cash
+or acquisition records. Other financial writes remain fenced;
+opening confirmation remains blocked, and cash review remains incomplete even with a current
+source. Read-only realized-trade statistics and positions now use validated split-adjusted
+inventory/cost without rewriting acquisition fields. Saved tax-report revisions remain
+append-only when split-adjusted CGT changes. Broader
+historical protections and public posting/history UI remain before release. Sourced valuations and
+cash-flow-adjusted returns follow later.
 
 ## Tech Stack
 

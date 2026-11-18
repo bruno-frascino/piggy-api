@@ -279,11 +279,14 @@ describe('positions controller', () => {
       expect(positionFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
           include: expect.objectContaining({
-            splitEffects: { include: { action: true } },
+            splitEffects: {
+              include: { action: { include: { reversal: true } } },
+            },
             asset: {
               include: expect.objectContaining({
                 splitActions: {
                   where: { account: { userId: 'u_1' } },
+                  include: { reversal: true },
                 },
               }),
             },
