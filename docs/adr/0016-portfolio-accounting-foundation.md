@@ -287,7 +287,9 @@ An internal terminal reversal preserves the original action and parcel effects a
 separate reversal record to the same account audit/source chain. It retroactively excludes the
 reversed action from effective inventory, restores each affected stored quantity to its captured
 pre-action amount, and changes no acquisition or cash record. It requires the current audit head
-and rejects a later active split or a same-day or later sale of an affected parcel. Later
+and rejects a later active split, a same-day or later sale of an affected parcel, or an active
+reinvestment whose entitlement date is on or after the split date. Correct or reverse dependent
+reinvestments first so their recorded eligibility does not rely on the removed split. Ordinary
 statement-backed asset-income receipts and their cash postings remain unchanged by the reversal;
 receipt corrections or reversals use their separate audited flow. Exact retries are idempotent.
 After reversal, a corrected action may

@@ -3516,6 +3516,106 @@ describe.skipIf(!enabled)(
         })
       ).toBe(2)
     })
+    it('blocks split reversal while an active reinvestment depends on split-adjusted entitlement', async () => {
+      const {
+        postAccountSplit,
+        reverseAccountSplit,
+        readLiveCapitalOperations,
+        postAccountReinvestment,
+        readLiveReinvestmentReview,
+        correctLiveReinvestment,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture holding')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const split = await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: `split-${randomUUID()}`,
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-02',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `statement-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      const reinvestment = {
+        idempotencyKey: randomUUID(),
+        income: {
+          assetId: f.incomeAssetId,
+          entitlementDate: '2026-10-03',
+          paymentDate: '2026-10-15',
+          sequence: 1,
+          currency: 'AUD',
+          grossAmount: '100',
+          withholdingAmount: '15',
+          frankedAmount: '60',
+          unfrankedAmount: '40',
+          frankingCreditAud: '25',
+          sourceReference: `drp-statement-${randomUUID()}`,
+        },
+        acquisition: {
+          effectiveDate: '2026-10-17',
+          sequence: 2,
+          quantity: '4',
+          price: '20',
+          fees: '1',
+        },
+        residualAmount: '4',
+        residualDisposition: 'ACCOUNT_CASH' as const,
+        statementConfirmed: true as const,
+      }
+      const posted = await postAccountReinvestment(
+        f.userId,
+        f.accountId,
+        reinvestment
+      )
+      const head = await readLiveCapitalOperations(f.userId, f.accountId)
+      const reversal = {
+        idempotencyKey: `reverse-${randomUUID()}`,
+        actionId: split.actionId,
+        expectedAuditNumber: head.auditNumber,
+        expectedSourceFingerprint: head.sourceFingerprint,
+        reason: 'Protect split-adjusted reinvestment entitlement',
+        reversalConfirmed: true,
+      }
+      await expect(
+        reverseAccountSplit(f.userId, f.accountId, reversal)
+      ).rejects.toThrow(/dependent reinvestments/)
+      expect(
+        await prisma.accountSplitReversal.count({
+          where: { accountId: f.accountId },
+        })
+      ).toBe(0)
+
+      const review = await readLiveReinvestmentReview(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId
+      )
+      await correctLiveReinvestment(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedIncomeRevisionId: review.expectedIncomeRevisionId,
+          expectedAcquisitionRevisionId: review.expectedAcquisitionRevisionId,
+          expectedAuditNumber: review.expectedAuditNumber,
+          expectedSourceFingerprint: review.expectedSourceFingerprint,
+          reason: 'Reverse dependent reinvestment before split correction',
+          replacement: null,
+        }
+      )
+      const refreshed = await readLiveCapitalOperations(f.userId, f.accountId)
+      await expect(
+        reverseAccountSplit(f.userId, f.accountId, {
+          ...reversal,
+          idempotencyKey: `reverse-after-drp-${randomUUID()}`,
+          expectedAuditNumber: refreshed.auditNumber,
+          expectedSourceFingerprint: refreshed.sourceFingerprint,
+        })
+      ).resolves.toMatchObject({ created: true, actionId: split.actionId })
+    })
+
     it('rejects reversal while a later active split depends on the target action', async () => {
       const {
         postAccountSplit,

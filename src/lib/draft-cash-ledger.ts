@@ -4657,6 +4657,18 @@ export async function reverseAccountSplit(
             'Stock split action has no reversible audited parcel effects'
           )
 
+        if (
+          hasActiveSplitDependentReinvestment(
+            state,
+            action.assetId,
+            effectiveDate,
+            now
+          )
+        )
+          conflict(
+            'Reverse or correct dependent reinvestments before reversing this split'
+          )
+
         const dependentSplit = await db.accountSplitAction.findFirst({
           where: {
             accountId,
@@ -5905,6 +5917,27 @@ function reinvestmentPair(
         statementConfirmed: true as const,
       }
   return { income, acquisition, original, current }
+}
+
+function hasActiveSplitDependentReinvestment(
+  state: Awaited<ReturnType<typeof readLiveCashState>>,
+  assetId: string,
+  splitDate: string,
+  now: Date
+): boolean {
+  return state.cashLedgerOps.some((operation) => {
+    if (
+      operation.kind !== 'INCOME' ||
+      recordValue(operation.command).reinvestment === undefined
+    )
+      return false
+    const { current } = reinvestmentPair(state, operation.id, now)
+    return (
+      current !== null &&
+      current.income.assetId === assetId &&
+      current.income.entitlementDate >= splitDate
+    )
+  })
 }
 
 export async function readLiveReinvestmentReview(
