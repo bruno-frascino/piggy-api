@@ -1170,247 +1170,247 @@
     "startLine": 2695
   },
   {
-    "endLine": 4559,
+    "endLine": 4576,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "postAccountSplit",
     "signature": "export async function postAccountSplit( userId: string, accountId: string, raw: unknown )",
-    "startLine": 4265
+    "startLine": 4282
   },
   {
-    "endLine": 4827,
+    "endLine": 4844,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "reverseAccountSplit",
     "signature": "export async function reverseAccountSplit( userId: string, accountId: string, raw: unknown )",
-    "startLine": 4561
+    "startLine": 4578
   },
   {
-    "endLine": 4954,
+    "endLine": 4971,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "readAccountTradeCapability",
     "signature": "export async function readAccountTradeCapability( userId: string, accountId: string, effectiveDate: string )",
-    "startLine": 4829
+    "startLine": 4846
   },
   {
-    "endLine": 5226,
+    "endLine": 5243,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "beginLiveImportPosting",
     "signature": "export async function beginLiveImportPosting( db: DraftCashTransaction, userId: string, accountId: string, batchId: string, events: readonly",
-    "startLine": 4956
+    "startLine": 4973
   },
   {
-    "endLine": 5269,
+    "endLine": 5305,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "Posts one new manual trade only after an explicit confirmed ledger exists.",
     "kind": "FunctionDeclaration",
     "name": "postAccountTrade",
     "signature": "export async function postAccountTrade( userId: string, accountId: string, raw: unknown )",
-    "startLine": 5250
+    "startLine": 5286
   },
   {
-    "endLine": 5610,
+    "endLine": 5646,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "Posts a statement-supported cash distribution without creating a synthetic trade.",
     "kind": "FunctionDeclaration",
     "name": "postAccountIncomeReceipt",
     "signature": "export async function postAccountIncomeReceipt( userId: string, accountId: string, raw: unknown )",
-    "startLine": 5599
+    "startLine": 5635
   },
   {
-    "endLine": 5885,
+    "endLine": 5921,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "postAccountReinvestment",
     "signature": "export async function postAccountReinvestment( userId: string, accountId: string, raw: unknown )",
-    "startLine": 5746
+    "startLine": 5782
   },
   {
-    "endLine": 5975,
+    "endLine": 6011,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "readLiveReinvestmentReview",
     "signature": "export async function readLiveReinvestmentReview( userId: string, accountId: string, operationId: string )",
-    "startLine": 5943
+    "startLine": 5979
   },
   {
-    "endLine": 6335,
+    "endLine": 6371,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctLiveReinvestment",
     "signature": "export async function correctLiveReinvestment( userId: string, accountId: string, operationId: string, raw: unknown )",
-    "startLine": 5977
+    "startLine": 6013
   },
   {
-    "endLine": 6538,
+    "endLine": 6574,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctLiveIncomeReceipt",
     "signature": "export async function correctLiveIncomeReceipt( userId: string, accountId: string, operationId: string, raw: unknown )",
-    "startLine": 6337
+    "startLine": 6373
   },
   {
-    "endLine": 6636,
+    "endLine": 6672,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "readLiveCashTransferReview",
     "signature": "export async function readLiveCashTransferReview( userId: string, accountId: string, operationId: string )",
-    "startLine": 6582
+    "startLine": 6618
   },
   {
-    "endLine": 6832,
+    "endLine": 6868,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctLiveCashTransfer",
     "signature": "export async function correctLiveCashTransfer( userId: string, accountId: string, operationId: string, raw: unknown )",
-    "startLine": 6638
+    "startLine": 6674
   },
   {
-    "endLine": 6955,
+    "endLine": 6991,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "postAccountCashTransfer",
     "signature": "export async function postAccountCashTransfer( userId: string, fromAccountId: string, raw: unknown )",
-    "startLine": 6834
+    "startLine": 6870
   },
   {
-    "endLine": 6966,
+    "endLine": 7002,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "Posts an explicit deposit or withdrawal without creating a synthetic trade.",
     "kind": "FunctionDeclaration",
     "name": "postAccountCapitalFlow",
     "signature": "export async function postAccountCapitalFlow( userId: string, accountId: string, raw: unknown )",
-    "startLine": 6958
+    "startLine": 6994
   },
   {
-    "endLine": 6980,
+    "endLine": 7016,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "postAccountFxConversion",
     "signature": "export async function postAccountFxConversion( userId: string, accountId: string, raw: unknown )",
-    "startLine": 6968
+    "startLine": 7004
   },
   {
-    "endLine": 7522,
+    "endLine": 7558,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "readLiveCapitalOperations",
     "signature": "export async function readLiveCapitalOperations( userId: string, accountId: string, limit = 100, offset = 0 )",
-    "startLine": 7126
+    "startLine": 7162
   },
   {
-    "endLine": 7537,
+    "endLine": 7573,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctLiveCapitalOperation",
     "signature": "export async function correctLiveCapitalOperation( userId: string, accountId: string, operationId: string, raw: unknown )",
-    "startLine": 7524
+    "startLine": 7560
   },
   {
-    "endLine": 7546,
+    "endLine": 7582,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctLiveFxConversion",
     "signature": "export async function correctLiveFxConversion( userId: string, accountId: string, operationId: string, raw: unknown )",
-    "startLine": 7539
+    "startLine": 7575
   },
   {
-    "endLine": 7595,
+    "endLine": 7631,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "readLiveFxConversionReview",
     "signature": "export async function readLiveFxConversionReview( userId: string, accountId: string, operationId: string )",
-    "startLine": 7548
+    "startLine": 7584
   },
   {
-    "endLine": 7835,
+    "endLine": 7871,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctLiveManualSale",
     "signature": "export async function correctLiveManualSale( userId: string, accountId: string, transactionId: string, raw: unknown )",
-    "startLine": 7822
+    "startLine": 7858
   },
   {
-    "endLine": 8044,
+    "endLine": 8087,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "voidLiveManualTrade",
     "signature": "export async function voidLiveManualTrade( userId: string, accountId: string, transactionId: string, raw: unknown )",
-    "startLine": 7837
+    "startLine": 7873
   },
   {
-    "endLine": 8098,
+    "endLine": 8141,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "readLiveManualTradeVoids",
     "signature": "export async function readLiveManualTradeVoids( userId: string, accountId: string, limit = 100, offset = 0 )",
-    "startLine": 8046
+    "startLine": 8089
   },
   {
-    "endLine": 8113,
+    "endLine": 8156,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctLiveManualAcquisition",
     "signature": "export async function correctLiveManualAcquisition( userId: string, accountId: string, transactionId: string, raw: unknown )",
-    "startLine": 8100
+    "startLine": 8143
   },
   {
-    "endLine": 8515,
+    "endLine": 8565,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctDraftImportedExecutionCash",
     "signature": "export async function correctDraftImportedExecutionCash( userId: string, accountId: string, statementId: string, operationId: string, raw: unknown )",
-    "startLine": 8504
+    "startLine": 8554
   },
   {
-    "endLine": 8989,
+    "endLine": 9039,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctLiveImportedExecution",
     "signature": "export async function correctLiveImportedExecution( userId: string, accountId: string, eventId: string, raw: unknown )",
-    "startLine": 8627
+    "startLine": 8677
   },
   {
-    "endLine": 9006,
+    "endLine": 9056,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctDraftRecordedSale",
     "signature": "export async function correctDraftRecordedSale( userId: string, accountId: string, statementId: string, operationId: string, raw: unknown )",
-    "startLine": 8991
+    "startLine": 9041
   },
   {
-    "endLine": 9023,
+    "endLine": 9073,
     "file": "src/lib/draft-cash-ledger.ts",
     "jsdoc": "",
     "kind": "FunctionDeclaration",
     "name": "correctDraftRecordedAcquisition",
     "signature": "export async function correctDraftRecordedAcquisition( userId: string, accountId: string, statementId: string, operationId: string, raw: unknown )",
-    "startLine": 9008
+    "startLine": 9058
   },
   {
     "endLine": 14,

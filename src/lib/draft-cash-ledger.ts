@@ -4262,6 +4262,23 @@ function readSplitAwareCashState(
   return readLiveCashState(db, userId, accountId, now, undefined, false, 'CASH')
 }
 
+function readSplitAwareTradeState(
+  db: DraftCashTransaction,
+  userId: string,
+  accountId: string,
+  now: Date
+) {
+  return readLiveCashState(
+    db,
+    userId,
+    accountId,
+    now,
+    undefined,
+    false,
+    'TRADE'
+  )
+}
+
 export async function postAccountSplit(
   userId: string,
   accountId: string,
@@ -5243,6 +5260,25 @@ async function requireAcquisitionAfterRetainedSplits(
   if (laterSplit)
     conflict(
       'An acquisition on or before a retained stock split date would alter its parcel snapshot'
+    )
+}
+
+async function requireTradeAfterRetainedSplits(
+  db: DraftCashTransaction,
+  accountId: string,
+  assetId: string,
+  originalDate: string,
+  replacementDate: string
+) {
+  const latestSplit = await db.accountSplitAction.findFirst({
+    where: { accountId, assetId, reversal: { is: null } },
+    orderBy: { effectiveDate: 'desc' },
+    select: { effectiveDate: true },
+  })
+  const splitDate = latestSplit?.effectiveDate.toISOString().slice(0, 10)
+  if (splitDate && (originalDate <= splitDate || replacementDate <= splitDate))
+    conflict(
+      'Only trades strictly after the latest retained split can be corrected or voided'
     )
 }
 
@@ -7845,7 +7881,7 @@ export async function voidLiveManualTrade(
   return prisma.$transaction(
     async (db) => {
       await lockOwnedTradingAccount(db, userId, accountId)
-      const state = await readLiveCashState(db, userId, accountId, now)
+      const state = await readSplitAwareTradeState(db, userId, accountId, now)
       const operation = state.cashLedgerOps.find(
         (row) => row.transactionId === transactionId && !row.importedEventId
       )
@@ -7942,6 +7978,13 @@ export async function voidLiveManualTrade(
       })
       if (!trade || trade.type !== operation.kind)
         conflict('Owned manual trade not found', 404)
+      await requireTradeAfterRetainedSplits(
+        db,
+        accountId,
+        trade.position.assetId,
+        sydneyCalendarDate(trade.date),
+        sydneyCalendarDate(trade.date)
+      )
       const effective = trade.position.transactions.filter(
         (row) => row.voidedAt === null
       )
@@ -8125,7 +8168,7 @@ async function correctLiveManualExecution(
   return prisma.$transaction(
     async (db) => {
       await lockOwnedTradingAccount(db, userId, accountId)
-      const state = await readLiveCashState(db, userId, accountId, now)
+      const state = await readSplitAwareTradeState(db, userId, accountId, now)
       const operation = state.cashLedgerOps.find(
         (row) => row.transactionId === transactionId && !row.importedEventId
       )
@@ -8344,6 +8387,13 @@ async function correctLiveManualExecution(
         conflict(
           'Corrected execution must remain after the confirmed opening and within the reviewed observation date'
         )
+      await requireTradeAfterRetainedSplits(
+        db,
+        accountId,
+        transaction.position.assetId,
+        sydneyCalendarDate(transaction.date),
+        input.effectiveDate
+      )
 
       const before = executionSnapshot(transaction)
       const after: ExecutionSnapshot = {

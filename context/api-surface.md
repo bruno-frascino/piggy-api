@@ -18,7 +18,7 @@
 | POST | `/api/accounts/:id/fx-conversions` | 🔒 | param, body ×9 | [src/controllers/account-trades.ts:567](../src/controllers/account-trades.ts#L567) |
 | GET | `/api/accounts/:id/fx-conversions/:operationId/corrections` | 🔒 | param ×2 | [src/controllers/account-trades.ts:406](../src/controllers/account-trades.ts#L406) |
 | POST | `/api/accounts/:id/fx-conversions/:operationId/corrections` | 🔒 | param ×2, body ×6 | [src/controllers/account-trades.ts:458](../src/controllers/account-trades.ts#L458) |
-| POST | `/api/accounts/:id/imported-executions/:eventId/corrections` | 🔒 | param ×2, body ×8 | [src/controllers/account-trades.ts:1890](../src/controllers/account-trades.ts#L1890) |
+| POST | `/api/accounts/:id/imported-executions/:eventId/corrections` | 🔒 | param ×2, body ×8 | [src/controllers/account-trades.ts:1894](../src/controllers/account-trades.ts#L1894) |
 | POST | `/api/accounts/:id/income-receipts` | 🔒 | param, body ×12 | [src/controllers/account-trades.ts:1224](../src/controllers/account-trades.ts#L1224) |
 | POST | `/api/accounts/:id/income-receipts/:operationId/corrections` | 🔒 | param ×2, body ×6 | [src/controllers/account-trades.ts:1308](../src/controllers/account-trades.ts#L1308) |
 | POST | `/api/accounts/:id/opening-preview` | 🔒 | param, body ×2 | [src/controllers/accounts.ts:126](../src/controllers/accounts.ts#L126) |
@@ -41,10 +41,10 @@
 | POST | `/api/accounts/:id/reopen` | 🔒 | param | [src/controllers/accounts.ts:321](../src/controllers/accounts.ts#L321) |
 | GET | `/api/accounts/:id/trade-capability` | 🔒 | param, query | [src/controllers/account-trades.ts:1051](../src/controllers/account-trades.ts#L1051) |
 | POST | `/api/accounts/:id/trades` | 🔒 | param, body ×18 | [src/controllers/account-trades.ts:1068](../src/controllers/account-trades.ts#L1068) |
-| POST | `/api/accounts/:id/trades/:transactionId/acquisition-corrections` | 🔒 | param ×2, body ×9 | [src/controllers/account-trades.ts:1807](../src/controllers/account-trades.ts#L1807) |
-| POST | `/api/accounts/:id/trades/:transactionId/corrections` | 🔒 | param ×2, body ×8 | [src/controllers/account-trades.ts:1689](../src/controllers/account-trades.ts#L1689) |
-| POST | `/api/accounts/:id/trades/:transactionId/voids` | 🔒 | param ×2, body ×4 | [src/controllers/account-trades.ts:1970](../src/controllers/account-trades.ts#L1970) |
-| GET | `/api/accounts/:id/trades/voids` | 🔒 | param, query ×2 | [src/controllers/account-trades.ts:2061](../src/controllers/account-trades.ts#L2061) |
+| POST | `/api/accounts/:id/trades/:transactionId/acquisition-corrections` | 🔒 | param ×2, body ×9 | [src/controllers/account-trades.ts:1811](../src/controllers/account-trades.ts#L1811) |
+| POST | `/api/accounts/:id/trades/:transactionId/corrections` | 🔒 | param ×2, body ×8 | [src/controllers/account-trades.ts:1691](../src/controllers/account-trades.ts#L1691) |
+| POST | `/api/accounts/:id/trades/:transactionId/voids` | 🔒 | param ×2, body ×4 | [src/controllers/account-trades.ts:1974](../src/controllers/account-trades.ts#L1974) |
+| GET | `/api/accounts/:id/trades/voids` | 🔒 | param, query ×2 | [src/controllers/account-trades.ts:2065](../src/controllers/account-trades.ts#L2065) |
 | POST | `/api/auth/forgot-password` | — | forgotPasswordLimiter, body | [src/controllers/auth.ts:554](../src/controllers/auth.ts#L554) |
 | POST | `/api/auth/login` | — | — | [src/controllers/auth.ts:225](../src/controllers/auth.ts#L225) |
 | POST | `/api/auth/logout` | 🔒 | — | [src/controllers/auth.ts:494](../src/controllers/auth.ts#L494) |

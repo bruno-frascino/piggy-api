@@ -3738,6 +3738,162 @@ describe.skipIf(!enabled)(
         })
       ).toMatchObject({ quantity: 1.5 })
     })
+    it('corrects and voids post-split manual trades while preserving the split snapshot', async () => {
+      const {
+        postAccountSplit,
+        postAccountTrade,
+        correctLiveManualSale,
+        correctLiveManualAcquisition,
+        voidLiveManualTrade,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await liveAcquisitionFixture()
+      const split = await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: `split-${randomUUID()}`,
+        assetId: f.assetId,
+        effectiveDate: '2026-10-04',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `statement-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      const splitEffects = await prisma.accountSplitAction.findUniqueOrThrow({
+        where: { id: split.actionId },
+        include: { effects: { orderBy: { positionId: 'asc' } } },
+      })
+      const preSplitHead = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      await expect(
+        correctLiveManualSale(f.userId, f.accountId, f.sale.transactionId, {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: f.sale.operationId,
+          expectedSourceFingerprint: preSplitHead.sourceFingerprint,
+          reason: 'Rejected pre-split correction',
+          effectiveDate: '2026-10-03',
+          sequence: 2,
+          price: '21',
+          fees: '1',
+        })
+      ).rejects.toThrow(/strictly after the latest retained split/)
+      await expect(
+        voidLiveManualTrade(f.userId, f.accountId, f.sale.transactionId, {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: f.sale.operationId,
+          expectedSourceFingerprint: preSplitHead.sourceFingerprint,
+          reason: 'Rejected pre-split void',
+        })
+      ).rejects.toThrow(/strictly after the latest retained split/)
+
+      const splitSale = await postAccountTrade(f.userId, f.accountId, {
+        kind: 'SELL',
+        positionId: f.positionId,
+        idempotencyKey: randomUUID(),
+        effectiveDate: '2026-10-05',
+        sequence: 1,
+        quantity: '2',
+        price: '20',
+        fees: '1',
+      })
+      if (!splitSale.transactionId) throw new Error('Missing split-era sale')
+      const afterSale = await readLiveCapitalOperations(f.userId, f.accountId)
+      const correctedSale = await correctLiveManualSale(
+        f.userId,
+        f.accountId,
+        splitSale.transactionId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: splitSale.operationId,
+          expectedSourceFingerprint: afterSale.sourceFingerprint,
+          reason: 'Correct post-split sale',
+          effectiveDate: '2026-10-06',
+          sequence: 1,
+          price: '21',
+          fees: '0.5',
+        }
+      )
+      const afterCorrection = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      await voidLiveManualTrade(
+        f.userId,
+        f.accountId,
+        splitSale.transactionId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: correctedSale.revisionId,
+          expectedSourceFingerprint: afterCorrection.sourceFingerprint,
+          reason: 'Void corrected post-split sale',
+        }
+      )
+      expect(
+        await prisma.accountSplitAction.findUniqueOrThrow({
+          where: { id: split.actionId },
+          include: { effects: { orderBy: { positionId: 'asc' } } },
+        })
+      ).toEqual(splitEffects)
+      expect(
+        await prisma.position.findUniqueOrThrow({
+          where: { id: f.positionId },
+        })
+      ).toMatchObject({ quantity: 12 })
+
+      const newAcquisition = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: f.assetId,
+          effectiveDate: '2026-10-07',
+          quantity: '1',
+          price: '10',
+          fees: '0',
+        })
+      )
+      if (!newAcquisition.transactionId)
+        throw new Error('Missing post-split acquisition')
+      const beforeAcquisitionCorrection = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      const correctedAcquisition = await correctLiveManualAcquisition(
+        f.userId,
+        f.accountId,
+        newAcquisition.transactionId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: newAcquisition.operationId,
+          expectedSourceFingerprint:
+            beforeAcquisitionCorrection.sourceFingerprint,
+          reason: 'Correct post-split acquisition',
+          effectiveDate: '2026-10-08',
+          sequence: 1,
+          quantity: '2',
+          price: '9',
+          fees: '0',
+        }
+      )
+      const afterAcquisitionCorrection = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      await voidLiveManualTrade(
+        f.userId,
+        f.accountId,
+        newAcquisition.transactionId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: correctedAcquisition.revisionId,
+          expectedSourceFingerprint:
+            afterAcquisitionCorrection.sourceFingerprint,
+          reason: 'Void post-split acquisition',
+        }
+      )
+      expect(
+        await readLiveCapitalOperations(f.userId, f.accountId)
+      ).toMatchObject({ sourceFreshness: { status: 'CURRENT' } })
+    })
     it('rejects source drift before creating a split action or changing inventory', async () => {
       const { postAccountSplit } = await import('./draft-cash-ledger.js')
       const f = await fixture('100', false, false, true)
@@ -6363,7 +6519,7 @@ describe.skipIf(!enabled)(
           parcel.transactions[0].id,
           correction
         )
-      ).rejects.toThrow(/retained stock split history/)
+      ).rejects.toThrow(/paired audited workflow/)
       await expect(
         voidLiveManualTrade(f.userId, f.accountId, parcel.transactions[0].id, {
           idempotencyKey: randomUUID(),
@@ -6371,7 +6527,7 @@ describe.skipIf(!enabled)(
           expectedSourceFingerprint: head.acceptedSourceFingerprint,
           reason: 'Unsupported independent void',
         })
-      ).rejects.toThrow(/retained stock split history/)
+      ).rejects.toThrow(/paired audited workflow/)
       await expect(
         correctLiveIncomeReceipt(
           f.userId,

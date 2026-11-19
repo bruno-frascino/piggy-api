@@ -281,8 +281,11 @@ or before an active split date are rejected to avoid ambiguous same-day order an
 retained parcel effects. Validated split history also permits audited cash-only operations,
 paired cash transfers, statement-income receipts/corrections, and dividend reinvestments with
 paired corrections/reversal. Reinvestment entitlement uses split-adjusted holdings, and its
-acquisition must follow the split date. Imports, legacy financial mutations, moves and deletion
-remain fenced pending the historical release gates.
+acquisition must follow the split date. Manual execution corrections and terminal voids also
+use validated split-aware audit/cash replay only for trades strictly after the latest active split
+for the asset; corrections must keep the replacement date after that split. Earlier trades remain
+fenced. Imports,
+legacy financial mutations, moves and deletion remain fenced pending the historical release gates.
 An internal terminal reversal preserves the original action and parcel effects and appends a
 separate reversal record to the same account audit/source chain. It retroactively excludes the
 reversed action from effective inventory, restores each affected stored quantity to its captured
@@ -1187,8 +1190,12 @@ them against the immutable terminal audit. An unsold voided BUY remains an archi
 with zero quantity, not a genuinely CLOSED sale. A SELL void restores its remaining units.
 
 Only reconciled manual long parcels without imported allocations or non-trade adjustments
-are supported. BUY voids require no effective sales. All participating writes lock the owned
-account and parcel; the complete dated cash replay must remain funded. Markers, derived
+are supported. BUY voids require no effective sales. With retained split history, a trade can
+be corrected or voided only when its original date, and any correction replacement date, are
+strictly after the latest active split for its asset, so the change cannot alter an immutable
+parcel snapshot.
+All participating writes lock the owned account and parcel; the complete dated cash replay must
+remain funded. Markers, derived
 inventory, revision postings and fingerprint advancement commit together. Terminal trades
 cannot be changed, sold, deleted or voided again; identical prior requests remain retryable,
 including after intervening revisions. Original/previously corrected sequence slots stay reserved.

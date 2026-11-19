@@ -955,7 +955,7 @@ router.post(
  * /api/accounts/{id}/trade-capability:
  *   get:
  *     summary: Resolve the server-owned trade-write capability for an account
- *     description: Distinguishes active confirmed ledgers from legacy, demo, archived and blocked accounts. Validated retained split history supports coordinated manual BUY/SELL, audited cash-only operations, statement-income receipts/corrections and paired dividend-reinvestment workflows; reinvestment entitlement uses split-adjusted holdings and acquisition must follow the split date. Imports, legacy financial mutations, moves and deletion remain blocked. Cash-completeness certification and opening confirmation remain blocked pending broader historical protections and release review. This read never activates an account.
+ *     description: Distinguishes active confirmed ledgers from legacy, demo, archived and blocked accounts. Validated retained split history supports coordinated manual BUY/SELL and correction/void of trades strictly after the latest active split, audited cash-only operations, statement-income receipts/corrections and paired dividend-reinvestment workflows; reinvestment entitlement uses split-adjusted holdings and acquisition must follow the split date. Imports, legacy financial mutations, moves and deletion remain blocked. Cash-completeness certification and opening confirmation remain blocked pending broader historical protections and release review. This read never activates an account.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -1641,7 +1641,9 @@ router.post(
  *     description: >
  *       Appends an immutable correction revision for a cash-linked manual SELL.
  *       Only date, stable cash sequence, price and fees may change; quantity,
- *       source identity and imported executions are immutable. Reversal is not supported.
+ *       source identity and imported executions are immutable. With retained split
+ *       history, the original and corrected execution must both be strictly after
+ *       the latest active split for the asset. Reversal is not supported.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -1752,7 +1754,9 @@ router.post(
  *       Date, stable cash sequence, exact bought quantity, price and fees may change.
  *       All existing sales are preserved; the corrected acquisition must cover them
  *       and precede their dates and cash ordering. Imported executions, moves and
- *       reversal remain unsupported. No account is activated.
+ *       reversal remain unsupported. With retained split history, the original and
+ *       corrected acquisition must both be strictly after the latest active split
+ *       for the asset. No account is activated.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -1924,7 +1928,7 @@ router.post(
  * /api/accounts/{id}/trades/{transactionId}/voids:
  *   post:
  *     summary: Void an audited live manual trade without deleting its records
- *     description: SELL voids restore parcel inventory and remove proceeds from cash replay. BUY voids require no effective sales. Only active real ledgers and manual parcels are supported. The terminal revision retains original trades, postings and date/sequence reservations. No account is activated.
+ *     description: SELL voids restore parcel inventory and remove proceeds from cash replay. BUY voids require no effective sales. Only active real ledgers and manual parcels are supported. With retained split history, the trade must be strictly after the latest active split for its asset. The terminal revision retains original trades, postings and date/sequence reservations. No account is activated.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
