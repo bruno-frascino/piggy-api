@@ -3765,26 +3765,109 @@ describe.skipIf(!enabled)(
         f.userId,
         f.accountId
       )
+      const correctedPreSplitBuy = await correctLiveManualAcquisition(
+        f.userId,
+        f.accountId,
+        f.buy.transactionId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: f.buy.operationId,
+          expectedSourceFingerprint: preSplitHead.sourceFingerprint,
+          reason: 'Correct pre-split acquisition values',
+          effectiveDate: '2026-10-02',
+          sequence: 1,
+          quantity: '10',
+          price: '11',
+          fees: '2',
+        }
+      )
+      const afterPreSplitBuyCorrection = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      const correctedBuy = await prisma.transaction.findUniqueOrThrow({
+        where: { id: f.buy.transactionId },
+      })
+      expect(correctedBuy.quantity).toBe(10)
+      expect(correctedBuy.price.toFixed()).toBe('11')
+      expect(correctedBuy.fees.toFixed()).toBe('2')
+      expect(afterPreSplitBuyCorrection.sourceFreshness.status).toBe('CURRENT')
+      expect(
+        await prisma.accountSplitAction.findUniqueOrThrow({
+          where: { id: split.actionId },
+          include: { effects: { orderBy: { positionId: 'asc' } } },
+        })
+      ).toEqual(splitEffects)
       await expect(
-        correctLiveManualSale(f.userId, f.accountId, f.sale.transactionId, {
+        correctLiveManualAcquisition(
+          f.userId,
+          f.accountId,
+          f.buy.transactionId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevisionId: correctedPreSplitBuy.revisionId,
+            expectedSourceFingerprint:
+              afterPreSplitBuyCorrection.sourceFingerprint,
+            reason: 'Rejected split snapshot quantity change',
+            effectiveDate: '2026-10-02',
+            sequence: 1,
+            quantity: '9',
+            price: '11',
+            fees: '2',
+          }
+        )
+      ).rejects.toThrow(/preserve the original date and quantity/)
+      const correctedPreSplitSale = await correctLiveManualSale(
+        f.userId,
+        f.accountId,
+        f.sale.transactionId,
+        {
           idempotencyKey: randomUUID(),
           expectedRevisionId: f.sale.operationId,
-          expectedSourceFingerprint: preSplitHead.sourceFingerprint,
-          reason: 'Rejected pre-split correction',
+          expectedSourceFingerprint:
+            afterPreSplitBuyCorrection.sourceFingerprint,
+          reason: 'Correct pre-split sale values',
           effectiveDate: '2026-10-03',
           sequence: 2,
           price: '21',
-          fees: '1',
+          fees: '0.5',
+        }
+      )
+      const afterPreSplitSaleCorrection = await readLiveCapitalOperations(
+        f.userId,
+        f.accountId
+      )
+      expect(afterPreSplitSaleCorrection.replay.balances[0]?.endingAmount).toBe(
+        '971.5'
+      )
+      expect(
+        await prisma.accountSplitAction.findUniqueOrThrow({
+          where: { id: split.actionId },
+          include: { effects: { orderBy: { positionId: 'asc' } } },
         })
-      ).rejects.toThrow(/strictly after the latest retained split/)
+      ).toEqual(splitEffects)
+      await expect(
+        correctLiveManualSale(f.userId, f.accountId, f.sale.transactionId, {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: correctedPreSplitSale.revisionId,
+          expectedSourceFingerprint:
+            afterPreSplitSaleCorrection.sourceFingerprint,
+          reason: 'Rejected pre-split date change',
+          effectiveDate: '2026-10-05',
+          sequence: 1,
+          price: '21',
+          fees: '0.5',
+        })
+      ).rejects.toThrow(/preserve the original date and quantity/)
       await expect(
         voidLiveManualTrade(f.userId, f.accountId, f.sale.transactionId, {
           idempotencyKey: randomUUID(),
-          expectedRevisionId: f.sale.operationId,
-          expectedSourceFingerprint: preSplitHead.sourceFingerprint,
+          expectedRevisionId: correctedPreSplitSale.revisionId,
+          expectedSourceFingerprint:
+            afterPreSplitSaleCorrection.sourceFingerprint,
           reason: 'Rejected pre-split void',
         })
-      ).rejects.toThrow(/strictly after the latest retained split/)
+      ).rejects.toThrow(/preserve the original date and quantity/)
 
       const splitSale = await postAccountTrade(f.userId, f.accountId, {
         kind: 'SELL',
@@ -3893,6 +3976,115 @@ describe.skipIf(!enabled)(
       expect(
         await readLiveCapitalOperations(f.userId, f.accountId)
       ).toMatchObject({ sourceFreshness: { status: 'CURRENT' } })
+    })
+    it('corrects split-adjusted trades when sold units exceed the original acquisition', async () => {
+      const {
+        postAccountSplit,
+        postAccountTrade,
+        correctLiveManualSale,
+        correctLiveManualAcquisition,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await liveAcquisitionFixture()
+      const split = await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: randomUUID(),
+        assetId: f.assetId,
+        effectiveDate: '2026-10-04',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `statement-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      const beforeEffects = await prisma.accountSplitAction.findUniqueOrThrow({
+        where: { id: split.actionId },
+        include: { effects: true },
+      })
+      const sale = await postAccountTrade(f.userId, f.accountId, {
+        kind: 'SELL',
+        positionId: f.positionId,
+        idempotencyKey: randomUUID(),
+        effectiveDate: '2026-10-05',
+        sequence: 1,
+        quantity: '12',
+        price: '10',
+        fees: '1',
+      })
+      if (!sale.transactionId) throw new Error('Missing split-adjusted sale')
+      const before = await readLiveCapitalOperations(f.userId, f.accountId)
+      const buyCorrection = await correctLiveManualAcquisition(
+        f.userId,
+        f.accountId,
+        f.buy.transactionId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: f.buy.operationId,
+          expectedSourceFingerprint: before.sourceFingerprint,
+          reason: 'Correct pre-split purchase price',
+          effectiveDate: '2026-10-02',
+          sequence: 1,
+          quantity: '10',
+          price: '11',
+          fees: '1',
+        }
+      )
+      expect(buyCorrection.created).toBe(true)
+      const afterBuy = await readLiveCapitalOperations(f.userId, f.accountId)
+      await expect(
+        correctLiveManualAcquisition(
+          f.userId,
+          f.accountId,
+          f.buy.transactionId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevisionId: buyCorrection.revisionId,
+            expectedSourceFingerprint: afterBuy.sourceFingerprint,
+            reason: 'Rejected split snapshot change',
+            effectiveDate: '2026-10-02',
+            sequence: 1,
+            quantity: '17',
+            price: '11',
+            fees: '1',
+          }
+        )
+      ).rejects.toThrow(/preserve the original date and quantity/)
+      expect(
+        await prisma.accountCashLedger.findUniqueOrThrow({
+          where: { accountId: f.accountId },
+        })
+      ).toMatchObject({ acceptedSourceFingerprint: afterBuy.sourceFingerprint })
+      const saleCorrection = await correctLiveManualSale(
+        f.userId,
+        f.accountId,
+        sale.transactionId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: sale.operationId,
+          expectedSourceFingerprint: afterBuy.sourceFingerprint,
+          reason: 'Correct split-adjusted sale price',
+          effectiveDate: '2026-10-06',
+          sequence: 1,
+          price: '11',
+          fees: '1',
+        }
+      )
+      expect(saleCorrection.created).toBe(true)
+      const position = await prisma.position.findUniqueOrThrow({
+        where: { id: f.positionId },
+      })
+      expect(position).toMatchObject({ quantity: 0, status: 'CLOSED' })
+      expect(position.realizedPnL?.toFixed()).toBe('99')
+      expect(
+        await prisma.accountSplitAction.findUniqueOrThrow({
+          where: { id: split.actionId },
+          include: { effects: true },
+        })
+      ).toEqual(beforeEffects)
+      expect(
+        await readLiveCapitalOperations(f.userId, f.accountId)
+      ).toMatchObject({
+        sourceFreshness: { status: 'CURRENT' },
+        replay: { balances: [{ currency: 'AUD', endingAmount: '1099' }] },
+      })
     })
     it('rejects source drift before creating a split action or changing inventory', async () => {
       const { postAccountSplit } = await import('./draft-cash-ledger.js')
@@ -6419,6 +6611,1340 @@ describe.skipIf(!enabled)(
       }
     }
 
+    it.each([
+      ['correction', 'income', false],
+      ['correction', 'reinvestment', false],
+      ['reversal', 'income', false],
+      ['reversal', 'reinvestment', false],
+      ['correction', 'income', true],
+      ['reversal', 'reinvestment', true],
+    ] as const)(
+      'blocks reinvestment %s when its parcel supports later active %s (split: %s)',
+      async (action, dependency, split) => {
+        const {
+          postAccountTrade,
+          postAccountSplit,
+          postAccountIncomeReceipt,
+          postAccountReinvestment,
+          correctLiveReinvestment,
+          correctLiveIncomeReceipt,
+          readLiveReinvestmentReview,
+          readLiveCapitalOperations,
+        } = await import('./draft-cash-ledger.js')
+        const f = await fixture('1000')
+        if (!exchangeId) throw new Error('Missing fixture exchange')
+        const asset = await prisma.asset.create({
+          data: {
+            symbol: `REINVEST-DEPENDENCY-${randomUUID()}`,
+            name: 'Reinvestment dependency fixture',
+            exchangeId,
+            assetType: 'EQUITY',
+          },
+        })
+        await confirmCashLedger(f.accountId, f.statementId)
+        const buy = await postAccountTrade(
+          f.userId,
+          f.accountId,
+          liveTradeInput({
+            assetId: asset.id,
+            effectiveDate: '2026-10-02',
+          })
+        )
+        if (!buy.transactionId) throw new Error('Missing fixture acquisition')
+        const acquisition = await prisma.transaction.findUniqueOrThrow({
+          where: { id: buy.transactionId },
+        })
+        if (split)
+          await postAccountSplit(f.userId, f.accountId, {
+            idempotencyKey: randomUUID(),
+            assetId: asset.id,
+            effectiveDate: '2026-10-03',
+            newUnits: '2',
+            oldUnits: '1',
+            sourceReference: `split-${randomUUID()}`,
+            statementConfirmed: true,
+          })
+        const input = reinvestmentInput(asset.id)
+        const first = await postAccountReinvestment(f.userId, f.accountId, {
+          ...input,
+          income: {
+            ...input.income,
+            entitlementDate: '2026-10-04',
+            paymentDate: '2026-10-05',
+          },
+          acquisition: { ...input.acquisition, effectiveDate: '2026-10-06' },
+        })
+        await postAccountTrade(f.userId, f.accountId, {
+          kind: 'SELL',
+          positionId: acquisition.positionId,
+          idempotencyKey: randomUUID(),
+          effectiveDate: '2026-10-07',
+          sequence: 1,
+          quantity: split ? '2' : '1',
+          price: '20',
+          fees: '0',
+        })
+        const dependent = reinvestmentInput(asset.id)
+        const dependentIncome = {
+          ...dependent.income,
+          entitlementDate: '2026-10-08',
+        }
+        let dependentIncomeOperationId: string
+        if (dependency === 'income') {
+          const receipt = await postAccountIncomeReceipt(
+            f.userId,
+            f.accountId,
+            {
+              ...dependentIncome,
+              idempotencyKey: randomUUID(),
+            }
+          )
+          dependentIncomeOperationId = receipt.operationId
+        } else {
+          const receipt = await postAccountReinvestment(f.userId, f.accountId, {
+            ...dependent,
+            income: { ...dependentIncome, paymentDate: '2026-10-08' },
+            acquisition: {
+              ...dependent.acquisition,
+              effectiveDate: '2026-10-08',
+            },
+          })
+          dependentIncomeOperationId = receipt.incomeOperationId
+        }
+        const head = await readLiveReinvestmentReview(
+          f.userId,
+          f.accountId,
+          first.incomeOperationId
+        )
+        if (!head.current) throw new Error('Missing active reinvestment')
+        const positionBefore = await prisma.position.findUniqueOrThrow({
+          where: { id: first.positionId },
+          include: { transactions: true },
+        })
+        const request = {
+          idempotencyKey: randomUUID(),
+          expectedIncomeRevisionId: head.expectedIncomeRevisionId,
+          expectedAcquisitionRevisionId: head.expectedAcquisitionRevisionId,
+          expectedAuditNumber: head.expectedAuditNumber,
+          expectedSourceFingerprint: head.expectedSourceFingerprint,
+          reason: 'Correct issuer allotment',
+          replacement:
+            action === 'reversal'
+              ? null
+              : {
+                  ...head.current,
+                  acquisition: {
+                    ...head.current.acquisition,
+                    effectiveDate: '2026-10-10',
+                  },
+                },
+        }
+        await expect(
+          correctLiveReinvestment(
+            f.userId,
+            f.accountId,
+            first.incomeOperationId,
+            request
+          )
+        ).rejects.toMatchObject({
+          status: 409,
+          message: /income.*entitlement/i,
+        })
+        expect(
+          await prisma.position.findUniqueOrThrow({
+            where: { id: first.positionId },
+            include: { transactions: true },
+          })
+        ).toEqual(positionBefore)
+        expect(
+          await readLiveCapitalOperations(f.userId, f.accountId)
+        ).toMatchObject({
+          auditNumber: head.expectedAuditNumber,
+          sourceFingerprint: head.expectedSourceFingerprint,
+        })
+        expect(
+          await prisma.accountCashOperationRevision.count({
+            where: {
+              operationId: {
+                in: [first.incomeOperationId, first.acquisitionOperationId],
+              },
+            },
+          })
+        ).toBe(0)
+
+        if (dependency === 'income' && !split) {
+          const currentHead = await readLiveCapitalOperations(
+            f.userId,
+            f.accountId
+          )
+          await correctLiveIncomeReceipt(
+            f.userId,
+            f.accountId,
+            dependentIncomeOperationId,
+            {
+              idempotencyKey: randomUUID(),
+              expectedRevisionId: dependentIncomeOperationId,
+              expectedAuditNumber: currentHead.auditNumber,
+              expectedSourceFingerprint: currentHead.sourceFingerprint,
+              reason: 'Correct dependent income',
+              replacement:
+                action === 'reversal'
+                  ? null
+                  : {
+                      entitlementDate: '2026-10-04',
+                      paymentDate: dependentIncome.paymentDate,
+                      sequence: dependentIncome.sequence,
+                      grossAmount: dependentIncome.grossAmount,
+                      withholdingAmount: dependentIncome.withholdingAmount,
+                      frankedAmount: dependentIncome.frankedAmount,
+                      unfrankedAmount: dependentIncome.unfrankedAmount,
+                      frankingCreditAud: dependentIncome.frankingCreditAud,
+                    },
+            }
+          )
+        } else {
+          await postAccountTrade(
+            f.userId,
+            f.accountId,
+            liveTradeInput({
+              assetId: asset.id,
+              effectiveDate: '2026-10-07',
+              sequence: 2,
+            })
+          )
+        }
+        const refreshed = await readLiveReinvestmentReview(
+          f.userId,
+          f.accountId,
+          first.incomeOperationId
+        )
+        const safe = {
+          ...request,
+          expectedAuditNumber: refreshed.expectedAuditNumber,
+          expectedSourceFingerprint: refreshed.expectedSourceFingerprint,
+        }
+        const result = await correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          first.incomeOperationId,
+          safe
+        )
+        expect(result.created).toBe(true)
+        await expect(
+          correctLiveReinvestment(
+            f.userId,
+            f.accountId,
+            first.incomeOperationId,
+            safe
+          )
+        ).resolves.toMatchObject({
+          created: false,
+          incomeRevisionId: result.incomeRevisionId,
+        })
+      }
+    )
+
+    it.each(['income', 'reinvestment'] as const)(
+      'rejects an earlier sale correction that removes the only holding for active %s',
+      async (kind) => {
+        const {
+          postAccountTrade,
+          postAccountIncomeReceipt,
+          postAccountReinvestment,
+          correctLiveManualSale,
+          readLiveCapitalOperations,
+        } = await import('./draft-cash-ledger.js')
+        const f = await fixture('1000')
+        if (!exchangeId) throw new Error('Missing fixture exchange')
+        const asset = await prisma.asset.create({
+          data: {
+            symbol: `SELL-CORRECTION-INCOME-${randomUUID()}`,
+            name: 'Sale correction entitlement fixture',
+            exchangeId,
+            assetType: 'EQUITY',
+          },
+        })
+        await confirmCashLedger(f.accountId, f.statementId)
+        const buy = await postAccountTrade(
+          f.userId,
+          f.accountId,
+          liveTradeInput({ assetId: asset.id, effectiveDate: '2026-10-02' })
+        )
+        if (!buy.transactionId) throw new Error('Missing fixture acquisition')
+        const acquisition = await prisma.transaction.findUniqueOrThrow({
+          where: { id: buy.transactionId },
+        })
+        const reinvestment = reinvestmentInput(asset.id)
+        const income = { ...reinvestment.income, entitlementDate: '2026-10-15' }
+        if (kind === 'income') {
+          await postAccountIncomeReceipt(f.userId, f.accountId, {
+            ...income,
+            idempotencyKey: randomUUID(),
+          })
+        } else {
+          await postAccountReinvestment(f.userId, f.accountId, {
+            ...reinvestment,
+            income,
+          })
+        }
+        const sale = await postAccountTrade(f.userId, f.accountId, {
+          kind: 'SELL',
+          positionId: acquisition.positionId,
+          idempotencyKey: randomUUID(),
+          effectiveDate: '2026-10-16',
+          sequence: 1,
+          quantity: '1',
+          price: '20',
+          fees: '0',
+        })
+        if (!sale.transactionId) throw new Error('Missing fixture sale')
+        const before = await readLiveCapitalOperations(f.userId, f.accountId)
+        const positionBefore = await prisma.position.findUniqueOrThrow({
+          where: { id: acquisition.positionId },
+          include: { transactions: true },
+        })
+        const correction = {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: sale.operationId,
+          expectedSourceFingerprint: before.sourceFingerprint,
+          reason: 'Correct sale date',
+          effectiveDate: kind === 'income' ? '2026-10-10' : '2026-10-15',
+          sequence: 3,
+          price: '20',
+          fees: '0',
+        }
+        await expect(
+          correctLiveManualSale(
+            f.userId,
+            f.accountId,
+            sale.transactionId,
+            correction
+          )
+        ).rejects.toMatchObject({
+          status: 409,
+          message: /income.*entitlement/i,
+        })
+        expect(
+          await prisma.position.findUniqueOrThrow({
+            where: { id: acquisition.positionId },
+            include: { transactions: true },
+          })
+        ).toEqual(positionBefore)
+        expect(
+          await readLiveCapitalOperations(f.userId, f.accountId)
+        ).toMatchObject({
+          auditNumber: before.auditNumber,
+          sourceFingerprint: before.sourceFingerprint,
+        })
+        const priceCorrection = await correctLiveManualSale(
+          f.userId,
+          f.accountId,
+          sale.transactionId,
+          {
+            ...correction,
+            idempotencyKey: randomUUID(),
+            effectiveDate: '2026-10-16',
+            sequence: 1,
+            price: '21',
+          }
+        )
+        expect(priceCorrection.created).toBe(true)
+        await postAccountTrade(
+          f.userId,
+          f.accountId,
+          liveTradeInput({ assetId: asset.id, effectiveDate: '2026-10-03' })
+        )
+        const afterAlternative = await readLiveCapitalOperations(
+          f.userId,
+          f.accountId
+        )
+        const safeCorrection = {
+          ...correction,
+          expectedRevisionId: priceCorrection.revisionId,
+          expectedSourceFingerprint: afterAlternative.sourceFingerprint,
+        }
+        const corrected = await correctLiveManualSale(
+          f.userId,
+          f.accountId,
+          sale.transactionId,
+          safeCorrection
+        )
+        expect(corrected.created).toBe(true)
+        await expect(
+          correctLiveManualSale(
+            f.userId,
+            f.accountId,
+            sale.transactionId,
+            safeCorrection
+          )
+        ).resolves.toMatchObject({
+          created: false,
+          revisionId: corrected.revisionId,
+        })
+      }
+    )
+
+    it('reviews split-adjusted holdings for earlier sale corrections and permits dates after entitlement', async () => {
+      const {
+        postAccountTrade,
+        postAccountSplit,
+        postAccountIncomeReceipt,
+        correctLiveManualSale,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('1000')
+      if (!exchangeId) throw new Error('Missing fixture exchange')
+      const asset = await prisma.asset.create({
+        data: {
+          symbol: `SELL-CORRECTION-SPLIT-${randomUUID()}`,
+          name: 'Split sale correction fixture',
+          exchangeId,
+          assetType: 'EQUITY',
+        },
+      })
+      await confirmCashLedger(f.accountId, f.statementId)
+      const buy = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: asset.id,
+          effectiveDate: '2026-10-02',
+          quantity: '2',
+        })
+      )
+      if (!buy.transactionId) throw new Error('Missing fixture acquisition')
+      const acquisition = await prisma.transaction.findUniqueOrThrow({
+        where: { id: buy.transactionId },
+      })
+      await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: randomUUID(),
+        assetId: asset.id,
+        effectiveDate: '2026-10-03',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `split-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      await postAccountIncomeReceipt(f.userId, f.accountId, {
+        ...reinvestmentInput(asset.id).income,
+        idempotencyKey: randomUUID(),
+        entitlementDate: '2026-10-10',
+      })
+      const sale = await postAccountTrade(f.userId, f.accountId, {
+        kind: 'SELL',
+        positionId: acquisition.positionId,
+        idempotencyKey: randomUUID(),
+        effectiveDate: '2026-10-16',
+        sequence: 1,
+        quantity: '4',
+        price: '10',
+        fees: '0',
+      })
+      if (!sale.transactionId) throw new Error('Missing fixture sale')
+      const head = await readLiveCapitalOperations(f.userId, f.accountId)
+      const correction = {
+        idempotencyKey: randomUUID(),
+        expectedRevisionId: sale.operationId,
+        expectedSourceFingerprint: head.sourceFingerprint,
+        reason: 'Correct split-adjusted sale',
+        effectiveDate: '2026-10-04',
+        sequence: 1,
+        price: '10',
+        fees: '0',
+      }
+      await expect(
+        correctLiveManualSale(
+          f.userId,
+          f.accountId,
+          sale.transactionId,
+          correction
+        )
+      ).rejects.toMatchObject({ status: 409, message: /income.*entitlement/i })
+      await expect(
+        correctLiveManualSale(f.userId, f.accountId, sale.transactionId, {
+          ...correction,
+          effectiveDate: '2026-10-11',
+        })
+      ).resolves.toMatchObject({ created: true })
+    })
+
+    it.each(['income', 'reinvestment'] as const)(
+      'rejects a backdated sale that removes the only holding for active %s',
+      async (kind) => {
+        const {
+          postAccountTrade,
+          postAccountIncomeReceipt,
+          postAccountReinvestment,
+          readLiveCapitalOperations,
+        } = await import('./draft-cash-ledger.js')
+        const f = await fixture('1000')
+        if (!exchangeId) throw new Error('Missing fixture exchange')
+        const asset = await prisma.asset.create({
+          data: {
+            symbol: `SELL-ELIGIBILITY-${randomUUID()}`,
+            name: 'Sale income eligibility fixture',
+            exchangeId,
+            assetType: 'EQUITY',
+          },
+        })
+        await confirmCashLedger(f.accountId, f.statementId)
+        const buy = await postAccountTrade(
+          f.userId,
+          f.accountId,
+          liveTradeInput({
+            assetId: asset.id,
+            effectiveDate: '2026-10-02',
+            quantity: '2',
+          })
+        )
+        if (!buy.transactionId) throw new Error('Missing fixture acquisition')
+        const acquisition = await prisma.transaction.findUniqueOrThrow({
+          where: { id: buy.transactionId },
+        })
+        const reinvestment = reinvestmentInput(asset.id)
+        const income = { ...reinvestment.income, entitlementDate: '2026-10-15' }
+        if (kind === 'income') {
+          await postAccountIncomeReceipt(f.userId, f.accountId, {
+            ...income,
+            idempotencyKey: randomUUID(),
+          })
+        } else {
+          await postAccountReinvestment(f.userId, f.accountId, {
+            ...reinvestment,
+            income,
+          })
+        }
+        const before = await readLiveCapitalOperations(f.userId, f.accountId)
+        const positionBefore = await prisma.position.findUniqueOrThrow({
+          where: { id: acquisition.positionId },
+          include: { transactions: true },
+        })
+        const sale = {
+          kind: 'SELL',
+          positionId: acquisition.positionId,
+          idempotencyKey: randomUUID(),
+          effectiveDate: kind === 'income' ? '2026-10-10' : '2026-10-15',
+          sequence: 3,
+          quantity: '2',
+          price: '20',
+          fees: '0',
+        }
+        await expect(
+          postAccountTrade(f.userId, f.accountId, sale)
+        ).rejects.toMatchObject({
+          status: 409,
+          message: /income.*entitlement/i,
+        })
+        expect(
+          await prisma.position.findUniqueOrThrow({
+            where: { id: acquisition.positionId },
+            include: { transactions: true },
+          })
+        ).toEqual(positionBefore)
+        expect(
+          await readLiveCapitalOperations(f.userId, f.accountId)
+        ).toMatchObject({
+          auditNumber: before.auditNumber,
+          sourceFingerprint: before.sourceFingerprint,
+        })
+        const partial = { ...sale, quantity: '1' }
+        const posted = await postAccountTrade(f.userId, f.accountId, partial)
+        expect(posted.created).toBe(true)
+        await expect(
+          postAccountTrade(f.userId, f.accountId, {
+            ...sale,
+            idempotencyKey: randomUUID(),
+            effectiveDate: '2026-10-16',
+            quantity: '1',
+          })
+        ).resolves.toMatchObject({ created: true })
+        await expect(
+          postAccountTrade(f.userId, f.accountId, partial)
+        ).resolves.toMatchObject({
+          created: false,
+          operationId: posted.operationId,
+        })
+      }
+    )
+
+    it.each([
+      [false, 'income'],
+      [false, 'sale'],
+      [true, 'income'],
+      [true, 'sale'],
+    ] as const)(
+      'serializes income against a backdated sale (split: %s, started first: %s)',
+      async (split, first) => {
+        const {
+          postAccountTrade,
+          postAccountSplit,
+          postAccountIncomeReceipt,
+          readLiveCapitalOperations,
+        } = await import('./draft-cash-ledger.js')
+        const { readAccountAssetQuantityAt } =
+          await import('./stored-parcel-inventory.js')
+        const f = await fixture('1000')
+        if (!exchangeId) throw new Error('Missing fixture exchange')
+        const asset = await prisma.asset.create({
+          data: {
+            symbol: `INCOME-SELL-RACE-${randomUUID()}`,
+            name: 'Concurrent income eligibility fixture',
+            exchangeId,
+            assetType: 'EQUITY',
+          },
+        })
+        await confirmCashLedger(f.accountId, f.statementId)
+        const buy = await postAccountTrade(
+          f.userId,
+          f.accountId,
+          liveTradeInput({
+            assetId: asset.id,
+            effectiveDate: '2026-10-02',
+            quantity: '2',
+          })
+        )
+        if (!buy.transactionId) throw new Error('Missing fixture acquisition')
+        const acquisition = await prisma.transaction.findUniqueOrThrow({
+          where: { id: buy.transactionId },
+        })
+        if (split)
+          await postAccountSplit(f.userId, f.accountId, {
+            idempotencyKey: randomUUID(),
+            assetId: asset.id,
+            effectiveDate: '2026-10-03',
+            newUnits: '2',
+            oldUnits: '1',
+            sourceReference: `split-${randomUUID()}`,
+            statementConfirmed: true,
+          })
+        const before = await readLiveCapitalOperations(f.userId, f.accountId)
+        const income = {
+          ...reinvestmentInput(asset.id).income,
+          idempotencyKey: randomUUID(),
+          entitlementDate: '2026-10-10',
+        }
+        const sale = {
+          kind: 'SELL',
+          positionId: acquisition.positionId,
+          idempotencyKey: randomUUID(),
+          effectiveDate: '2026-10-04',
+          sequence: 1,
+          quantity: split ? '4' : '2',
+          price: '10',
+          fees: '0',
+        }
+        const submitIncome = () =>
+          postAccountIncomeReceipt(f.userId, f.accountId, income)
+        const submitSale = () => postAccountTrade(f.userId, f.accountId, sale)
+        const outcomes = await Promise.allSettled(
+          first === 'income'
+            ? [submitIncome(), submitSale()]
+            : [submitSale(), submitIncome()]
+        )
+        const fulfilled = outcomes.filter(
+          (outcome) => outcome.status === 'fulfilled'
+        )
+        const rejected = outcomes.filter(
+          (outcome) => outcome.status === 'rejected'
+        )
+        expect(fulfilled).toHaveLength(1)
+        expect(rejected).toHaveLength(1)
+        const receipt = await prisma.accountCashOperation.findUnique({
+          where: {
+            accountId_idempotencyKey: {
+              accountId: f.accountId,
+              idempotencyKey: income.idempotencyKey,
+            },
+          },
+        })
+        const recordedSale = await prisma.accountCashOperation.findUnique({
+          where: {
+            accountId_idempotencyKey: {
+              accountId: f.accountId,
+              idempotencyKey: sale.idempotencyKey,
+            },
+          },
+        })
+        expect(Boolean(receipt)).not.toBe(Boolean(recordedSale))
+        expect(rejected[0]).toMatchObject({
+          reason: receipt
+            ? { status: 409, message: /income.*entitlement/i }
+            : { status: 422, message: /eligible historical holdings/i },
+        })
+        const quantity = await readAccountAssetQuantityAt(
+          prisma,
+          f.userId,
+          f.accountId,
+          asset.id,
+          '2026-10-10'
+        )
+        expect(quantity.toFixed()).toBe(receipt ? (split ? '4' : '2') : '0')
+        const after = await readLiveCapitalOperations(f.userId, f.accountId)
+        expect(after).toMatchObject({
+          auditNumber: before.auditNumber + 1,
+          sourceFreshness: { status: 'CURRENT' },
+        })
+        if (receipt) {
+          expect(after.sourceFingerprint).toBe(before.sourceFingerprint)
+          await expect(submitIncome()).resolves.toMatchObject({
+            created: false,
+            operationId: receipt.id,
+          })
+          await expect(submitSale()).rejects.toMatchObject({
+            status: 409,
+            message: /income.*entitlement/i,
+          })
+        } else {
+          expect(after.sourceFingerprint).not.toBe(before.sourceFingerprint)
+          await expect(submitSale()).resolves.toMatchObject({
+            created: false,
+            operationId: recordedSale?.id,
+          })
+          await expect(submitIncome()).rejects.toMatchObject({
+            status: 422,
+            message: /eligible historical holdings/i,
+          })
+        }
+      }
+    )
+
+    it('reviews split-adjusted holdings and permits a backdated sale when another parcel supports income', async () => {
+      const { postAccountTrade, postAccountSplit, postAccountIncomeReceipt } =
+        await import('./draft-cash-ledger.js')
+      const f = await fixture('1000')
+      if (!exchangeId) throw new Error('Missing fixture exchange')
+      const asset = await prisma.asset.create({
+        data: {
+          symbol: `SELL-SPLIT-INCOME-${randomUUID()}`,
+          name: 'Split sale eligibility fixture',
+          exchangeId,
+          assetType: 'EQUITY',
+        },
+      })
+      await confirmCashLedger(f.accountId, f.statementId)
+      const buy = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({
+          assetId: asset.id,
+          effectiveDate: '2026-10-02',
+          quantity: '2',
+        })
+      )
+      if (!buy.transactionId) throw new Error('Missing fixture acquisition')
+      const acquisition = await prisma.transaction.findUniqueOrThrow({
+        where: { id: buy.transactionId },
+      })
+      await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: randomUUID(),
+        assetId: asset.id,
+        effectiveDate: '2026-10-03',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `split-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      await postAccountIncomeReceipt(f.userId, f.accountId, {
+        ...reinvestmentInput(asset.id).income,
+        idempotencyKey: randomUUID(),
+        entitlementDate: '2026-10-10',
+      })
+      const sale = {
+        kind: 'SELL',
+        positionId: acquisition.positionId,
+        idempotencyKey: randomUUID(),
+        effectiveDate: '2026-10-04',
+        sequence: 1,
+        quantity: '4',
+        price: '10',
+        fees: '0',
+      }
+      await expect(
+        postAccountTrade(f.userId, f.accountId, sale)
+      ).rejects.toMatchObject({
+        status: 409,
+        message: /income.*entitlement/i,
+      })
+      await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({ assetId: asset.id, effectiveDate: '2026-10-05' })
+      )
+      await expect(
+        postAccountTrade(f.userId, f.accountId, sale)
+      ).resolves.toMatchObject({
+        created: true,
+      })
+    })
+
+    it.each(['corrected', 'reversed'] as const)(
+      'uses %s effective income when reviewing a backdated sale',
+      async (revision) => {
+        const {
+          postAccountTrade,
+          postAccountIncomeReceipt,
+          correctLiveIncomeReceipt,
+          correctLiveManualSale,
+          readLiveCapitalOperations,
+        } = await import('./draft-cash-ledger.js')
+        const f = await fixture('1000')
+        if (!exchangeId) throw new Error('Missing fixture exchange')
+        const asset = await prisma.asset.create({
+          data: {
+            symbol: `SELL-REVISED-INCOME-${randomUUID()}`,
+            name: 'Revised income eligibility fixture',
+            exchangeId,
+            assetType: 'EQUITY',
+          },
+        })
+        await confirmCashLedger(f.accountId, f.statementId)
+        const buy = await postAccountTrade(
+          f.userId,
+          f.accountId,
+          liveTradeInput({ assetId: asset.id, effectiveDate: '2026-10-02' })
+        )
+        if (!buy.transactionId) throw new Error('Missing fixture acquisition')
+        const acquisition = await prisma.transaction.findUniqueOrThrow({
+          where: { id: buy.transactionId },
+        })
+        const income = reinvestmentInput(asset.id).income
+        const receipt = await postAccountIncomeReceipt(f.userId, f.accountId, {
+          ...income,
+          idempotencyKey: randomUUID(),
+          entitlementDate: '2026-10-10',
+        })
+        const head = await readLiveCapitalOperations(f.userId, f.accountId)
+        await correctLiveIncomeReceipt(
+          f.userId,
+          f.accountId,
+          receipt.operationId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevisionId: receipt.operationId,
+            expectedAuditNumber: head.auditNumber,
+            expectedSourceFingerprint: head.sourceFingerprint,
+            reason: 'Correct income statement',
+            replacement:
+              revision === 'reversed'
+                ? null
+                : {
+                    entitlementDate: '2026-10-04',
+                    paymentDate: income.paymentDate,
+                    sequence: income.sequence,
+                    grossAmount: income.grossAmount,
+                    withholdingAmount: income.withholdingAmount,
+                    frankedAmount: income.frankedAmount,
+                    unfrankedAmount: income.unfrankedAmount,
+                    frankingCreditAud: income.frankingCreditAud,
+                  },
+          }
+        )
+        const sale = await postAccountTrade(f.userId, f.accountId, {
+          kind: 'SELL',
+          positionId: acquisition.positionId,
+          idempotencyKey: randomUUID(),
+          effectiveDate: '2026-10-05',
+          sequence: 1,
+          quantity: '1',
+          price: '20',
+          fees: '0',
+        })
+        if (!sale.transactionId) throw new Error('Missing fixture sale')
+        const afterSale = await readLiveCapitalOperations(f.userId, f.accountId)
+        const correction = {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: sale.operationId,
+          expectedSourceFingerprint: afterSale.sourceFingerprint,
+          reason: 'Correct sale date',
+          effectiveDate: '2026-10-03',
+          sequence: 1,
+          price: '20',
+          fees: '0',
+        }
+        const correctedSale = correctLiveManualSale(
+          f.userId,
+          f.accountId,
+          sale.transactionId,
+          correction
+        )
+        if (revision === 'corrected')
+          await expect(correctedSale).rejects.toMatchObject({
+            status: 409,
+            message: /income.*entitlement/i,
+          })
+        else
+          await expect(correctedSale).resolves.toMatchObject({ created: true })
+      }
+    )
+
+    it.each(['income', 'reinvestment'] as const)(
+      'rejects a later BUY correction that removes the only holding for active %s',
+      async (kind) => {
+        const {
+          postAccountTrade,
+          postAccountIncomeReceipt,
+          postAccountReinvestment,
+          correctLiveManualAcquisition,
+          readLiveCapitalOperations,
+        } = await import('./draft-cash-ledger.js')
+        const f = await fixture('1000')
+        if (!exchangeId) throw new Error('Missing fixture exchange')
+        const asset = await prisma.asset.create({
+          data: {
+            symbol: `CORRECT-ELIGIBILITY-${randomUUID()}`,
+            name: 'Income eligibility correction fixture',
+            exchangeId,
+            assetType: 'EQUITY',
+          },
+        })
+        await confirmCashLedger(f.accountId, f.statementId)
+        const buy = await postAccountTrade(
+          f.userId,
+          f.accountId,
+          liveTradeInput({ assetId: asset.id, effectiveDate: '2026-10-02' })
+        )
+        if (!buy.transactionId) throw new Error('Missing fixture acquisition')
+        const reinvestment = reinvestmentInput(asset.id)
+        const income = { ...reinvestment.income, entitlementDate: '2026-10-15' }
+        if (kind === 'income') {
+          await postAccountIncomeReceipt(f.userId, f.accountId, {
+            ...income,
+            idempotencyKey: randomUUID(),
+          })
+        } else {
+          await postAccountReinvestment(f.userId, f.accountId, {
+            ...reinvestment,
+            income,
+          })
+        }
+        const before = await readLiveCapitalOperations(f.userId, f.accountId)
+        const original = await prisma.transaction.findUniqueOrThrow({
+          where: { id: buy.transactionId },
+          include: { position: true },
+        })
+        const request = {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: buy.operationId,
+          expectedSourceFingerprint: before.sourceFingerprint,
+          reason: 'Correct acquisition date',
+          effectiveDate: '2026-10-16',
+          sequence: 1,
+          quantity: '1',
+          price: '20',
+          fees: '1',
+        }
+        await expect(
+          correctLiveManualAcquisition(
+            f.userId,
+            f.accountId,
+            buy.transactionId,
+            request
+          )
+        ).rejects.toMatchObject({
+          status: 409,
+          message: /income.*entitlement/i,
+        })
+        expect(
+          await prisma.transaction.findUniqueOrThrow({
+            where: { id: buy.transactionId },
+            include: { position: true },
+          })
+        ).toEqual(original)
+        expect(
+          await readLiveCapitalOperations(f.userId, f.accountId)
+        ).toMatchObject({
+          auditNumber: before.auditNumber,
+          sourceFingerprint: before.sourceFingerprint,
+        })
+
+        await postAccountTrade(
+          f.userId,
+          f.accountId,
+          liveTradeInput({ assetId: asset.id, effectiveDate: '2026-10-03' })
+        )
+        const afterAlternative = await readLiveCapitalOperations(
+          f.userId,
+          f.accountId
+        )
+        await expect(
+          correctLiveManualAcquisition(
+            f.userId,
+            f.accountId,
+            buy.transactionId,
+            {
+              ...request,
+              expectedSourceFingerprint: afterAlternative.sourceFingerprint,
+            }
+          )
+        ).resolves.toMatchObject({ created: true })
+      }
+    )
+
+    it('rejects a BUY quantity correction that leaves no holding at an income entitlement', async () => {
+      const {
+        postAccountIncomeReceipt,
+        correctLiveManualAcquisition,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await liveAcquisitionFixture()
+      await postAccountIncomeReceipt(f.userId, f.accountId, {
+        ...reinvestmentInput(f.assetId).income,
+        idempotencyKey: randomUUID(),
+        entitlementDate: '2026-10-10',
+      })
+      const before = await readLiveCapitalOperations(f.userId, f.accountId)
+      const request = {
+        ...f.correction,
+        expectedSourceFingerprint: before.sourceFingerprint,
+      }
+      await expect(
+        correctLiveManualAcquisition(
+          f.userId,
+          f.accountId,
+          f.buy.transactionId,
+          request
+        )
+      ).rejects.toMatchObject({ status: 409, message: /income.*entitlement/i })
+      expect(
+        await prisma.position.findUniqueOrThrow({ where: { id: f.positionId } })
+      ).toMatchObject({ quantity: 6 })
+      expect(
+        await readLiveCapitalOperations(f.userId, f.accountId)
+      ).toMatchObject({
+        auditNumber: before.auditNumber,
+        sourceFingerprint: before.sourceFingerprint,
+      })
+      await expect(
+        correctLiveManualAcquisition(
+          f.userId,
+          f.accountId,
+          f.buy.transactionId,
+          {
+            ...request,
+            quantity: '5',
+          }
+        )
+      ).resolves.toMatchObject({ created: true })
+    })
+
+    it.each(['income', 'reinvestment'] as const)(
+      'prevents a BUY void from removing the sole historical holding for active %s',
+      async (kind) => {
+        const {
+          postAccountTrade,
+          postAccountIncomeReceipt,
+          postAccountReinvestment,
+          voidLiveManualTrade,
+          readLiveCapitalOperations,
+        } = await import('./draft-cash-ledger.js')
+        const f = await fixture('1000')
+        if (!exchangeId) throw new Error('Missing fixture exchange')
+        const asset = await prisma.asset.create({
+          data: {
+            symbol: `VOID-ELIGIBILITY-${randomUUID()}`,
+            name: 'Income eligibility fixture',
+            exchangeId,
+            assetType: 'EQUITY',
+          },
+        })
+        await confirmCashLedger(f.accountId, f.statementId)
+        const buy = await postAccountTrade(
+          f.userId,
+          f.accountId,
+          liveTradeInput({
+            assetId: asset.id,
+            effectiveDate: '2026-10-02',
+          })
+        )
+        if (!buy.transactionId) throw new Error('Missing fixture acquisition')
+        const reinvestment = reinvestmentInput(asset.id)
+        const income = {
+          ...reinvestment.income,
+          entitlementDate: '2026-10-15',
+        }
+        if (kind === 'income') {
+          await postAccountIncomeReceipt(f.userId, f.accountId, {
+            ...income,
+            idempotencyKey: randomUUID(),
+          })
+        } else {
+          await postAccountReinvestment(f.userId, f.accountId, {
+            ...reinvestment,
+            income,
+          })
+        }
+        const before = await readLiveCapitalOperations(f.userId, f.accountId)
+        const request = {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: buy.operationId,
+          expectedSourceFingerprint: before.sourceFingerprint,
+          reason: 'Void acquisition',
+        }
+        await expect(
+          voidLiveManualTrade(f.userId, f.accountId, buy.transactionId, request)
+        ).rejects.toMatchObject({
+          status: 409,
+          message: /income.*entitlement/i,
+        })
+        expect(
+          await prisma.transaction.findUniqueOrThrow({
+            where: { id: buy.transactionId },
+          })
+        ).toMatchObject({ voidedAt: null })
+        expect(
+          await readLiveCapitalOperations(f.userId, f.accountId)
+        ).toMatchObject({
+          auditNumber: before.auditNumber,
+          sourceFingerprint: before.sourceFingerprint,
+        })
+
+        await postAccountTrade(
+          f.userId,
+          f.accountId,
+          liveTradeInput({
+            assetId: asset.id,
+            effectiveDate: '2026-10-03',
+          })
+        )
+        const afterAlternative = await readLiveCapitalOperations(
+          f.userId,
+          f.accountId
+        )
+        expect(
+          await voidLiveManualTrade(f.userId, f.accountId, buy.transactionId, {
+            ...request,
+            expectedSourceFingerprint: afterAlternative.sourceFingerprint,
+          })
+        ).toMatchObject({ created: true })
+      }
+    )
+
+    it('permits an acquisition void after its dependent income is reversed', async () => {
+      const {
+        postAccountTrade,
+        postAccountIncomeReceipt,
+        correctLiveIncomeReceipt,
+        voidLiveManualTrade,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('1000')
+      if (!exchangeId) throw new Error('Missing fixture exchange')
+      const asset = await prisma.asset.create({
+        data: {
+          symbol: `VOID-REVERSED-INCOME-${randomUUID()}`,
+          name: 'Reversed income fixture',
+          exchangeId,
+          assetType: 'EQUITY',
+        },
+      })
+      await confirmCashLedger(f.accountId, f.statementId)
+      const buy = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({ assetId: asset.id, effectiveDate: '2026-10-02' })
+      )
+      if (!buy.transactionId) throw new Error('Missing fixture acquisition')
+      const income = await postAccountIncomeReceipt(f.userId, f.accountId, {
+        ...reinvestmentInput(asset.id).income,
+        idempotencyKey: randomUUID(),
+        entitlementDate: '2026-10-10',
+      })
+      const head = await readLiveCapitalOperations(f.userId, f.accountId)
+      await correctLiveIncomeReceipt(
+        f.userId,
+        f.accountId,
+        income.operationId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: income.operationId,
+          expectedAuditNumber: head.auditNumber,
+          expectedSourceFingerprint: head.sourceFingerprint,
+          reason: 'Reverse the dependent income',
+          replacement: null,
+        }
+      )
+      const reversed = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(
+        await voidLiveManualTrade(f.userId, f.accountId, buy.transactionId, {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: buy.operationId,
+          expectedSourceFingerprint: reversed.sourceFingerprint,
+          reason: 'Void the acquisition',
+        })
+      ).toMatchObject({ created: true })
+    })
+
+    it('reviews the corrected income entitlement date when voiding an acquisition', async () => {
+      const {
+        postAccountTrade,
+        postAccountIncomeReceipt,
+        correctLiveIncomeReceipt,
+        voidLiveManualTrade,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('1000')
+      if (!exchangeId) throw new Error('Missing fixture exchange')
+      const asset = await prisma.asset.create({
+        data: {
+          symbol: `VOID-CORRECTED-INCOME-${randomUUID()}`,
+          name: 'Corrected income fixture',
+          exchangeId,
+          assetType: 'EQUITY',
+        },
+      })
+      await confirmCashLedger(f.accountId, f.statementId)
+      const buy = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({ assetId: asset.id, effectiveDate: '2026-10-02' })
+      )
+      if (!buy.transactionId) throw new Error('Missing fixture acquisition')
+      await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({ assetId: asset.id, effectiveDate: '2026-10-10' })
+      )
+      const source = reinvestmentInput(asset.id).income
+      const income = await postAccountIncomeReceipt(f.userId, f.accountId, {
+        ...source,
+        idempotencyKey: randomUUID(),
+        entitlementDate: '2026-10-03',
+      })
+      const head = await readLiveCapitalOperations(f.userId, f.accountId)
+      await correctLiveIncomeReceipt(
+        f.userId,
+        f.accountId,
+        income.operationId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: income.operationId,
+          expectedAuditNumber: head.auditNumber,
+          expectedSourceFingerprint: head.sourceFingerprint,
+          reason: 'Correct entitlement date',
+          replacement: {
+            entitlementDate: '2026-10-12',
+            paymentDate: source.paymentDate,
+            sequence: source.sequence,
+            grossAmount: source.grossAmount,
+            withholdingAmount: source.withholdingAmount,
+            frankedAmount: source.frankedAmount,
+            unfrankedAmount: source.unfrankedAmount,
+            frankingCreditAud: source.frankingCreditAud,
+          },
+        }
+      )
+      const corrected = await readLiveCapitalOperations(f.userId, f.accountId)
+      expect(
+        await voidLiveManualTrade(f.userId, f.accountId, buy.transactionId, {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: buy.operationId,
+          expectedSourceFingerprint: corrected.sourceFingerprint,
+          reason: 'Void the acquisition',
+        })
+      ).toMatchObject({ created: true })
+    })
+
+    it('protects income entitlement when a post-split acquisition is the only eligible parcel', async () => {
+      const {
+        postAccountTrade,
+        postAccountSplit,
+        postAccountIncomeReceipt,
+        correctLiveManualAcquisition,
+        voidLiveManualTrade,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('1000')
+      if (!exchangeId) throw new Error('Missing fixture exchange')
+      const asset = await prisma.asset.create({
+        data: {
+          symbol: `VOID-SPLIT-INCOME-${randomUUID()}`,
+          name: 'Split income eligibility fixture',
+          exchangeId,
+          assetType: 'EQUITY',
+        },
+      })
+      await confirmCashLedger(f.accountId, f.statementId)
+      const initial = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({ assetId: asset.id, effectiveDate: '2026-10-02' })
+      )
+      if (!initial.transactionId) throw new Error('Missing fixture acquisition')
+      const original = await prisma.transaction.findUniqueOrThrow({
+        where: { id: initial.transactionId },
+      })
+      await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: randomUUID(),
+        assetId: asset.id,
+        effectiveDate: '2026-10-03',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `split-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      await postAccountTrade(f.userId, f.accountId, {
+        kind: 'SELL',
+        positionId: original.positionId,
+        idempotencyKey: randomUUID(),
+        effectiveDate: '2026-10-04',
+        sequence: 1,
+        quantity: '2',
+        price: '10',
+        fees: '0',
+      })
+      const buy = await postAccountTrade(
+        f.userId,
+        f.accountId,
+        liveTradeInput({ assetId: asset.id, effectiveDate: '2026-10-05' })
+      )
+      if (!buy.transactionId) throw new Error('Missing post-split acquisition')
+      await postAccountIncomeReceipt(f.userId, f.accountId, {
+        ...reinvestmentInput(asset.id).income,
+        idempotencyKey: randomUUID(),
+        entitlementDate: '2026-10-10',
+      })
+      const head = await readLiveCapitalOperations(f.userId, f.accountId)
+      await expect(
+        voidLiveManualTrade(f.userId, f.accountId, buy.transactionId, {
+          idempotencyKey: randomUUID(),
+          expectedRevisionId: buy.operationId,
+          expectedSourceFingerprint: head.sourceFingerprint,
+          reason: 'Void post-split acquisition',
+        })
+      ).rejects.toMatchObject({ status: 409, message: /income.*entitlement/i })
+      expect(
+        await prisma.transaction.findUniqueOrThrow({
+          where: { id: buy.transactionId },
+        })
+      ).toMatchObject({ voidedAt: null })
+      const correction = {
+        idempotencyKey: randomUUID(),
+        expectedRevisionId: buy.operationId,
+        expectedSourceFingerprint: head.sourceFingerprint,
+        reason: 'Correct post-split acquisition',
+        effectiveDate: '2026-10-11',
+        sequence: 1,
+        quantity: '1',
+        price: '20',
+        fees: '1',
+      }
+      await expect(
+        correctLiveManualAcquisition(
+          f.userId,
+          f.accountId,
+          buy.transactionId,
+          correction
+        )
+      ).rejects.toMatchObject({ status: 409, message: /income.*entitlement/i })
+      await expect(
+        correctLiveManualAcquisition(f.userId, f.accountId, buy.transactionId, {
+          ...correction,
+          effectiveDate: '2026-10-05',
+          price: '21',
+        })
+      ).resolves.toMatchObject({ created: true })
+    })
+
     it('posts one linked reinvestment parcel with exact retained income and concurrent retries, then permits sales', async () => {
       const {
         postAccountSplit,
@@ -6744,6 +8270,309 @@ describe.skipIf(!enabled)(
       expect(
         await prisma.position.count({ where: { accountId: f.accountId } })
       ).toBe(2)
+    })
+
+    it('corrects pre-split reinvestment values without changing retained parcel quantities', async () => {
+      const {
+        postAccountSplit,
+        postAccountReinvestment,
+        postAccountTrade,
+        readLiveReinvestmentReview,
+        correctLiveReinvestment,
+        readLiveCapitalOperations,
+      } = await import('./draft-cash-ledger.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture asset')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const posted = await postAccountReinvestment(
+        f.userId,
+        f.accountId,
+        reinvestmentInput(f.incomeAssetId)
+      )
+      const split = await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: randomUUID(),
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-16',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `split-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      const effects = await prisma.accountSplitParcelEffect.findMany({
+        where: { actionId: split.actionId },
+        orderBy: { positionId: 'asc' },
+      })
+      const head = await readLiveReinvestmentReview(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId
+      )
+      if (!head.current) throw new Error('Missing active reinvestment')
+      const correction = {
+        idempotencyKey: randomUUID(),
+        expectedIncomeRevisionId: head.expectedIncomeRevisionId,
+        expectedAcquisitionRevisionId: head.expectedAcquisitionRevisionId,
+        expectedAuditNumber: head.expectedAuditNumber,
+        expectedSourceFingerprint: head.expectedSourceFingerprint,
+        reason: 'Correct issuer statement values',
+        replacement: {
+          ...head.current,
+          income: { ...head.current.income, frankingCreditAud: '26' },
+          acquisition: {
+            ...head.current.acquisition,
+            quantity: '4.000',
+            price: '19',
+            fees: '2',
+            sequence: 3,
+          },
+          residualAmount: '7',
+        },
+      }
+      const result = await correctLiveReinvestment(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId,
+        correction
+      )
+      expect(result).toMatchObject({
+        created: true,
+        replay: { balances: [{ endingAmount: '107' }] },
+      })
+      expect(
+        await prisma.accountSplitParcelEffect.findMany({
+          where: { actionId: split.actionId },
+          orderBy: { positionId: 'asc' },
+        })
+      ).toEqual(effects)
+      const position = await prisma.position.findUniqueOrThrow({
+        where: { id: posted.positionId },
+        include: { transactions: true },
+      })
+      expect(position.quantity).toBe(8)
+      expect(position.transactions[0].quantity).toBe(4)
+      expect(position.transactions[0].price.toString()).toBe('19')
+      expect(position.buyFees.toString()).toBe('2')
+      expect(position.totalBuyValue.toString()).toBe('76')
+      const review = await readLiveReinvestmentReview(
+        f.userId,
+        f.accountId,
+        posted.incomeOperationId
+      )
+      expect(review.current?.income.frankingCreditAud).toBe('26')
+      expect(review.current?.acquisition.quantity).toBe('4')
+      expect(review.expectedAuditNumber).toBe(head.expectedAuditNumber + 2)
+      expect(review.expectedSourceFingerprint).not.toBe(
+        head.expectedSourceFingerprint
+      )
+      expect(
+        await readLiveCapitalOperations(f.userId, f.accountId)
+      ).toMatchObject({
+        sourceFreshness: { status: 'CURRENT' },
+      })
+      await postAccountTrade(f.userId, f.accountId, {
+        kind: 'SELL',
+        positionId: posted.positionId,
+        idempotencyKey: randomUUID(),
+        effectiveDate: '2026-10-17',
+        sequence: 1,
+        quantity: '2',
+        price: '25',
+        fees: '0',
+      })
+      const afterSale = await prisma.position.findUniqueOrThrow({
+        where: { id: posted.positionId },
+      })
+      expect(afterSale.quantity).toBe(6)
+      expect(afterSale.realizedPnL?.toString()).toBe('30.5')
+      await expect(
+        correctLiveReinvestment(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId,
+          correction
+        )
+      ).resolves.toMatchObject({ created: false })
+    })
+
+    it.each(['correction', 'quantity correction', 'reversal'] as const)(
+      'fences pre-split reinvestment %s until the dependent split is reversed',
+      async (action) => {
+        const {
+          postAccountSplit,
+          reverseAccountSplit,
+          postAccountReinvestment,
+          readLiveReinvestmentReview,
+          correctLiveReinvestment,
+          readLiveCapitalOperations,
+        } = await import('./draft-cash-ledger.js')
+        const f = await fixture('100', false, false, true)
+        if (!f.incomeAssetId) throw new Error('Missing fixture asset')
+        await confirmCashLedger(f.accountId, f.statementId)
+        const posted = await postAccountReinvestment(
+          f.userId,
+          f.accountId,
+          reinvestmentInput(f.incomeAssetId)
+        )
+        const split = await postAccountSplit(f.userId, f.accountId, {
+          idempotencyKey: randomUUID(),
+          assetId: f.incomeAssetId,
+          effectiveDate: '2026-10-16',
+          newUnits: '2',
+          oldUnits: '1',
+          sourceReference: `split-${randomUUID()}`,
+          statementConfirmed: true,
+        })
+        const head = await readLiveReinvestmentReview(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId
+        )
+        if (!head.current) throw new Error('Missing active reinvestment')
+        const positionBefore = await prisma.position.findUniqueOrThrow({
+          where: { id: posted.positionId },
+          include: { transactions: true },
+        })
+        const effectsBefore = await prisma.accountSplitParcelEffect.findMany({
+          where: { actionId: split.actionId },
+          orderBy: { positionId: 'asc' },
+        })
+        const request = {
+          idempotencyKey: randomUUID(),
+          expectedIncomeRevisionId: head.expectedIncomeRevisionId,
+          expectedAcquisitionRevisionId: head.expectedAcquisitionRevisionId,
+          expectedAuditNumber: head.expectedAuditNumber,
+          expectedSourceFingerprint: head.expectedSourceFingerprint,
+          reason: 'Correct issuer allotment',
+          replacement:
+            action === 'reversal'
+              ? null
+              : {
+                  ...head.current,
+                  acquisition:
+                    action === 'correction'
+                      ? {
+                          ...head.current.acquisition,
+                          effectiveDate: '2026-10-17',
+                        }
+                      : {
+                          ...head.current.acquisition,
+                          quantity: '5',
+                          price: '16',
+                        },
+                },
+        }
+        await expect(
+          correctLiveReinvestment(
+            f.userId,
+            f.accountId,
+            posted.incomeOperationId,
+            request
+          )
+        ).rejects.toMatchObject({ status: 409, message: /split/i })
+        expect(
+          await prisma.position.findUniqueOrThrow({
+            where: { id: posted.positionId },
+            include: { transactions: true },
+          })
+        ).toEqual(positionBefore)
+        expect(
+          await prisma.accountSplitParcelEffect.findMany({
+            where: { actionId: split.actionId },
+            orderBy: { positionId: 'asc' },
+          })
+        ).toEqual(effectsBefore)
+        expect(
+          await readLiveCapitalOperations(f.userId, f.accountId)
+        ).toMatchObject({
+          auditNumber: head.expectedAuditNumber,
+          sourceFingerprint: head.expectedSourceFingerprint,
+        })
+        expect(
+          await prisma.accountCashOperationRevision.count({
+            where: {
+              operationId: {
+                in: [posted.incomeOperationId, posted.acquisitionOperationId],
+              },
+            },
+          })
+        ).toBe(0)
+        await reverseAccountSplit(f.userId, f.accountId, {
+          idempotencyKey: randomUUID(),
+          actionId: split.actionId,
+          expectedAuditNumber: head.expectedAuditNumber,
+          expectedSourceFingerprint: head.expectedSourceFingerprint,
+          reason: 'Correct the split first',
+          reversalConfirmed: true,
+        })
+        const refreshed = await readLiveReinvestmentReview(
+          f.userId,
+          f.accountId,
+          posted.incomeOperationId
+        )
+        const retry = {
+          ...request,
+          expectedAuditNumber: refreshed.expectedAuditNumber,
+          expectedSourceFingerprint: refreshed.expectedSourceFingerprint,
+        }
+        await expect(
+          correctLiveReinvestment(
+            f.userId,
+            f.accountId,
+            posted.incomeOperationId,
+            retry
+          )
+        ).resolves.toMatchObject({ created: true })
+        await expect(
+          correctLiveReinvestment(
+            f.userId,
+            f.accountId,
+            posted.incomeOperationId,
+            retry
+          )
+        ).resolves.toMatchObject({ created: false })
+        expect(
+          await prisma.accountSplitParcelEffect.findMany({
+            where: { actionId: split.actionId },
+            orderBy: { positionId: 'asc' },
+          })
+        ).toEqual(effectsBefore)
+      }
+    )
+
+    it('rejects an active split effect whose parcel is no longer effective', async () => {
+      const { postAccountSplit, postAccountReinvestment } =
+        await import('./draft-cash-ledger.js')
+      const { previewAccountOpening } =
+        await import('./accounting-preview-service.js')
+      const f = await fixture('100', false, false, true)
+      if (!f.incomeAssetId) throw new Error('Missing fixture asset')
+      await confirmCashLedger(f.accountId, f.statementId)
+      const posted = await postAccountReinvestment(
+        f.userId,
+        f.accountId,
+        reinvestmentInput(f.incomeAssetId)
+      )
+      await postAccountSplit(f.userId, f.accountId, {
+        idempotencyKey: randomUUID(),
+        assetId: f.incomeAssetId,
+        effectiveDate: '2026-10-16',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: `split-${randomUUID()}`,
+        statementConfirmed: true,
+      })
+      await prisma.position.update({
+        where: { id: posted.positionId },
+        data: { voidedAt: new Date() },
+      })
+      await expect(
+        previewAccountOpening(f.userId, f.accountId, {
+          openingDate: '2026-10-01',
+          cashBalances: [{ currency: 'AUD', amount: '100' }],
+        })
+      ).rejects.toThrow(
+        'Split effect is outside the effective account inventory'
+      )
     })
 
     it('audits paired reinvestment corrections and terminal reversal with exact retained retries', async () => {

@@ -8,19 +8,19 @@
 | POST | `/api/accounts` | 🔒 | body ×2 | [src/controllers/accounts.ts:218](../src/controllers/accounts.ts#L218) |
 | DELETE | `/api/accounts/:id` | 🔒 | param | [src/controllers/accounts.ts:434](../src/controllers/accounts.ts#L434) |
 | PATCH | `/api/accounts/:id` | 🔒 | param, body | [src/controllers/accounts.ts:375](../src/controllers/accounts.ts#L375) |
-| GET | `/api/accounts/:id/cash-operations` | 🔒 | param, query ×2 | [src/controllers/account-trades.ts:1499](../src/controllers/account-trades.ts#L1499) |
-| POST | `/api/accounts/:id/cash-operations` | 🔒 | param, body ×7 | [src/controllers/account-trades.ts:1149](../src/controllers/account-trades.ts#L1149) |
-| POST | `/api/accounts/:id/cash-operations/:operationId/corrections` | 🔒 | param ×2, body ×6 | [src/controllers/account-trades.ts:1594](../src/controllers/account-trades.ts#L1594) |
-| POST | `/api/accounts/:id/cash-transfers` | 🔒 | param, body ×9 | [src/controllers/account-trades.ts:883](../src/controllers/account-trades.ts#L883) |
-| GET | `/api/accounts/:id/cash-transfers/:operationId/corrections` | 🔒 | param ×2 | [src/controllers/account-trades.ts:678](../src/controllers/account-trades.ts#L678) |
-| POST | `/api/accounts/:id/cash-transfers/:operationId/corrections` | 🔒 | param ×2, body ×9 | [src/controllers/account-trades.ts:730](../src/controllers/account-trades.ts#L730) |
+| GET | `/api/accounts/:id/cash-operations` | 🔒 | param, query ×2 | [src/controllers/account-trades.ts:1502](../src/controllers/account-trades.ts#L1502) |
+| POST | `/api/accounts/:id/cash-operations` | 🔒 | param, body ×7 | [src/controllers/account-trades.ts:1152](../src/controllers/account-trades.ts#L1152) |
+| POST | `/api/accounts/:id/cash-operations/:operationId/corrections` | 🔒 | param ×2, body ×6 | [src/controllers/account-trades.ts:1597](../src/controllers/account-trades.ts#L1597) |
+| POST | `/api/accounts/:id/cash-transfers` | 🔒 | param, body ×9 | [src/controllers/account-trades.ts:886](../src/controllers/account-trades.ts#L886) |
+| GET | `/api/accounts/:id/cash-transfers/:operationId/corrections` | 🔒 | param ×2 | [src/controllers/account-trades.ts:681](../src/controllers/account-trades.ts#L681) |
+| POST | `/api/accounts/:id/cash-transfers/:operationId/corrections` | 🔒 | param ×2, body ×9 | [src/controllers/account-trades.ts:733](../src/controllers/account-trades.ts#L733) |
 | POST | `/api/accounts/:id/close` | 🔒 | param | [src/controllers/accounts.ts:287](../src/controllers/accounts.ts#L287) |
-| POST | `/api/accounts/:id/fx-conversions` | 🔒 | param, body ×9 | [src/controllers/account-trades.ts:567](../src/controllers/account-trades.ts#L567) |
-| GET | `/api/accounts/:id/fx-conversions/:operationId/corrections` | 🔒 | param ×2 | [src/controllers/account-trades.ts:406](../src/controllers/account-trades.ts#L406) |
-| POST | `/api/accounts/:id/fx-conversions/:operationId/corrections` | 🔒 | param ×2, body ×6 | [src/controllers/account-trades.ts:458](../src/controllers/account-trades.ts#L458) |
-| POST | `/api/accounts/:id/imported-executions/:eventId/corrections` | 🔒 | param ×2, body ×8 | [src/controllers/account-trades.ts:1894](../src/controllers/account-trades.ts#L1894) |
-| POST | `/api/accounts/:id/income-receipts` | 🔒 | param, body ×12 | [src/controllers/account-trades.ts:1224](../src/controllers/account-trades.ts#L1224) |
-| POST | `/api/accounts/:id/income-receipts/:operationId/corrections` | 🔒 | param ×2, body ×6 | [src/controllers/account-trades.ts:1308](../src/controllers/account-trades.ts#L1308) |
+| POST | `/api/accounts/:id/fx-conversions` | 🔒 | param, body ×9 | [src/controllers/account-trades.ts:570](../src/controllers/account-trades.ts#L570) |
+| GET | `/api/accounts/:id/fx-conversions/:operationId/corrections` | 🔒 | param ×2 | [src/controllers/account-trades.ts:409](../src/controllers/account-trades.ts#L409) |
+| POST | `/api/accounts/:id/fx-conversions/:operationId/corrections` | 🔒 | param ×2, body ×6 | [src/controllers/account-trades.ts:461](../src/controllers/account-trades.ts#L461) |
+| POST | `/api/accounts/:id/imported-executions/:eventId/corrections` | 🔒 | param ×2, body ×8 | [src/controllers/account-trades.ts:1907](../src/controllers/account-trades.ts#L1907) |
+| POST | `/api/accounts/:id/income-receipts` | 🔒 | param, body ×12 | [src/controllers/account-trades.ts:1227](../src/controllers/account-trades.ts#L1227) |
+| POST | `/api/accounts/:id/income-receipts/:operationId/corrections` | 🔒 | param ×2, body ×6 | [src/controllers/account-trades.ts:1311](../src/controllers/account-trades.ts#L1311) |
 | POST | `/api/accounts/:id/opening-preview` | 🔒 | param, body ×2 | [src/controllers/accounts.ts:126](../src/controllers/accounts.ts#L126) |
 | GET | `/api/accounts/:id/opening-statements` | 🔒 | param, query | [src/controllers/opening-statements.ts:195](../src/controllers/opening-statements.ts#L195) |
 | POST | `/api/accounts/:id/opening-statements` | 🔒 | param, body ×3 | [src/controllers/opening-statements.ts:133](../src/controllers/opening-statements.ts#L133) |
@@ -35,16 +35,19 @@
 | POST | `/api/accounts/:id/opening-statements/:statementId/imported-cash-operations/:operationId/corrections` | 🔒 | param ×3, body ×6 | [src/controllers/opening-statements.ts:752](../src/controllers/opening-statements.ts#L752) |
 | GET | `/api/accounts/:id/opening-statements/:statementId/reconciliation` | 🔒 | param ×2 | [src/controllers/opening-statements.ts:243](../src/controllers/opening-statements.ts#L243) |
 | POST | `/api/accounts/:id/opening-statements/:statementId/transactions/:transactionId/cash-operation` | 🔒 | param ×3, body ×3 | [src/controllers/opening-statements.ts:827](../src/controllers/opening-statements.ts#L827) |
-| POST | `/api/accounts/:id/reinvestments` | 🔒 | param, body ×5,  ×3 | [src/controllers/account-trades.ts:278](../src/controllers/account-trades.ts#L278) |
-| GET | `/api/accounts/:id/reinvestments/:operationId/corrections` | 🔒 | param ×2 | [src/controllers/account-trades.ts:113](../src/controllers/account-trades.ts#L113) |
-| POST | `/api/accounts/:id/reinvestments/:operationId/corrections` | 🔒 | param ×2, body ×7 | [src/controllers/account-trades.ts:165](../src/controllers/account-trades.ts#L165) |
+| POST | `/api/accounts/:id/reinvestments` | 🔒 | param, body ×5,  ×3 | [src/controllers/account-trades.ts:281](../src/controllers/account-trades.ts#L281) |
+| GET | `/api/accounts/:id/reinvestments/:operationId/corrections` | 🔒 | param ×2 | [src/controllers/account-trades.ts:116](../src/controllers/account-trades.ts#L116) |
+| POST | `/api/accounts/:id/reinvestments/:operationId/corrections` | 🔒 | param ×2, body ×7 | [src/controllers/account-trades.ts:168](../src/controllers/account-trades.ts#L168) |
 | POST | `/api/accounts/:id/reopen` | 🔒 | param | [src/controllers/accounts.ts:321](../src/controllers/accounts.ts#L321) |
-| GET | `/api/accounts/:id/trade-capability` | 🔒 | param, query | [src/controllers/account-trades.ts:1051](../src/controllers/account-trades.ts#L1051) |
-| POST | `/api/accounts/:id/trades` | 🔒 | param, body ×18 | [src/controllers/account-trades.ts:1068](../src/controllers/account-trades.ts#L1068) |
-| POST | `/api/accounts/:id/trades/:transactionId/acquisition-corrections` | 🔒 | param ×2, body ×9 | [src/controllers/account-trades.ts:1811](../src/controllers/account-trades.ts#L1811) |
-| POST | `/api/accounts/:id/trades/:transactionId/corrections` | 🔒 | param ×2, body ×8 | [src/controllers/account-trades.ts:1691](../src/controllers/account-trades.ts#L1691) |
-| POST | `/api/accounts/:id/trades/:transactionId/voids` | 🔒 | param ×2, body ×4 | [src/controllers/account-trades.ts:1974](../src/controllers/account-trades.ts#L1974) |
-| GET | `/api/accounts/:id/trades/voids` | 🔒 | param, query ×2 | [src/controllers/account-trades.ts:2065](../src/controllers/account-trades.ts#L2065) |
+| GET | `/api/accounts/:id/splits` | 🔒 | param, query ×2 | [src/controllers/account-trades.ts:2173](../src/controllers/account-trades.ts#L2173) |
+| POST | `/api/accounts/:id/splits` | 🔒 | param, body ×7 | [src/controllers/account-trades.ts:2146](../src/controllers/account-trades.ts#L2146) |
+| POST | `/api/accounts/:id/splits/:actionId/reversal` | 🔒 | param ×2, body ×6 | [src/controllers/account-trades.ts:2229](../src/controllers/account-trades.ts#L2229) |
+| GET | `/api/accounts/:id/trade-capability` | 🔒 | param, query | [src/controllers/account-trades.ts:1054](../src/controllers/account-trades.ts#L1054) |
+| POST | `/api/accounts/:id/trades` | 🔒 | param, body ×18 | [src/controllers/account-trades.ts:1071](../src/controllers/account-trades.ts#L1071) |
+| POST | `/api/accounts/:id/trades/:transactionId/acquisition-corrections` | 🔒 | param ×2, body ×9 | [src/controllers/account-trades.ts:1824](../src/controllers/account-trades.ts#L1824) |
+| POST | `/api/accounts/:id/trades/:transactionId/corrections` | 🔒 | param ×2, body ×8 | [src/controllers/account-trades.ts:1699](../src/controllers/account-trades.ts#L1699) |
+| POST | `/api/accounts/:id/trades/:transactionId/voids` | 🔒 | param ×2, body ×4 | [src/controllers/account-trades.ts:1987](../src/controllers/account-trades.ts#L1987) |
+| GET | `/api/accounts/:id/trades/voids` | 🔒 | param, query ×2 | [src/controllers/account-trades.ts:2078](../src/controllers/account-trades.ts#L2078) |
 | POST | `/api/auth/forgot-password` | — | forgotPasswordLimiter, body | [src/controllers/auth.ts:554](../src/controllers/auth.ts#L554) |
 | POST | `/api/auth/login` | — | — | [src/controllers/auth.ts:225](../src/controllers/auth.ts#L225) |
 | POST | `/api/auth/logout` | 🔒 | — | [src/controllers/auth.ts:494](../src/controllers/auth.ts#L494) |
@@ -62,35 +65,36 @@
 | PATCH | `/api/imports/:id/events/:eventId` | 🔒 | param ×2, body ×6 | [src/controllers/imports.ts:393](../src/controllers/imports.ts#L393) |
 | GET | `/api/portfolio/history` | 🔒 | query ×2 | [src/controllers/portfolio.ts:30](../src/controllers/portfolio.ts#L30) |
 | GET | `/api/portfolio/realized-pnl` | 🔒 | query ×2 | [src/controllers/portfolio.ts:106](../src/controllers/portfolio.ts#L106) |
-| POST | `/api/portfolio/snapshot` | 🔒 | body ×2 | [src/controllers/portfolio.ts:151](../src/controllers/portfolio.ts#L151) |
-| GET | `/api/positions` | 🔒 | query ×6 | [src/controllers/positions.ts:113](../src/controllers/positions.ts#L113) |
-| POST | `/api/positions` | 🔒 | body ×22 | [src/controllers/positions.ts:338](../src/controllers/positions.ts#L338) |
-| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1552](../src/controllers/positions.ts#L1552) |
-| PATCH | `/api/positions/:id` | 🔒 | param, body ×24 | [src/controllers/positions.ts:1154](../src/controllers/positions.ts#L1154) |
-| POST | `/api/positions/:id/check-stop-loss` | 🔒 | param, body | [src/controllers/positions.ts:997](../src/controllers/positions.ts#L997) |
-| POST | `/api/positions/:id/close` | 🔒 | param, body ×6 | [src/controllers/positions.ts:1471](../src/controllers/positions.ts#L1471) |
-| POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:891](../src/controllers/positions.ts#L891) |
-| GET | `/api/positions/close-events` | 🔒 | query ×5 | [src/controllers/positions.ts:562](../src/controllers/positions.ts#L562) |
-| PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×5 | [src/controllers/positions.ts:818](../src/controllers/positions.ts#L818) |
+| POST | `/api/portfolio/snapshot` | 🔒 | body ×2 | [src/controllers/portfolio.ts:153](../src/controllers/portfolio.ts#L153) |
+| GET | `/api/positions` | 🔒 | query ×6 | [src/controllers/positions.ts:142](../src/controllers/positions.ts#L142) |
+| POST | `/api/positions` | 🔒 | body ×22 | [src/controllers/positions.ts:398](../src/controllers/positions.ts#L398) |
+| DELETE | `/api/positions/:id` | 🔒 | param | [src/controllers/positions.ts:1829](../src/controllers/positions.ts#L1829) |
+| PATCH | `/api/positions/:id` | 🔒 | param, body ×24 | [src/controllers/positions.ts:1348](../src/controllers/positions.ts#L1348) |
+| POST | `/api/positions/:id/check-stop-loss` | 🔒 | param, body | [src/controllers/positions.ts:1184](../src/controllers/positions.ts#L1184) |
+| POST | `/api/positions/:id/close` | 🔒 | param, body ×6 | [src/controllers/positions.ts:1748](../src/controllers/positions.ts#L1748) |
+| POST | `/api/positions/:id/recalculate-drawdown` | 🔒 | param | [src/controllers/positions.ts:1041](../src/controllers/positions.ts#L1041) |
+| POST | `/api/positions/:id/stop-loss-review` | 🔒 | param, body ×2 | [src/controllers/positions.ts:1664](../src/controllers/positions.ts#L1664) |
+| GET | `/api/positions/close-events` | 🔒 | query ×5 | [src/controllers/positions.ts:646](../src/controllers/positions.ts#L646) |
+| PATCH | `/api/positions/close-events/:id` | 🔒 | param, body ×5 | [src/controllers/positions.ts:967](../src/controllers/positions.ts#L967) |
 | GET | `/api/screener` | 🔒 | query ×10 | [src/controllers/screener.ts:124](../src/controllers/screener.ts#L124) |
 | GET | `/api/screener/saved-screens` | 🔒 | — | [src/controllers/screener.ts:301](../src/controllers/screener.ts#L301) |
 | POST | `/api/screener/saved-screens` | 🔒 | body ×2 | [src/controllers/screener.ts:344](../src/controllers/screener.ts#L344) |
 | DELETE | `/api/screener/saved-screens/:id` | 🔒 | param | [src/controllers/screener.ts:385](../src/controllers/screener.ts#L385) |
 | GET | `/api/screener/upcoming-dividends` | 🔒 | query ×3 | [src/controllers/screener.ts:233](../src/controllers/screener.ts#L233) |
-| GET | `/api/statistics/breakdowns` | 🔒 | , query ×2 | [src/controllers/statistics.ts:634](../src/controllers/statistics.ts#L634) |
-| GET | `/api/statistics/closed-trades` | 🔒 | , query ×4 | [src/controllers/statistics.ts:802](../src/controllers/statistics.ts#L802) |
-| GET | `/api/statistics/distributions` | 🔒 |  | [src/controllers/statistics.ts:457](../src/controllers/statistics.ts#L457) |
-| GET | `/api/statistics/risk` | 🔒 |  | [src/controllers/statistics.ts:540](../src/controllers/statistics.ts#L540) |
-| GET | `/api/statistics/summary` | 🔒 |  | [src/controllers/statistics.ts:222](../src/controllers/statistics.ts#L222) |
-| GET | `/api/statistics/timeseries` | 🔒 | , query ×2 | [src/controllers/statistics.ts:322](../src/controllers/statistics.ts#L322) |
+| GET | `/api/statistics/breakdowns` | 🔒 | , query ×2 | [src/controllers/statistics.ts:637](../src/controllers/statistics.ts#L637) |
+| GET | `/api/statistics/closed-trades` | 🔒 | , query ×4 | [src/controllers/statistics.ts:808](../src/controllers/statistics.ts#L808) |
+| GET | `/api/statistics/distributions` | 🔒 |  | [src/controllers/statistics.ts:458](../src/controllers/statistics.ts#L458) |
+| GET | `/api/statistics/risk` | 🔒 |  | [src/controllers/statistics.ts:541](../src/controllers/statistics.ts#L541) |
+| GET | `/api/statistics/summary` | 🔒 |  | [src/controllers/statistics.ts:223](../src/controllers/statistics.ts#L223) |
+| GET | `/api/statistics/timeseries` | 🔒 | , query ×2 | [src/controllers/statistics.ts:323](../src/controllers/statistics.ts#L323) |
 | GET | `/api/stocks/quotes` | 🔒 | query | [src/controllers/stocks.ts:293](../src/controllers/stocks.ts#L293) |
 | GET | `/api/stocks/search` | — | — | [src/controllers/stocks.ts:163](../src/controllers/stocks.ts#L163) |
-| GET | `/api/tax-reports` | 🔒 | query | [src/controllers/tax-reports.ts:310](../src/controllers/tax-reports.ts#L310) |
-| DELETE | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:610](../src/controllers/tax-reports.ts#L610) |
-| GET | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:510](../src/controllers/tax-reports.ts#L510) |
-| GET | `/api/tax-reports/:id/download` | 🔒 | param | [src/controllers/tax-reports.ts:559](../src/controllers/tax-reports.ts#L559) |
-| POST | `/api/tax-reports/generate` | 🔒 | body ×3 | [src/controllers/tax-reports.ts:134](../src/controllers/tax-reports.ts#L134) |
-| GET | `/api/tax-reports/position-usage` | 🔒 | — | [src/controllers/tax-reports.ts:396](../src/controllers/tax-reports.ts#L396) |
+| GET | `/api/tax-reports` | 🔒 | query | [src/controllers/tax-reports.ts:359](../src/controllers/tax-reports.ts#L359) |
+| DELETE | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:660](../src/controllers/tax-reports.ts#L660) |
+| GET | `/api/tax-reports/:id` | 🔒 | param | [src/controllers/tax-reports.ts:559](../src/controllers/tax-reports.ts#L559) |
+| GET | `/api/tax-reports/:id/download` | 🔒 | param | [src/controllers/tax-reports.ts:608](../src/controllers/tax-reports.ts#L608) |
+| POST | `/api/tax-reports/generate` | 🔒 | body ×3 | [src/controllers/tax-reports.ts:137](../src/controllers/tax-reports.ts#L137) |
+| GET | `/api/tax-reports/position-usage` | 🔒 | — | [src/controllers/tax-reports.ts:445](../src/controllers/tax-reports.ts#L445) |
 | DELETE | `/api/users/me` | 🔒 | body | [src/controllers/users.ts:270](../src/controllers/users.ts#L270) |
 | GET | `/api/users/me` | 🔒 | — | [src/controllers/users.ts:52](../src/controllers/users.ts#L52) |
 | PATCH | `/api/users/me` | 🔒 | body ×4 | [src/controllers/users.ts:130](../src/controllers/users.ts#L130) |

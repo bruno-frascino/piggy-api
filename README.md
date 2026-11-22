@@ -234,7 +234,7 @@ eligibility and error responses. Draft deposits/withdrawals are not a live fundi
 
 - `GET /api/portfolio/history` - Historical portfolio snapshots (for equity-curve charting)
 - `GET /api/portfolio/realized-pnl` - Realized profit and loss over a date range
-- `POST /api/portfolio/snapshot` - Create/update today's portfolio snapshot (upsert)
+- `POST /api/portfolio/snapshot` - Create/update today's synthetic portfolio snapshot (upsert); split-affected holdings use validated remaining acquisition cost, not a sourced valuation
 
 ### Tax Reports (`/api/tax-reports`) — requires auth
 

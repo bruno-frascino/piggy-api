@@ -3,6 +3,11 @@ import { lockActiveUser } from './user-lock.js'
 import { lockOwnedPosition, lockOwnedTradingAccount } from './account-lock.js'
 import { requireNoSplitHistory } from './split-mutation-guard.js'
 import {
+  hasRelevantRetainedSplitHistory,
+  hasUnreviewedRetainedSplitHistory,
+  requireSupportedPriceHistory,
+} from './position-derived-values.js'
+import {
   quantityTolerance,
   recomputePositionFromTransactions,
   resolveTradingAccount,
@@ -13,6 +18,26 @@ const transactionOptions = {
   timeout: 15000,
   maxWait: 5000,
 } as const
+
+const sourceNeutralPositionFields = new Set([
+  'assetId',
+  'stopLossPrice',
+  'stopLossSetAt',
+  'stopLossReviewedAt',
+  'stopLossHitAt',
+  'takeProfitPrice',
+  'strategy',
+  'setupType',
+  'timeframe',
+  'tags',
+  'notes',
+  'openReason',
+  'tradeGrade',
+  'lessonsLearned',
+  'unrealizedPnL',
+  'maxDrawdownPercent',
+  'maxRunUpPercent',
+])
 
 function fail(status: number, message: string): never {
   throw Object.assign(new Error(message), {
@@ -258,7 +283,10 @@ export async function updateCloseEvent(
         }),
       },
     })
-    if (!(await recomputePositionFromTransactions(event.positionId, db)))
+    if (
+      financial &&
+      !(await recomputePositionFromTransactions(event.positionId, db))
+    )
       fail(404, 'Position not found')
     return updated
   }, transactionOptions)
@@ -342,7 +370,8 @@ export async function updatePositionAcquisition(
   positionId: string,
   input: UpdateAcquisitionInput,
   metadata: Record<string, unknown>,
-  destinationAccountId?: string
+  destinationAccountId?: string,
+  requiresPriceHistory = false
 ) {
   if (input.openDate !== undefined) validDate(input.openDate)
   if (input.entryPrice !== undefined) {
@@ -367,6 +396,12 @@ export async function updatePositionAcquisition(
     if (!existing) fail(404, 'Position not found')
     if (existing.voidedAt)
       fail(409, 'Voided positions are retained for audit and cannot be changed')
+    if (
+      requiresPriceHistory ||
+      metadata.maxDrawdownPercent !== undefined ||
+      metadata.maxRunUpPercent !== undefined
+    )
+      await requireSupportedPriceHistory(db, existing)
     let accountStatus = existing.account?.status
     if (destinationAccountId) {
       const destination = await db.tradingAccount.findFirst({
@@ -393,6 +428,26 @@ export async function updatePositionAcquisition(
       destinationAccountId !== existing.accountId
     const changingAsset =
       metadata.assetId !== undefined && metadata.assetId !== existing.assetId
+    const previousStop =
+      existing.stopLossPrice === null ? null : Number(existing.stopLossPrice)
+    const nextStop =
+      metadata.stopLossPrice === undefined
+        ? previousStop
+        : metadata.stopLossPrice === null
+          ? null
+          : Number(metadata.stopLossPrice)
+    if (
+      previousStop !== null &&
+      previousStop > 0 &&
+      nextStop !== null &&
+      nextStop > 0 &&
+      nextStop !== previousStop &&
+      (await hasRelevantRetainedSplitHistory(db, existing))
+    )
+      fail(
+        409,
+        'A split-affected stop loss must be changed through the explicit review workflow'
+      )
     if (financial || moving || changingAsset) {
       await requireNoCashLedger(db, [
         existing.accountId,
@@ -414,6 +469,18 @@ export async function updatePositionAcquisition(
     const data = {
       ...metadata,
       ...(destinationAccountId ? { accountId: destinationAccountId } : {}),
+      ...(!financial &&
+      !moving &&
+      !changingAsset &&
+      Object.keys(metadata).every((key) =>
+        sourceNeutralPositionFields.has(key)
+      ) &&
+      (await db.accountCashLedger.findUnique({
+        where: { accountId: existing.accountId },
+        select: { accountId: true },
+      }))
+        ? { updatedAt: existing.updatedAt }
+        : {}),
     }
     if (financial) {
       if (buys.length !== 1)
@@ -472,5 +539,84 @@ export async function updatePositionAcquisition(
     if (accountStatus === 'CLOSED' && updated.status !== 'CLOSED')
       fail(409, 'Reopen the trading account before adding open holdings')
     return updated
+  }, transactionOptions)
+}
+
+export async function reviewSplitAffectedStopLoss(
+  userId: string,
+  positionId: string,
+  stopLossPrice: number
+): Promise<{ stopLossPrice: number; stopLossSetAt: Date }> {
+  nonNegative(stopLossPrice, 'Stop-loss price')
+  if (stopLossPrice <= 0) fail(400, 'Stop-loss price must be positive')
+  return prisma.$transaction(async (db) => {
+    await lockOwnedPosition(db, userId, positionId)
+    const position = await db.position.findFirst({
+      where: { id: positionId, userId, voidedAt: null },
+      select: {
+        id: true,
+        accountId: true,
+        assetId: true,
+        openDate: true,
+        status: true,
+        positionType: true,
+        stopLossPrice: true,
+        stopLossSetAt: true,
+        stopLossReviewedAt: true,
+        stopLossHitAt: true,
+        updatedAt: true,
+      },
+    })
+    if (!position) fail(404, 'Position not found')
+    if (
+      position.status === 'CLOSED' ||
+      position.positionType !== 'LONG' ||
+      position.stopLossPrice === null ||
+      Number(position.stopLossPrice) <= 0
+    )
+      fail(409, 'This position has no active stop loss eligible for review')
+    if (!(await hasRelevantRetainedSplitHistory(db, position)))
+      fail(409, 'This position has no retained split history to review')
+    if (
+      position.stopLossSetAt &&
+      Number(position.stopLossPrice) === stopLossPrice &&
+      !(await hasUnreviewedRetainedSplitHistory(db, position))
+    )
+      return {
+        stopLossPrice,
+        stopLossSetAt: position.stopLossSetAt,
+      }
+    const stopLossSetAt = new Date()
+    const ledger = await db.accountCashLedger.findUnique({
+      where: { accountId: position.accountId },
+      select: { accountId: true },
+    })
+    const result = await db.position.updateMany({
+      where: {
+        id: position.id,
+        userId,
+        accountId: position.accountId,
+        assetId: position.assetId,
+        openDate: position.openDate,
+        status: position.status,
+        positionType: position.positionType,
+        stopLossPrice: position.stopLossPrice,
+        stopLossSetAt: position.stopLossSetAt,
+        stopLossReviewedAt: position.stopLossReviewedAt,
+        stopLossHitAt: position.stopLossHitAt,
+        updatedAt: position.updatedAt,
+        voidedAt: null,
+      },
+      data: {
+        stopLossPrice,
+        stopLossSetAt,
+        stopLossReviewedAt: stopLossSetAt,
+        stopLossHitAt: null,
+        ...(ledger ? { updatedAt: position.updatedAt } : {}),
+      },
+    })
+    if (result.count !== 1)
+      fail(409, 'Position changed during stop-loss review. Reload and retry.')
+    return { stopLossPrice, stopLossSetAt }
   }, transactionOptions)
 }

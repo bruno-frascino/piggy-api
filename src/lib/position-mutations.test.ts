@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   sell: vi.fn(),
   event: vi.fn(),
   update: vi.fn(),
+  updateMany: vi.fn(),
   remove: vi.fn(),
   recompute: vi.fn(),
   account: vi.fn(),
@@ -33,6 +34,7 @@ import {
   updateCloseEvent,
   createPosition,
   updatePositionAcquisition,
+  reviewSplitAffectedStopLoss,
 } from './position-mutations.js'
 
 const input = { closeDate: new Date('2026-10-03T00:00:00Z'), exitPrice: 12 }
@@ -43,6 +45,7 @@ const initial = {
   assetId: 'asset1',
   status: 'OPEN',
   quantity: 10,
+  updatedAt: new Date('2026-10-02T00:00:00Z'),
   transactions: [{ id: 'b1', type: 'BUY', quantity: 10, brokerRef: null }],
 }
 const tx = {
@@ -54,6 +57,7 @@ const tx = {
     findFirst: mocks.position,
     delete: mocks.remove,
     update: mocks.update,
+    updateMany: mocks.updateMany,
     create: mocks.create,
   },
   tradingAccount: { findFirst: mocks.account, upsert: mocks.accountUpsert },
@@ -151,6 +155,128 @@ describe('atomic parcel disposal mutations', () => {
     await updateCloseEvent('u1', 's1', { notes: 'Statement reference' })
     expect(mocks.split).not.toHaveBeenCalled()
     expect(mocks.update).toHaveBeenCalled()
+  })
+  it('requires the explicit review workflow to change an existing stop after a split', async () => {
+    mocks.position.mockResolvedValue({
+      ...acquisition,
+      stopLossPrice: 9,
+    })
+    mocks.split.mockResolvedValue({ id: 'split1' })
+    await expect(
+      updatePositionAcquisition('u1', 'p1', {}, { stopLossPrice: 8 })
+    ).rejects.toMatchObject({
+      status: 409,
+      message: /explicit review workflow/,
+    })
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+  it('records an explicit split stop-loss review without changing the source fingerprint', async () => {
+    const updatedAt = new Date('2026-10-02T00:00:00Z')
+    const position = {
+      ...acquisition,
+      status: 'OPEN',
+      positionType: 'LONG',
+      stopLossPrice: 9,
+      stopLossSetAt: new Date('2026-10-01T00:00:00Z'),
+      stopLossReviewedAt: null,
+      stopLossHitAt: new Date('2026-10-01T00:00:00Z'),
+      updatedAt,
+    }
+    mocks.position.mockResolvedValue(position)
+    mocks.split.mockResolvedValue({ id: 'split1' })
+    mocks.cashLedger.mockResolvedValue({ accountId: 'a1' })
+    mocks.updateMany.mockResolvedValue({ count: 1 })
+
+    const result = await reviewSplitAffectedStopLoss('u1', 'p1', 4.5)
+
+    expect(result).toMatchObject({ stopLossPrice: 4.5 })
+    expect(result.stopLossSetAt).toBeInstanceOf(Date)
+    expect(mocks.lock).toHaveBeenCalledWith(tx, 'u1', 'p1')
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'p1',
+        stopLossPrice: 9,
+        stopLossSetAt: position.stopLossSetAt,
+        stopLossReviewedAt: null,
+        stopLossHitAt: position.stopLossHitAt,
+        updatedAt,
+      }),
+      data: {
+        stopLossPrice: 4.5,
+        stopLossSetAt: result.stopLossSetAt,
+        stopLossReviewedAt: result.stopLossSetAt,
+        stopLossHitAt: null,
+        updatedAt,
+      },
+    })
+  })
+  it('does not clear a stop hit when the exact completed review is retried', async () => {
+    const stopLossSetAt = new Date('2026-10-10T00:00:00Z')
+    mocks.position.mockResolvedValue({
+      ...acquisition,
+      status: 'OPEN',
+      positionType: 'LONG',
+      stopLossPrice: 9,
+      stopLossSetAt,
+      stopLossReviewedAt: stopLossSetAt,
+      stopLossHitAt: new Date('2026-10-11T00:00:00Z'),
+    })
+    mocks.split
+      .mockResolvedValueOnce({ id: 'split1' })
+      .mockResolvedValueOnce(null)
+
+    await expect(reviewSplitAffectedStopLoss('u1', 'p1', 9)).resolves.toEqual({
+      stopLossPrice: 9,
+      stopLossSetAt,
+    })
+    expect(mocks.updateMany).not.toHaveBeenCalled()
+  })
+  it('keeps legacy timestamp behavior and rejects a review without retained split history', async () => {
+    mocks.position.mockResolvedValue({
+      ...acquisition,
+      status: 'OPEN',
+      positionType: 'LONG',
+      stopLossPrice: 9,
+      stopLossSetAt: null,
+      stopLossReviewedAt: null,
+      stopLossHitAt: null,
+      updatedAt: new Date('2026-10-02T00:00:00Z'),
+    })
+    mocks.split.mockResolvedValue(null)
+    await expect(
+      reviewSplitAffectedStopLoss('u1', 'p1', 4.5)
+    ).rejects.toMatchObject({ status: 409, message: /retained split history/ })
+    expect(mocks.updateMany).not.toHaveBeenCalled()
+
+    mocks.split.mockResolvedValue({ id: 'split1' })
+    mocks.cashLedger.mockResolvedValue(null)
+    mocks.updateMany.mockResolvedValue({ count: 1 })
+    await reviewSplitAffectedStopLoss('u1', 'p1', 4.5)
+    expect(mocks.updateMany.mock.calls[0][0].data).not.toHaveProperty(
+      'updatedAt'
+    )
+  })
+  it('rejects price-derived writes under the parcel lock when split history exists', async () => {
+    mocks.position.mockResolvedValue(acquisition)
+    mocks.split.mockResolvedValue({ id: 'split1' })
+    for (const [metadata, requiresPriceHistory] of [
+      [{ maxDrawdownPercent: 50 }, false],
+      [{ maxRunUpPercent: null }, false],
+      [{}, true],
+    ] as const) {
+      await expect(
+        updatePositionAcquisition(
+          'u1',
+          'p1',
+          {},
+          metadata,
+          undefined,
+          requiresPriceHistory
+        )
+      ).rejects.toMatchObject({ status: 409, message: /drawdown and run-up/i })
+    }
+    expect(mocks.lock).toHaveBeenCalledTimes(3)
+    expect(mocks.update).not.toHaveBeenCalled()
   })
   it('rejects new acquisitions when the account was closed before the lock was acquired', async () => {
     mocks.account
@@ -322,6 +448,22 @@ describe('atomic parcel disposal mutations', () => {
       data: { notes: 'metadata' },
     })
     expect(mocks.recompute).not.toHaveBeenCalled()
+  })
+  it('preserves metadata timestamps only for ledger-backed accounts', async () => {
+    mocks.position.mockResolvedValue(acquisition)
+    mocks.cashLedger.mockResolvedValue({ accountId: 'a1' })
+    await updatePositionAcquisition('u1', 'p1', {}, { notes: 'ledger note' })
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { notes: 'ledger note', updatedAt: acquisition.updatedAt },
+    })
+    mocks.update.mockClear()
+    mocks.cashLedger.mockResolvedValue(null)
+    await updatePositionAcquisition('u1', 'p1', {}, { notes: 'legacy note' })
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { notes: 'legacy note' },
+    })
   })
   it('locks both move accounts then rechecks the demo boundary from current data', async () => {
     mocks.position.mockResolvedValue(acquisition)
@@ -541,11 +683,18 @@ describe('atomic parcel disposal mutations', () => {
   it.each([
     {},
     { closeReason: 'TARGET' as const },
-    { sellFees: 0 },
     { notes: 'reason' },
-  ])('preserves metadata-only and zero-fee corrections %#', async (patch) => {
-    await updateCloseEvent('u1', 's1', patch)
-    expect(mocks.update).toHaveBeenCalledTimes(1)
+    { sellFees: 1 },
+  ])(
+    'does not recompute the parcel for a metadata-only sale edit %#',
+    async (patch) => {
+      await updateCloseEvent('u1', 's1', patch)
+      expect(mocks.update).toHaveBeenCalledTimes(1)
+      expect(mocks.recompute).not.toHaveBeenCalled()
+    }
+  )
+  it('recomputes after changing a sale fee to zero', async () => {
+    await updateCloseEvent('u1', 's1', { sellFees: 0 })
     expect(mocks.recompute).toHaveBeenCalledWith('p1', tx)
   })
   it.each([
@@ -570,9 +719,9 @@ describe('atomic parcel disposal mutations', () => {
     mocks.event
       .mockResolvedValueOnce({ positionId: 'p1' })
       .mockResolvedValueOnce(null)
-    await expect(updateCloseEvent('u1', 's1', {})).rejects.toMatchObject({
-      status: 404,
-    })
+    await expect(
+      updateCloseEvent('u1', 's1', { sellFees: 0 })
+    ).rejects.toMatchObject({ status: 404 })
     mocks.event
       .mockResolvedValueOnce({ positionId: 'p1' })
       .mockResolvedValueOnce({ positionId: 'p2' })
@@ -587,9 +736,9 @@ describe('atomic parcel disposal mutations', () => {
     ).rejects.toThrow('consideration')
     expect(mocks.update).not.toHaveBeenCalled()
     mocks.recompute.mockResolvedValue(null)
-    await expect(updateCloseEvent('u1', 's1', {})).rejects.toMatchObject({
-      status: 404,
-    })
+    await expect(
+      updateCloseEvent('u1', 's1', { sellFees: 0 })
+    ).rejects.toMatchObject({ status: 404 })
   })
   it('locks and ownership-rechecks parcel deletion, propagating delete failures', async () => {
     await deletePosition('u1', 'p1')
@@ -701,7 +850,11 @@ describe('atomic parcel disposal mutations', () => {
     )
     expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
       where: { id: 'p1' },
-      data: { notes: 'reviewed', assetId: 'asset1', accountId: 'a1' },
+      data: {
+        notes: 'reviewed',
+        assetId: 'asset1',
+        accountId: 'a1',
+      },
     })
     expect(mocks.recompute).not.toHaveBeenCalled()
     mocks.update.mockClear()

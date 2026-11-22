@@ -98,8 +98,10 @@ import { isConcurrentConflict } from './transaction-conflict.js'
 import { requireNoSplitHistory } from './split-mutation-guard.js'
 import {
   prepareStoredAccountSplit,
+  projectStoredParcelInventory,
   readAccountAssetQuantityAt,
   reviewStoredParcelSale,
+  storedParcelObservationDate,
 } from './stored-parcel-inventory.js'
 
 function conflict(message: string, status = 409): never {
@@ -4575,6 +4577,71 @@ export async function postAccountSplit(
   }
 }
 
+export async function readAccountSplitHistory(
+  userId: string,
+  accountId: string,
+  limit = 100,
+  offset = 0
+) {
+  return prisma.$transaction(async (db) => {
+    await lockOwnedTradingAccount(db, userId, accountId)
+    const account = await db.tradingAccount.findUnique({
+      where: { id: accountId },
+      select: { id: true, status: true, isDemo: true },
+    })
+    if (!account) conflict('Trading account not found', 404)
+    if (account.isDemo) conflict('Stock split history requires a real account')
+
+    const [total, actions] = await Promise.all([
+      db.accountSplitAction.count({ where: { accountId } }),
+      db.accountSplitAction.findMany({
+        where: { accountId },
+        orderBy: [{ effectiveDate: 'desc' }, { recordedAt: 'desc' }],
+        take: limit,
+        skip: offset,
+        include: {
+          reversal: {
+            select: {
+              id: true,
+              auditNumber: true,
+              reason: true,
+              recordedAt: true,
+            },
+          },
+          effects: { select: { id: true } },
+        },
+      }),
+    ])
+    return {
+      accountId,
+      accountStatus: account.status,
+      total,
+      limit,
+      offset,
+      items: actions.map((action) => ({
+        actionId: action.id,
+        assetId: action.assetId,
+        effectiveDate: action.effectiveDate.toISOString().slice(0, 10),
+        newUnits: action.newUnits.toFixed(),
+        oldUnits: action.oldUnits.toFixed(),
+        sourceReference: action.sourceReference,
+        auditNumber: action.auditNumber,
+        sourceFingerprint: action.nextFingerprint,
+        recordedAt: action.recordedAt,
+        affectedParcelCount: action.effects.length,
+        reversal: action.reversal
+          ? {
+              reversalId: action.reversal.id,
+              auditNumber: action.reversal.auditNumber,
+              reason: action.reversal.reason,
+              recordedAt: action.reversal.recordedAt,
+            }
+          : null,
+      })),
+    }
+  })
+}
+
 export async function reverseAccountSplit(
   userId: string,
   accountId: string,
@@ -5246,7 +5313,8 @@ async function requireAcquisitionAfterRetainedSplits(
   db: DraftCashTransaction,
   accountId: string,
   assetId: string,
-  effectiveDate: string
+  effectiveDate: string,
+  message = 'An acquisition on or before a retained stock split date would alter its parcel snapshot'
 ) {
   const laterSplit = await db.accountSplitAction.findFirst({
     where: {
@@ -5257,10 +5325,7 @@ async function requireAcquisitionAfterRetainedSplits(
     },
     select: { id: true },
   })
-  if (laterSplit)
-    conflict(
-      'An acquisition on or before a retained stock split date would alter its parcel snapshot'
-    )
+  if (laterSplit) conflict(message)
 }
 
 async function requireTradeAfterRetainedSplits(
@@ -5268,7 +5333,8 @@ async function requireTradeAfterRetainedSplits(
   accountId: string,
   assetId: string,
   originalDate: string,
-  replacementDate: string
+  replacementDate: string,
+  preservesSplitSnapshot = false
 ) {
   const latestSplit = await db.accountSplitAction.findFirst({
     where: { accountId, assetId, reversal: { is: null } },
@@ -5276,9 +5342,17 @@ async function requireTradeAfterRetainedSplits(
     select: { effectiveDate: true },
   })
   const splitDate = latestSplit?.effectiveDate.toISOString().slice(0, 10)
-  if (splitDate && (originalDate <= splitDate || replacementDate <= splitDate))
+  if (
+    splitDate &&
+    (originalDate <= splitDate || replacementDate <= splitDate) &&
+    !(
+      preservesSplitSnapshot &&
+      originalDate < splitDate &&
+      replacementDate === originalDate
+    )
+  )
     conflict(
-      'Only trades strictly after the latest retained split can be corrected or voided'
+      'Pre-split corrections must preserve the original date and quantity; trade voids and inventory-changing corrections must be after the latest retained split'
     )
 }
 
@@ -5381,7 +5455,7 @@ function accountTradeTransaction(
     const date = new Date(`${input.effectiveDate}T01:00:00Z`)
     let positionId: string
     let currency: string
-    let assetId: string | null = null
+    let assetId: string
     if (input.kind === 'BUY') {
       const foundAsset =
         'assetId' in input
@@ -5501,6 +5575,7 @@ function accountTradeTransaction(
           )
       }
       positionId = currentPosition.id
+      assetId = currentPosition.assetId
       currency = currentPosition.asset.exchange.currency
     }
     const transactionGross = new AccountingDecimal(input.quantity)
@@ -5517,7 +5592,6 @@ function accountTradeTransaction(
     if (input.kind === 'BUY' && capital.gte('10000000000'))
       conflict('Trade capital allocation exceeds storage precision', 400)
     if (input.kind === 'BUY') {
-      if (!assetId) conflict('Trade asset not found', 404)
       await db.position.create({
         data: {
           id: positionId,
@@ -5558,6 +5632,17 @@ function accountTradeTransaction(
     })
     if (!(await recomputePositionFromTransactions(positionId, db)))
       conflict('Position not found while posting account trade', 404)
+    if (input.kind === 'SELL') {
+      await requireIncomeEligibilityAfterInventoryChange(
+        db,
+        state,
+        userId,
+        accountId,
+        assetId,
+        input.effectiveDate,
+        now
+      )
+    }
     const postedTransaction = await db.transaction.findUniqueOrThrow({
       where: { id: transaction.id },
       include: {
@@ -5976,6 +6061,57 @@ function hasActiveSplitDependentReinvestment(
   })
 }
 
+async function requireIncomeEligibilityAfterInventoryChange(
+  db: DraftCashTransaction,
+  state: Awaited<ReturnType<typeof readLiveCashState>>,
+  userId: string,
+  accountId: string,
+  assetId: string,
+  affectedFromDate: string,
+  now: Date,
+  options?: { affectedBeforeDate?: string; excludedIncomeOperationId?: string }
+) {
+  const checks = new Map<string, { date: string; excludePositionId?: string }>()
+  for (const operation of state.cashLedgerOps) {
+    const command = state.liveCommandByOperation.get(operation.id)
+    if (
+      command?.kind !== 'INCOME' ||
+      operation.id === options?.excludedIncomeOperationId ||
+      command.income.assetId !== assetId ||
+      command.income.entitlementDate < affectedFromDate ||
+      (options?.affectedBeforeDate !== undefined &&
+        command.income.entitlementDate >= options.affectedBeforeDate)
+    )
+      continue
+    const excludePositionId =
+      recordValue(operation.command).reinvestment === undefined
+        ? undefined
+        : reinvestmentPair(state, operation.id, now).acquisition.transaction!
+            .positionId
+    const date = command.income.entitlementDate
+    checks.set(JSON.stringify([date, excludePositionId ?? null]), {
+      date,
+      excludePositionId,
+    })
+    if (checks.size > 500)
+      conflict('Income entitlement review exceeds the supported limit', 422)
+  }
+  for (const { date, excludePositionId } of checks.values()) {
+    const eligible = await readAccountAssetQuantityAt(
+      db,
+      userId,
+      accountId,
+      assetId,
+      date,
+      excludePositionId
+    )
+    if (!eligible.gt(0))
+      conflict(
+        'This inventory change would remove holdings supporting an active income entitlement. Correct or reverse the income before making the change.'
+      )
+  }
+}
+
 export async function readLiveReinvestmentReview(
   userId: string,
   accountId: string,
@@ -6115,13 +6251,28 @@ export async function correctLiveReinvestment(
         )
       if (JSON.stringify(input.replacement) === JSON.stringify(current))
         conflict('Correction must change the statement or acquisition', 400)
-      if (next) {
+      const preservesSplitSnapshot =
+        next !== null &&
+        next.trade.effectiveDate === current.acquisition.effectiveDate &&
+        new AccountingDecimal(next.trade.quantity).eq(
+          current.acquisition.quantity
+        )
+      if (!preservesSplitSnapshot)
         await requireAcquisitionAfterRetainedSplits(
           db,
           accountId,
           original.request.income.assetId,
-          next.trade.effectiveDate
+          current.acquisition.effectiveDate,
+          'A retained stock split depends on this reinvestment acquisition; reverse the split before changing its date or quantity or reversing it'
         )
+      if (next) {
+        if (!preservesSplitSnapshot)
+          await requireAcquisitionAfterRetainedSplits(
+            db,
+            accountId,
+            original.request.income.assetId,
+            next.trade.effectiveDate
+          )
         const eligibility = await readAccountAssetQuantityAt(
           db,
           userId,
@@ -6238,6 +6389,20 @@ export async function correctLiveReinvestment(
         )
           conflict('Reinvestment parcel not found', 404)
       }
+      if (!next || next.trade.effectiveDate > current.acquisition.effectiveDate)
+        await requireIncomeEligibilityAfterInventoryChange(
+          db,
+          state,
+          userId,
+          accountId,
+          original.request.income.assetId,
+          current.acquisition.effectiveDate,
+          now,
+          {
+            affectedBeforeDate: next?.trade.effectiveDate,
+            excludedIncomeOperationId: income.id,
+          }
+        )
       const preview = await readAccountOpeningPreview(
         db,
         userId,
@@ -8023,6 +8188,16 @@ export async function voidLiveManualTrade(
       })
       if (!(await recomputePositionFromTransactions(trade.positionId, db)))
         conflict('Parcel not found during trade void', 404)
+      if (trade.type === 'BUY')
+        await requireIncomeEligibilityAfterInventoryChange(
+          db,
+          state,
+          userId,
+          accountId,
+          trade.position.assetId,
+          sydneyCalendarDate(trade.date),
+          now
+        )
       const next = await readAccountOpeningPreview(
         db,
         userId,
@@ -8290,7 +8465,18 @@ async function correctLiveManualExecution(
         include: {
           position: {
             include: {
-              asset: { include: { exchange: true } },
+              asset: {
+                include: {
+                  exchange: true,
+                  splitActions: {
+                    where: { accountId },
+                    include: { reversal: true },
+                  },
+                },
+              },
+              splitEffects: {
+                include: { action: { include: { reversal: true } } },
+              },
               transactions: {
                 where: { voidedAt: null },
                 orderBy: [{ date: 'asc' }, { id: 'asc' }],
@@ -8317,10 +8503,15 @@ async function correctLiveManualExecution(
           (sum, row) => sum.plus(String(row.quantity)),
           new AccountingDecimal(0)
         )
+      const splitInventory = projectStoredParcelInventory(
+        transaction.position,
+        storedParcelObservationDate(transaction.position)
+      )
+      // Sales across a split use different units; the validated timeline replaces nominal sums.
       if (
         buys.length !== 1 ||
         !bought.gt(0) ||
-        sold.gt(bought) ||
+        (!splitInventory && sold.gt(bought)) ||
         (kind === 'SELL' &&
           input.effectiveDate < sydneyCalendarDate(buys[0].date))
       )
@@ -8330,7 +8521,8 @@ async function correctLiveManualExecution(
       if (acquisition) {
         if (
           buys[0].id !== transaction.id ||
-          new AccountingDecimal(acquisition.quantity).lt(sold) ||
+          (!splitInventory &&
+            new AccountingDecimal(acquisition.quantity).lt(sold)) ||
           transaction.position.transactions.some(
             (row) =>
               row.type === 'SELL' &&
@@ -8387,12 +8579,20 @@ async function correctLiveManualExecution(
         conflict(
           'Corrected execution must remain after the confirmed opening and within the reviewed observation date'
         )
+      const originalDate = sydneyCalendarDate(transaction.date)
+      const preservesSplitSnapshot =
+        input.effectiveDate === originalDate &&
+        (!acquisition ||
+          new AccountingDecimal(acquisition.quantity).eq(
+            String(transaction.quantity)
+          ))
       await requireTradeAfterRetainedSplits(
         db,
         accountId,
         transaction.position.assetId,
-        sydneyCalendarDate(transaction.date),
-        input.effectiveDate
+        originalDate,
+        input.effectiveDate,
+        preservesSplitSnapshot
       )
 
       const before = executionSnapshot(transaction)
@@ -8485,6 +8685,31 @@ async function correctLiveManualExecution(
       requireFundedCashLedger(replay)
 
       await applyExecutionCorrection(db, before, after, kind)
+      if (
+        acquisition &&
+        (input.effectiveDate > originalDate ||
+          new AccountingDecimal(after.quantity).lt(before.quantity))
+      )
+        await requireIncomeEligibilityAfterInventoryChange(
+          db,
+          state,
+          userId,
+          accountId,
+          transaction.position.assetId,
+          originalDate,
+          now
+        )
+      else if (!acquisition && input.effectiveDate < originalDate)
+        await requireIncomeEligibilityAfterInventoryChange(
+          db,
+          state,
+          userId,
+          accountId,
+          transaction.position.assetId,
+          input.effectiveDate,
+          now,
+          { affectedBeforeDate: originalDate }
+        )
       const next = await readAccountOpeningPreview(
         db,
         userId,

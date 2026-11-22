@@ -5,6 +5,8 @@ import { readLiveAcquisitionCorrections } from '../lib/live-acquisition-correcti
 import { readLiveImportedExecutionCorrections } from '../lib/live-import-corrections.js'
 import { lockActiveUser } from '../lib/user-lock.js'
 import {
+  requireSupportedPriceHistory,
+  requireSupportedStopLossHistory,
   savePositionHistory,
   savePositionStopLossHit,
 } from '../lib/position-derived-values.js'
@@ -30,8 +32,15 @@ import {
   deletePosition,
   createPosition,
   updatePositionAcquisition,
+  reviewSplitAffectedStopLoss,
 } from '../lib/position-mutations.js'
-import { projectStoredParcelCostBasis } from '../lib/stored-parcel-inventory.js'
+import {
+  hasRelevantStoredSplitHistory,
+  hasUnreviewedStoredSplitHistory,
+  projectStoredParcelCostBasis,
+  projectStoredParcelSaleCosts,
+  retainedSplitPriceAdjustments,
+} from '../lib/stored-parcel-inventory.js'
 
 const router = Router()
 router.use(authenticateToken)
@@ -98,8 +107,12 @@ const CLOSE_REASONS = ['STOP_LOSS', 'TARGET', 'MANUAL', 'OTHER']
  *           Paginated list of positions. Split-bearing parcels also include
  *           `splitAdjustedInventory` with decimal-string remaining quantity, cost basis,
  *           remaining acquisition fees and average unit cost (null when fully disposed).
- *           Original acquisition price and fee fields are not rewritten. Eligible live
- *           manual acquisitions include
+ *           Original acquisition price and fee fields are not rewritten. Open long parcels
+ *           with a stop loss and retained split history include `stopLossReviewRequired: true`;
+ *           automatic stop-loss monitoring is unavailable until split-aware review is supported.
+ *           Positions with retained relevant split history include `priceHistoryReviewRequired: true`;
+ *           their drawdown and run-up values are unavailable until split-aware history is supported.
+ *           Eligible live manual acquisitions include
  *           acquisitionCorrection metadata with transactionId, operationId, expectedRevisionId,
  *           expectedSourceFingerprint, effectiveDate, sequence and exact decimal-string
  *           quantity (total bought units), price and fees. Eligible live imported Kraken
@@ -107,6 +120,22 @@ const CLOSE_REASONS = ['STOP_LOSS', 'TARGET', 'MANUAL', 'OTHER']
  *           eventId, transactionId, operationId, expectedRevisionId, expectedSourceFingerprint,
  *           effectiveDate, sequence, price, fees and currency. Demo and legacy executions
  *           do not receive correction controls.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       stopLossReviewRequired:
+ *                         type: boolean
+ *                         description: Stop-loss monitoring is unavailable due to retained split history
+ *                       priceHistoryReviewRequired:
+ *                         type: boolean
+ *                         description: Drawdown and run-up values are unavailable due to retained split history
  *       401:
  *         description: Unauthorized
  */
@@ -203,7 +232,8 @@ router.get(
         (transaction) =>
           transaction.type === 'BUY' && importedCorrections.has(transaction.id)
       )
-      const { splitEffects, asset, ...positionData } = position
+      const { splitEffects, asset, stopLossReviewedAt, ...positionData } =
+        position
       const { splitActions, ...publicAsset } = asset ?? {}
       const splitAdjustedInventory =
         Array.isArray(splitEffects) && Array.isArray(splitActions)
@@ -213,10 +243,40 @@ router.get(
               asset: { ...asset, splitActions },
             })
           : null
+      const priceHistoryReviewRequired =
+        Array.isArray(splitEffects) &&
+        Array.isArray(splitActions) &&
+        hasRelevantStoredSplitHistory({
+          ...positionData,
+          splitEffects,
+          asset: { splitActions },
+        })
+      const stopLossReviewEligible =
+        position.status !== 'CLOSED' &&
+        position.positionType === 'LONG' &&
+        position.stopLossPrice !== null &&
+        Number(position.stopLossPrice) > 0 &&
+        priceHistoryReviewRequired
+      const stopLossReviewRequired =
+        stopLossReviewEligible &&
+        hasUnreviewedStoredSplitHistory({
+          ...positionData,
+          stopLossReviewedAt,
+          splitEffects,
+          asset: { splitActions },
+        })
       return {
         ...positionData,
+        ...(priceHistoryReviewRequired
+          ? {
+              priceHistoryReviewRequired: true,
+              maxDrawdownPercent: null,
+              maxRunUpPercent: null,
+            }
+          : {}),
         ...(asset ? { asset: publicAsset } : {}),
         ...(splitAdjustedInventory ? { splitAdjustedInventory } : {}),
+        ...(stopLossReviewEligible ? { stopLossReviewRequired } : {}),
         ...(corrections.has(position.id)
           ? { acquisitionCorrection: corrections.get(position.id) }
           : {}),
@@ -533,7 +593,12 @@ router.post(
  *           `acquisitionCorrection`, also for fully closed parcels. Eligible live
  *           imported Kraken BUYs include `importedAcquisitionCorrection` with the same
  *           imported-execution metadata, also for fully closed parcels. Demo and legacy
- *           executions do not receive correction controls.
+ *           executions do not receive correction controls. Events affected by retained
+ *           split history include validated `splitAdjustedSale` costBasis and buyFees
+ *           decimal strings, allocated from the original acquisition; entryPrice remains
+ *           the historical acquisition price. Inconsistent split history fails closed.
+ *           Positions with retained relevant split history have null drawdown and run-up
+ *           values and include `position.priceHistoryReviewRequired: true`.
  *         content:
  *           application/json:
  *             schema:
@@ -545,6 +610,23 @@ router.post(
  *                   type: array
  *                   items:
  *                     type: object
+ *                     properties:
+ *                       splitAdjustedSale:
+ *                         type: object
+ *                         required: [costBasis, buyFees]
+ *                         properties:
+ *                           costBasis:
+ *                             type: string
+ *                             description: Allocated original acquisition cost including buy fees
+ *                           buyFees:
+ *                             type: string
+ *                             description: Allocated original buy fees
+ *                       position:
+ *                         type: object
+ *                         properties:
+ *                           priceHistoryReviewRequired:
+ *                             type: boolean
+ *                             description: Drawdown and run-up values are unavailable due to retained split history
  *                 meta:
  *                   type: object
  *                   properties:
@@ -558,6 +640,8 @@ router.post(
  *         description: Validation error
  *       401:
  *         description: Unauthorized
+ *       500:
+ *         description: Split history cannot be validated
  */
 router.get(
   '/close-events',
@@ -639,8 +723,11 @@ router.get(
           position: {
             select: {
               id: true,
+              accountId: true,
+              assetId: true,
               origin: true,
               openDate: true,
+              quantity: true,
               entryPrice: true,
               buyFees: true,
               openReason: true,
@@ -655,13 +742,24 @@ router.get(
                   symbol: true,
                   name: true,
                   exchange: { select: { code: true, currency: true } },
+                  splitActions: {
+                    where: { account: { userId: req.user!.userId } },
+                    include: { reversal: true },
+                  },
                 },
               },
-              // Only BUY rows, and only the quantity — the client needs the
-              // total bought units to prorate buy fees across partial sells.
               transactions: {
-                where: { type: 'BUY', voidedAt: null },
-                select: { id: true, type: true, quantity: true },
+                where: { voidedAt: null },
+                select: {
+                  id: true,
+                  type: true,
+                  date: true,
+                  quantity: true,
+                  voidedAt: true,
+                },
+              },
+              splitEffects: {
+                include: { action: { include: { reversal: true } } },
               },
             },
           },
@@ -681,11 +779,30 @@ router.get(
       req.user!.userId,
       events.flatMap((event) => [
         event.id,
-        ...event.position.transactions.map((transaction) => transaction.id),
+        ...event.position.transactions
+          .filter((transaction) => transaction.type === 'BUY')
+          .map((transaction) => transaction.id),
       ])
     )
+    const saleCosts = new Map<
+      string,
+      ReturnType<typeof projectStoredParcelSaleCosts>
+    >()
     const data = events.map((event) => {
-      const { cashOperation, brokerRef, ...publicEvent } = event
+      const { cashOperation, brokerRef, position, ...publicEvent } = event
+      const { transactions } = position
+      if (!saleCosts.has(position.id)) {
+        saleCosts.set(position.id, projectStoredParcelSaleCosts(position))
+      }
+      const costs = saleCosts.get(position.id)
+      const splitAdjustedSale = costs?.get(event.id)
+      if (costs && !splitAdjustedSale)
+        throw new Error(
+          'Split-aware close event is missing from parcel history'
+        )
+      const buys = transactions.filter(
+        (transaction) => transaction.type === 'BUY'
+      )
       const account = event.position.account
       const operation = cashOperation
       const latestRevision = operation?.revisions.at(-1)
@@ -714,9 +831,40 @@ router.get(
         typeof expectedSourceFingerprint === 'string' &&
         Number.isSafeInteger(sequence) &&
         sequence > 0
+      const priceHistoryReviewRequired = hasRelevantStoredSplitHistory(position)
 
       return {
         ...publicEvent,
+        position: {
+          id: position.id,
+          origin: position.origin,
+          openDate: position.openDate,
+          entryPrice: position.entryPrice,
+          buyFees: position.buyFees,
+          openReason: position.openReason,
+          notes: position.notes,
+          maxDrawdownPercent: priceHistoryReviewRequired
+            ? null
+            : position.maxDrawdownPercent,
+          maxRunUpPercent: priceHistoryReviewRequired
+            ? null
+            : position.maxRunUpPercent,
+          ...(priceHistoryReviewRequired
+            ? { priceHistoryReviewRequired: true }
+            : {}),
+          account: position.account,
+          asset: {
+            symbol: position.asset.symbol,
+            name: position.asset.name,
+            exchange: position.asset.exchange,
+          },
+          transactions: buys.map(({ id, type, quantity }) => ({
+            id,
+            type,
+            quantity,
+          })),
+        },
+        ...(splitAdjustedSale ? { splitAdjustedSale } : {}),
         ...(acquisitionCorrections.has(event.position.id)
           ? {
               acquisitionCorrection: acquisitionCorrections.get(
@@ -724,11 +872,11 @@ router.get(
               ),
             }
           : {}),
-        ...(event.position.transactions
+        ...(buys
           .map((transaction) => importedCorrections.get(transaction.id))
           .find((correction) => correction?.transactionId)
           ? {
-              importedAcquisitionCorrection: event.position.transactions
+              importedAcquisitionCorrection: buys
                 .map((transaction) => importedCorrections.get(transaction.id))
                 .find((correction) => correction?.transactionId),
             }
@@ -771,6 +919,7 @@ router.get(
  *       cash-linked manual trades require the audited account trade correction endpoint;
  *       this ordinary editor returns 409 instead.
  *       Notes and close reason remain editable; unchanged financial values are not rewritten.
+ *       Metadata-only changes do not recompute or update the parcel.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -854,6 +1003,7 @@ router.patch(
  *       persists it as maxRunUpPercent (peak unrealized gain vs entry price).
  *       Returns the new values (or null if history is unavailable / no drawdown / no run-up).
  *       Saving takes user/account/parcel locks and rejects changed calculation inputs with 409.
+ *       Retained split history blocks this calculation, including after reversal.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -886,7 +1036,7 @@ router.patch(
  *       401:
  *         description: Unauthorized
  *       409:
- *         description: Position changed during calculation; reload and recalculate
+ *         description: Position changed during calculation or has retained split history
  */
 router.post(
   '/:id/recalculate-drawdown',
@@ -894,7 +1044,19 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const position = await prisma.position.findFirst({
       where: { id: req.params.id, userId: req.user!.userId, voidedAt: null },
-      include: { asset: true },
+      include: {
+        asset: {
+          include: {
+            splitActions: {
+              where: { account: { userId: req.user!.userId } },
+              include: { reversal: true },
+            },
+          },
+        },
+        splitEffects: {
+          include: { action: { include: { reversal: true } } },
+        },
+      },
     })
     if (!position) {
       return res
@@ -902,18 +1064,41 @@ router.post(
         .json({ error: 'Not Found', message: 'Position not found' })
     }
 
+    await requireSupportedPriceHistory(prisma, position)
     const entryPrice = Number(position.entryPrice)
     const openDate = new Date(position.openDate)
+    const splitAdjustments = retainedSplitPriceAdjustments(position)
     const [drawdown, runUp] = await Promise.all([
-      fetchHistoricalMaxDrawdown(position.asset.symbol, entryPrice, openDate),
-      fetchHistoricalMaxRunUp(
-        position.asset.symbol,
-        entryPrice,
-        openDate,
-        position.status === 'CLOSED' && position.closeDate
-          ? new Date(position.closeDate)
-          : undefined
-      ),
+      splitAdjustments.length
+        ? fetchHistoricalMaxDrawdown(
+            position.asset.symbol,
+            entryPrice,
+            openDate,
+            splitAdjustments
+          )
+        : fetchHistoricalMaxDrawdown(
+            position.asset.symbol,
+            entryPrice,
+            openDate
+          ),
+      splitAdjustments.length
+        ? fetchHistoricalMaxRunUp(
+            position.asset.symbol,
+            entryPrice,
+            openDate,
+            position.status === 'CLOSED' && position.closeDate
+              ? new Date(position.closeDate)
+              : undefined,
+            splitAdjustments
+          )
+        : fetchHistoricalMaxRunUp(
+            position.asset.symbol,
+            entryPrice,
+            openDate,
+            position.status === 'CLOSED' && position.closeDate
+              ? new Date(position.closeDate)
+              : undefined
+          ),
     ])
 
     await savePositionHistory(position, {
@@ -951,6 +1136,8 @@ router.post(
  *       returned unchanged.
  *       Saving rechecks the stop and holding inputs under user/account/parcel locks;
  *       concurrent changes return 409 rather than persisting a stale hit.
+ *       Split-affected stop monitoring is unavailable and returns 409, including for
+ *       previously flagged stops and retained reversed splits.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -992,7 +1179,7 @@ router.post(
  *       404:
  *         description: Position not found
  *       409:
- *         description: Stop or holding changed during calculation; reload and check again
+ *         description: Stop or holding changed during calculation, or split-affected stop monitoring requires review
  */
 router.post(
   '/:id/check-stop-loss',
@@ -1020,11 +1207,16 @@ router.post(
       stopLossPrice !== null &&
       stopLossPrice > 0
 
-    if (position.stopLossHitAt || !isTrackable) {
+    if (!isTrackable) {
       return res.json({
         success: true,
         stopLossHitAt: position.stopLossHitAt,
       })
+    }
+
+    await requireSupportedStopLossHistory(prisma, position)
+    if (position.stopLossHitAt) {
+      return res.json({ success: true, stopLossHitAt: position.stopLossHitAt })
     }
 
     const currentPrice: number | undefined = req.body?.currentPrice
@@ -1065,6 +1257,8 @@ router.post(
  *       correction and return 409 here, including for reversed cash operations. The opening
  *       reconciliation workflow supports manual acquisition and sale corrections, not deletion or moves.
  *       Notes and metadata remain editable; resubmitting unchanged financial values is allowed.
+ *       Source-neutral metadata preserves the position's updatedAt for accounting fingerprint
+ *       compatibility; financial changes continue to update it.
  *     tags: [Positions]
  *     security:
  *       - bearerAuth: []
@@ -1147,7 +1341,7 @@ router.post(
  *       404:
  *         description: Position not found
  *       409:
- *         description: Incompatible asset, concurrent account move, parcel does not have exactly one BUY, open holdings require account reopening, or retained split history in either account blocks financial changes and moves (notes remain editable)
+ *         description: Incompatible asset, concurrent account move, parcel does not have exactly one BUY, open holdings require account reopening, or retained split history blocks financial changes, moves, and drawdown/run-up updates (notes remain editable)
  *       503:
  *         description: Kraken market validation temporarily unavailable
  */
@@ -1276,6 +1470,7 @@ router.patch(
       const nextStop = stopLossPrice === null ? null : Number(stopLossPrice)
       if (previousStop !== nextStop) {
         updates.stopLossSetAt = nextStop === null ? null : new Date()
+        updates.stopLossReviewedAt = null
         updates.stopLossHitAt = null
       }
     }
@@ -1399,9 +1594,91 @@ router.patch(
       req.params.id,
       { openDate, entryPrice, quantity, buyFees },
       updates,
-      destinationAccountId
+      destinationAccountId,
+      currentPrice !== undefined
     )
     res.json({ success: true, data: updated })
+  })
+)
+
+/**
+ * @swagger
+ * /api/positions/{id}/stop-loss-review:
+ *   post:
+ *     summary: Confirm a manually reviewed split-affected stop loss
+ *     description: >
+ *       Records the user's confirmed stop price and restarts hit tracking from the
+ *       review time. It does not adjust the saved price by the split ratio.
+ *     tags: [Positions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [stopLossPrice, reviewConfirmed]
+ *             properties:
+ *               stopLossPrice:
+ *                 type: number
+ *                 exclusiveMinimum: 0
+ *               reviewConfirmed:
+ *                 type: boolean
+ *                 enum: [true]
+ *     responses:
+ *       200:
+ *         description: Stop-loss review recorded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, data]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   required: [stopLossPrice, stopLossSetAt]
+ *                   properties:
+ *                     stopLossPrice:
+ *                       type: number
+ *                     stopLossSetAt:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Invalid stop-loss price or missing confirmation
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Position not found
+ *       409:
+ *         description: Position is not an open long parcel with an active stop and retained split history, or it changed during review
+ */
+router.post(
+  '/:id/stop-loss-review',
+  [
+    param('id').isString(),
+    body('stopLossPrice').isFloat({ min: 0.000000000001 }).toFloat(),
+    body('reviewConfirmed')
+      .isBoolean()
+      .toBoolean()
+      .custom((value) => value === true),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await reviewSplitAffectedStopLoss(
+      req.user!.userId,
+      req.params.id,
+      req.body.stopLossPrice
+    )
+    res.json({ success: true, data })
   })
 )
 

@@ -524,6 +524,7 @@ model Position {
   sellFees           Decimal?       @default(0) @db.Decimal(18, 8)
   stopLossPrice      Decimal?       @db.Decimal(24, 12)
   stopLossSetAt      DateTime?
+  stopLossReviewedAt DateTime?
   stopLossHitAt      DateTime?
   takeProfitPrice    Decimal?       @db.Decimal(24, 12)
   riskAmount         Decimal?       @db.Decimal(12, 2)

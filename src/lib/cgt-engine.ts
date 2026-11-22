@@ -10,6 +10,11 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
 // exact calendar-month handling) — flagged in the generated report footnote.
 const DISCOUNT_HOLDING_DAYS = 365
 
+type CgtReportDb = Pick<
+  typeof prisma,
+  'tradingAccount' | 'transaction' | 'taxReport'
+>
+
 export interface CgtLineItem {
   positionId: string
   symbol: string
@@ -81,14 +86,20 @@ export function getFinancialYearRange(financialYearStartYear: number): {
 export async function computeCapitalGainsReport(
   userId: string,
   financialYearStartYear: number,
-  accountIds: string[]
+  accountIds: string[],
+  options: {
+    db?: CgtReportDb
+    getFxRate?: typeof getHistoricalFxRateToAud
+  } = {}
 ): Promise<CgtReportResult> {
+  const db = options.db ?? prisma
+  const getFxRate = options.getFxRate ?? getHistoricalFxRateToAud
   if (accountIds.length === 0) {
     throw new Error('At least one trading account must be selected')
   }
 
   const accountsKey = computeAccountsKey(accountIds)
-  const ownedAccounts = await prisma.tradingAccount.findMany({
+  const ownedAccounts = await db.tradingAccount.findMany({
     where: { id: { in: accountIds }, userId },
     select: { id: true, isDemo: true },
   })
@@ -101,7 +112,7 @@ export async function computeCapitalGainsReport(
 
   const { start, end, label } = getFinancialYearRange(financialYearStartYear)
 
-  const disposals = await prisma.transaction.findMany({
+  const disposals = await db.transaction.findMany({
     where: {
       type: 'SELL',
       voidedAt: null,
@@ -136,7 +147,7 @@ export async function computeCapitalGainsReport(
         },
       },
     },
-    orderBy: { date: 'asc' },
+    orderBy: [{ date: 'asc' }, { id: 'asc' }],
   })
 
   const lineItems: CgtLineItem[] = []
@@ -187,8 +198,8 @@ export async function computeCapitalGainsReport(
     }
 
     const [fxAcquire, fxDispose] = await Promise.all([
-      getHistoricalFxRateToAud(currency, acquireDate),
-      getHistoricalFxRateToAud(currency, disposeDate),
+      getFxRate(currency, acquireDate),
+      getFxRate(currency, disposeDate),
     ])
 
     const proceedsAud = proceedsForeign * fxDispose.rate
@@ -243,7 +254,7 @@ export async function computeCapitalGainsReport(
   )
   const totalCapitalGainGrossAud = discountEligibleGains + nonDiscountGains
 
-  const priorReport = await prisma.taxReport.findFirst({
+  const priorReport = await db.taxReport.findFirst({
     where: {
       userId,
       accountsKey,

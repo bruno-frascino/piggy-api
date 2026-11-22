@@ -149,8 +149,24 @@ export async function readAccountOpeningPreview(
     sourceFingerprint: splitSourceFingerprint,
   } = await readStoredSplitHistory(db, accountId)
   const positionIds = new Set(positions.map((position) => position.id))
-  for (const positionId of effectsByPosition.keys()) {
-    if (!positionIds.has(positionId))
+  const missingPositionIds: string[] = []
+  for (const [positionId, effects] of effectsByPosition) {
+    if (positionIds.has(positionId)) continue
+    if (effects.some((effect) => !effect.action.reversal))
+      throw new Error('Split effect is outside the effective account inventory')
+    missingPositionIds.push(positionId)
+  }
+  if (missingPositionIds.length) {
+    const voidedPositions = await db.position.findMany({
+      where: {
+        id: { in: missingPositionIds },
+        accountId,
+        userId,
+        voidedAt: { not: null },
+      },
+      select: { id: true },
+    })
+    if (voidedPositions.length !== missingPositionIds.length)
       throw new Error('Split effect is outside the effective account inventory')
   }
   const splitInventoryByPosition = new Map<

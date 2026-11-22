@@ -4,6 +4,7 @@ import crypto from 'crypto'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import { lockOwnedTradingAccount } from '../lib/account-lock.js'
+import { lockActiveUser } from '../lib/user-lock.js'
 import {
   asyncHandler,
   handleValidationErrors,
@@ -99,6 +100,8 @@ function serializeReport(report: {
  *       New revisions lock selected accounts in stable ID order and recheck ownership
  *       and non-demo eligibility before storing account references. A concurrent deletion
  *       or report revision change fails explicitly instead of orphaning a new report.
+ *       Report inputs are rechecked under those locks before returning or saving a revision;
+ *       changed holdings, disposals or loss carry-forward require a retry.
  *     tags: [TaxReports]
  *     security:
  *       - bearerAuth: []
@@ -129,7 +132,7 @@ function serializeReport(report: {
  *       404:
  *         description: Selected account was deleted during report preparation
  *       409:
- *         description: Account eligibility or current report revision changed during preparation
+ *         description: Account eligibility, report inputs or current report revision changed during preparation
  */
 router.post(
   '/generate',
@@ -195,15 +198,35 @@ router.post(
       },
     })
 
-    if (current && current.contentHash === contentHash) {
-      return res.json({ success: true, data: serializeReport(current) })
+    const unchanged = current?.contentHash === contentHash
+    const pdfBuffer = unchanged
+      ? null
+      : await buildCapitalGainsPdf(result, {
+          name: user?.name,
+          email: user?.email ?? '',
+        })
+    const rates = new Map<
+      string,
+      {
+        rate: number
+        source: CgtReportResult['lineItems'][number]['fxRateAcquireSource']
+      }
+    >()
+    for (const item of result.lineItems) {
+      for (const [date, rate, source] of [
+        [item.acquireDate, item.fxRateAcquire, item.fxRateAcquireSource],
+        [item.disposeDate, item.fxRateDispose, item.fxRateDisposeSource],
+      ] as const) {
+        const key = JSON.stringify([item.currency, date])
+        const previous = rates.get(key)
+        if (previous && (previous.rate !== rate || previous.source !== source))
+          throw Object.assign(
+            new Error('Report FX rates changed during generation. Retry.'),
+            { status: 409, name: 'Conflict' }
+          )
+        rates.set(key, { rate, source })
+      }
     }
-
-    const pdfBuffer = await buildCapitalGainsPdf(result, {
-      name: user?.name,
-      email: user?.email ?? '',
-    })
-    const pdfBytes = new Uint8Array(pdfBuffer)
     const lineItemsJson = result.lineItems as unknown as Prisma.InputJsonValue
 
     // Append-only: the previous revision is retained (and still downloadable)
@@ -246,6 +269,32 @@ router.post(
               name: 'Conflict',
             }
           )
+        const checked = await computeCapitalGainsReport(
+          userId,
+          financialYearStartYear,
+          accountIds,
+          {
+            db: tx,
+            getFxRate: async (currency, date) => {
+              const rate = rates.get(
+                JSON.stringify([currency, date.toISOString().slice(0, 10)])
+              )
+              if (!rate)
+                throw Object.assign(
+                  new Error('Report inputs changed during generation. Retry.'),
+                  { status: 409, name: 'Conflict' }
+                )
+              return rate
+            },
+          }
+        )
+        if (computeContentHash(checked) !== contentHash)
+          throw Object.assign(
+            new Error('Report inputs changed during generation. Retry.'),
+            { status: 409, name: 'Conflict' }
+          )
+        if (current && unchanged) return current
+        if (!pdfBuffer) throw new Error('Missing PDF for a new report revision')
         if (current) {
           await tx.taxReport.update({
             where: { id: current.id },
@@ -271,7 +320,7 @@ router.post(
             netCapitalGainAud: result.netCapitalGainAud,
             carriedForwardLossClosingAud: result.carriedForwardLossClosingAud,
             lineItems: lineItemsJson,
-            pdfData: pdfBytes,
+            pdfData: new Uint8Array(pdfBuffer),
             pdfSizeBytes: pdfBuffer.byteLength,
           },
         })
@@ -590,6 +639,7 @@ router.get(
  *     description: >
  *       Deleting the current revision promotes the most recent remaining
  *       revision back to current, so the carried-forward loss chain stays intact.
+ *       Deletion is serialized with report generation and rereads the revision before promotion.
  *     tags: [TaxReports]
  *     security:
  *       - bearerAuth: []
@@ -628,15 +678,31 @@ router.delete(
     }
 
     await prisma.$transaction(async (tx) => {
-      await tx.taxReport.delete({ where: { id: report.id } })
+      await lockActiveUser(tx, req.user!.userId)
+      const current = await tx.taxReport.findFirst({
+        where: { id: report.id, userId: req.user!.userId },
+        select: {
+          id: true,
+          userId: true,
+          financialYearStartYear: true,
+          accountsKey: true,
+          supersededAt: true,
+        },
+      })
+      if (!current)
+        throw Object.assign(new Error('Tax report not found'), {
+          status: 404,
+          name: 'Not Found',
+        })
+      await tx.taxReport.delete({ where: { id: current.id } })
 
-      if (report.supersededAt !== null) return
+      if (current.supersededAt !== null) return
 
       const previous = await tx.taxReport.findFirst({
         where: {
-          userId: report.userId,
-          financialYearStartYear: report.financialYearStartYear,
-          accountsKey: report.accountsKey,
+          userId: current.userId,
+          financialYearStartYear: current.financialYearStartYear,
+          accountsKey: current.accountsKey,
         },
         orderBy: { version: 'desc' },
         select: { id: true },

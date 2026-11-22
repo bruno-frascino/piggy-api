@@ -228,7 +228,7 @@ methodology version. No missing data defaults to zero or last-known data without
 Use unadjusted prices with explicit split/unit adjustments, or a separately verified consistent
 alternative; never combine adjusted prices with duplicated corporate actions.
 
-### Stock splits and consolidations (partial, not released)
+### Stock splits and consolidations (complete, released with explicit gates)
 
 The user approved a statement-supported initial slice for stock splits and consolidations.
 Apply the exact stated ratio to the units held in each affected parcel immediately before the
@@ -239,9 +239,9 @@ nor a disposal. Reject cases requiring rounding, cash-in-lieu or unsupported all
 than guessing. Block posting when affected parcels have effective later sales; eligible sales
 must be voided and re-entered after posting. Ambiguous same-day ordering must fail closed.
 
-The internal locked writer applies statement-supported actions atomically, but public
-posting/history endpoints and UI are not available. An internal terminal reversal is implemented;
-there is no in-place revision or replacement workflow. Additive action/effect storage,
+The internal locked writer applies statement-supported actions atomically, and protected public
+posting/history endpoints plus the frontend account action are available. Terminal reversal is
+implemented; there is no in-place revision or replacement workflow. Additive action/effect storage,
 split-aware CGT and position recomputation are implemented. Both readers share linked action
 identity, request hash and parcel quantity
 validation and reject missing effects; existing report revisions remain unchanged. Position
@@ -259,7 +259,7 @@ retained split quantities or introduce ambiguous split-day ordering. Reinvestmen
 paired correction share dated split-aware entitlement inventory; correction excludes its own
 reinvestment parcel. The bounded history loader and source-fingerprint representation are shared
 with opening review. These writers use validated split-aware cash state and the shared audit/source
-chain; a reinvestment acquisition on or before a split date is rejected.
+chain; a new reinvestment acquisition on or before a split date is rejected.
 Retained audited split actions now validate in the shared account sequence with cash operations and
 revisions, advancing the accepted fingerprint and audit count without cash commands, postings or
 reserved cash sequence slots. The action must be post-opening, with a positive consecutive audit
@@ -280,12 +280,21 @@ split history, using the same inventory replay and account audit/cash chain. New
 or before an active split date are rejected to avoid ambiguous same-day order and mutation of
 retained parcel effects. Validated split history also permits audited cash-only operations,
 paired cash transfers, statement-income receipts/corrections, and dividend reinvestments with
-paired corrections/reversal. Reinvestment entitlement uses split-adjusted holdings, and its
-acquisition must follow the split date. Manual execution corrections and terminal voids also
-use validated split-aware audit/cash replay only for trades strictly after the latest active split
-for the asset; corrections must keep the replacement date after that split. Earlier trades remain
-fenced. Imports,
+paired corrections/reversal. Reinvestment entitlement uses split-adjusted holdings. A paired
+pre-split correction may change statement values, price, fees or sequence only if acquisition
+date and quantity remain unchanged. Reverse dependent splits before changing either or reversing
+the reinvestment; retained reversed effects remain in the source
+fingerprint even if the parcel is later voided. Manual execution corrections and terminal voids also
+use validated split-aware audit/cash replay. Corrections require both original and replacement
+dates to be strictly after the latest active split for the asset; voids require the original trade
+date to be after it. A pre-split correction may change price, fees or cash sequence only if the
+trade date and quantity remain unchanged; this preserves the immutable split inventory snapshot
+while allowing audited value repairs. Pre-split voids and corrections changing date or quantity
+remain fenced. Imports,
 legacy financial mutations, moves and deletion remain fenced pending the historical release gates.
+Correction validation replays retained parcel splits and sales instead of comparing sales in
+different unit denominations with the original acquisition quantity. The no-split validation
+path remains unchanged, and the same dated split snapshot fences apply.
 An internal terminal reversal preserves the original action and parcel effects and appends a
 separate reversal record to the same account audit/source chain. It retroactively excludes the
 reversed action from effective inventory, restores each affected stored quantity to its captured
@@ -300,7 +309,8 @@ reuse the source reference and effective date with a new idempotency key; origin
 remain reserved. Reversal and corrected posting both run under the account lock and advance the
 accepted source fingerprint atomically. The financial-write fence remains for imports, legacy
 mutations, moves and deletion until their split-dependent protections and the broader historical
-release gates are complete. No route or UI exposes either split operation.
+release gates are complete. Posting, history and terminal reversal are exposed through protected account routes and the
+frontend account split dialog. Demo accounts and unsupported account states remain excluded.
 Read-only realized-trade statistics now load effective parcel trades and retained split evidence,
 then allocate original acquisition cost using the validated exact sale cost fraction. Summary,
 realized time series, distributions and closed-trade results use this path; no-split calculations
@@ -312,6 +322,12 @@ average unit cost as decimal strings. The frontend uses this projection for spli
 units and open-cost/return calculations while preserving original `buyPrice` and acquisition
 fees as historical facts; raw split actions/effects are not exposed in the response. No-split
 holdings keep their prior calculation.
+Stop-loss monitoring for a position affected by retained split history remains paused until an
+authenticated, locked review explicitly confirms the stop price for current units. The price is
+never ratio-adjusted automatically. A separate review timestamp is written only by that action;
+later split postings or reversals invalidate it, while ordinary stop edits cannot bypass the
+review flow. Confirmation restarts hit tracking and preserves the source timestamp for a
+ledger-backed account. Split-affected price history remains unavailable independently.
 Retained history continues to place a temporary account-wide 409 fence on legacy financial
 mutations, moves at either endpoint, new financial import steps, and other unsupported writers.
 Notes remain editable, and completed legacy import retries without financial steps remain possible.
@@ -322,10 +338,16 @@ supported correction to a split action itself; in-place edits and replacement re
 unsupported. This does not block the separately validated manual trades, cash operations, income,
 and reinvestment workflows described above.
 Saved tax-report revisions remain append-only when split-adjusted CGT changes: regeneration
-creates a new revision without changing the prior PDF or line items, covered by a controller
-regression test. Production support must still complete broader historical protections and review
-the release gates before exposing corporate-action posting/history; see step 3H in the delivery plan.
-Separate cost-base adjustments and complex corporate actions remain outside this slice.
+creates a new revision without changing the prior PDF or line items. Before saving or returning
+an unchanged report, generation rechecks report inputs under the user/account locks using the
+previously resolved FX rates; changed inputs fail and require retry. Report deletion uses the
+same user lock and rereads the revision before promotion. A database regression covers a
+split-aware acquisition correction during PDF generation and retained prior PDF evidence.
+The 3H release-with-gates policy keeps split posting/history/reversal available while
+split-aware drawdown/run-up, cash-completeness/opening certification and broader historical
+writer protections remain explicit unsupported gates. They are unavailable or incomplete rather
+than approximated. Separate cost-base adjustments and complex corporate actions remain outside
+this slice.
 
 ### Exact metric contracts
 
@@ -576,7 +598,15 @@ draft operations and import batches cascade with account deletion, never becomin
 The user-selected archival policy permits residual cash/history to remain read-only after closing,
 and requires explicit reopening before new financial writes. Close/reopen and metadata-only
 renames preserve the account source timestamp; archival status is normalized out of the opening
-source fingerprint. This keeps lifecycle changes from creating false source drift. Manual BUY
+source fingerprint. This keeps lifecycle changes from creating false source drift.
+For ledger-backed accounts, non-financial position metadata and derived stop/price-history
+updates likewise preserve the position source timestamp under the owned-position lock, matching
+the retained fingerprint format. Legacy positions keep their ordinary timestamp updates.
+Metadata-only sale edits do not recompute the parcel. Derived writes compare the source timestamp
+as well as their calculation inputs, so they cannot restore an older timestamp after a financial
+change. Financial mutations still advance source identity, and existing drift is not silently
+repaired.
+Manual BUY
 creation rereads account status after locking; acquisition edits/moves that leave open holdings
 in a closed account fail with 409 and roll back BUY/parcel/recomputation changes. Historical
 cost/metadata corrections and movements of fully closed parcels remain permitted. Missing explicit
@@ -1190,10 +1220,24 @@ them against the immutable terminal audit. An unsold voided BUY remains an archi
 with zero quantity, not a genuinely CLOSED sale. A SELL void restores its remaining units.
 
 Only reconciled manual long parcels without imported allocations or non-trade adjustments
-are supported. BUY voids require no effective sales. With retained split history, a trade can
-be corrected or voided only when its original date, and any correction replacement date, are
-strictly after the latest active split for its asset, so the change cannot alter an immutable
-parcel snapshot.
+are supported. BUY voids require no effective sales and must preserve positive historical
+holdings for every affected active income or reinvestment entitlement. The reinvestment's own
+parcel cannot establish its eligibility, even on the same day. Review uses effective corrected
+income, ignores reversed receipts, and is bounded to 500 distinct date/parcel checks. The same
+review protects BUY corrections that move the acquisition later or reduce its quantity, new manual
+SELLs on or before an affected entitlement date, and SELL corrections moving a sale earlier.
+For a sale correction only entitlement dates from the replacement date up to, but excluding, the
+original date are affected. A paired reinvestment reversal or correction moving its acquisition
+later must also preserve other active income entitlements; the paired income being corrected or
+reversed is excluded from that review and its replacement entitlement is separately validated.
+If the change removes eligibility, correct or reverse the dependent income first, or retain other
+eligible holdings. Other historical inventory mutations require separate dependency review.
+With retained split history, a trade void
+is allowed only when the original trade date is strictly after the latest active split for its
+asset. Pre-split trades may receive audited price/fee or cash-sequence corrections only when
+their date and quantity remain unchanged; corrections changing date or quantity require both
+original and replacement dates to be strictly after the latest active split. This keeps retained
+parcel snapshots immutable.
 All participating writes lock the owned account and parcel; the complete dated cash replay must
 remain funded. Markers, derived
 inventory, revision postings and fingerprint advancement commit together. Terminal trades

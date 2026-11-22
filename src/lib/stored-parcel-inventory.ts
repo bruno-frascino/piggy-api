@@ -24,6 +24,88 @@ type SplitHistoryDb = Pick<
   'accountSplitAction' | 'accountSplitParcelEffect'
 >
 
+export function hasRelevantStoredSplitHistory(position: {
+  accountId: string
+  openDate: Date
+  splitEffects: unknown[]
+  asset: { splitActions: { accountId: string; effectiveDate: Date }[] }
+}) {
+  return (
+    position.splitEffects.length > 0 ||
+    position.asset.splitActions.some(
+      (action) =>
+        action.accountId === position.accountId &&
+        action.effectiveDate.toISOString().slice(0, 10) >=
+          sydneyCalendarDate(position.openDate)
+    )
+  )
+}
+
+export function hasUnreviewedStoredSplitHistory(position: {
+  accountId: string
+  openDate: Date
+  stopLossReviewedAt: Date | null
+  splitEffects: { action: StoredAction }[]
+  asset: { splitActions: StoredAction[] }
+}) {
+  const acquisitionDate = sydneyCalendarDate(position.openDate)
+  const relevantActions = new Map<string, StoredAction>()
+  for (const effect of position.splitEffects)
+    relevantActions.set(effect.action.id, effect.action)
+  for (const action of position.asset.splitActions) {
+    if (
+      action.accountId === position.accountId &&
+      sydneyCalendarDate(action.effectiveDate) >= acquisitionDate
+    )
+      relevantActions.set(action.id, action)
+  }
+  if (!relevantActions.size) return false
+  const reviewedAt = position.stopLossReviewedAt
+  if (!reviewedAt) return true
+  const reviewedDate = sydneyCalendarDate(reviewedAt)
+  return [...relevantActions.values()].some(
+    (action) =>
+      action.recordedAt > reviewedAt ||
+      (action.reversal?.recordedAt ?? new Date(0)) > reviewedAt ||
+      sydneyCalendarDate(action.effectiveDate) > reviewedDate
+  )
+}
+
+export function retainedSplitPriceAdjustments(position: {
+  accountId: string
+  openDate: Date | string
+  splitEffects?: { action: StoredAction }[]
+  asset?: { splitActions?: StoredAction[] }
+}) {
+  const openDate =
+    position.openDate instanceof Date
+      ? position.openDate
+      : new Date(position.openDate)
+  if (Number.isNaN(openDate.getTime())) return []
+  const acquisitionDate = sydneyCalendarDate(openDate)
+  const relevant = new Map<string, StoredAction>()
+  for (const effect of position.splitEffects ?? [])
+    relevant.set(effect.action.id, effect.action)
+  for (const action of position.asset?.splitActions ?? []) {
+    if (
+      action.accountId === position.accountId &&
+      sydneyCalendarDate(action.effectiveDate) >= acquisitionDate
+    )
+      relevant.set(action.id, action)
+  }
+  return [...relevant.values()]
+    .filter((action) => !action.reversal)
+    .sort(
+      (left, right) =>
+        left.effectiveDate.getTime() - right.effectiveDate.getTime()
+    )
+    .map((action) => ({
+      effectiveDate: action.effectiveDate,
+      newUnits: action.newUnits.toFixed(),
+      oldUnits: action.oldUnits.toFixed(),
+    }))
+}
+
 export async function readStoredSplitHistory(
   db: SplitHistoryDb,
   accountId: string,
@@ -293,13 +375,15 @@ export function storedParcelObservationDate(
   )
 }
 
-export function projectStoredParcelCostBasis(
-  position: Parameters<typeof projectStoredParcelInventory>[0] & {
-    quantity: number
-    entryPrice: string | number | { toString(): string }
-    buyFees: string | number | { toString(): string }
-  }
-) {
+type StoredCostPosition = Parameters<typeof projectStoredParcelInventory>[0] & {
+  quantity: number
+  entryPrice: string | number | { toString(): string }
+  buyFees: string | number | { toString(): string }
+}
+
+function validatedStoredCostProjection(position: StoredCostPosition) {
+  if (!position.splitEffects.length && !position.asset.splitActions.length)
+    return null
   const projection = projectStoredParcelInventory(
     position,
     storedParcelObservationDate(position)
@@ -343,14 +427,42 @@ export function projectStoredParcelCostBasis(
   if (!acquisition)
     throw new Error('Split parcel must have exactly one effective acquisition')
 
-  const costFraction = projection.remainingCostFraction
   const originalFees = new AccountingDecimal(String(position.buyFees))
   const originalCostBasis = new AccountingDecimal(String(position.entryPrice))
     .mul(String(acquisition.quantity))
     .plus(originalFees)
+  return { projection, originalFees, originalCostBasis }
+}
+
+export function projectStoredParcelSaleCosts(position: StoredCostPosition) {
+  const validated = validatedStoredCostProjection(position)
+  if (!validated) return null
+  const { projection, originalFees, originalCostBasis } = validated
+  return new Map(
+    projection.sales.map(({ id, costFraction }) => {
+      const allocate = (amount: typeof originalFees) =>
+        amount
+          .mul(costFraction.numerator)
+          .div(costFraction.denominator)
+          .toFixed(12)
+      return [
+        id.slice('sell:'.length),
+        {
+          costBasis: allocate(originalCostBasis),
+          buyFees: allocate(originalFees),
+        },
+      ] as const
+    })
+  )
+}
+
+export function projectStoredParcelCostBasis(position: StoredCostPosition) {
+  const validated = validatedStoredCostProjection(position)
+  if (!validated) return null
+  const { projection, originalFees, originalCostBasis } = validated
   const remainingCostBasis = originalCostBasis
-    .mul(costFraction.numerator)
-    .div(costFraction.denominator)
+    .mul(projection.remainingCostFraction.numerator)
+    .div(projection.remainingCostFraction.denominator)
   const remainingQuantity = new AccountingDecimal(projection.remainingQuantity)
   const averageUnitCost = remainingQuantity.gt(0)
     ? remainingCostBasis.div(remainingQuantity).toFixed(12)
@@ -360,8 +472,8 @@ export function projectStoredParcelCostBasis(
     remainingQuantity: projection.remainingQuantity,
     remainingCostBasis: remainingCostBasis.toFixed(12),
     remainingBuyFees: originalFees
-      .mul(costFraction.numerator)
-      .div(costFraction.denominator)
+      .mul(projection.remainingCostFraction.numerator)
+      .div(projection.remainingCostFraction.denominator)
       .toFixed(12),
     averageUnitCost,
   }

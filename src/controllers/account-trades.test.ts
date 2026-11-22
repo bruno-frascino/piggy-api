@@ -25,6 +25,9 @@ const {
   voidTrade,
   readVoids,
   readCapability,
+  postSplit,
+  readSplits,
+  reverseSplit,
 } = vi.hoisted(() => ({
   post: vi.fn(),
   postCapital: vi.fn(),
@@ -47,6 +50,9 @@ const {
   voidTrade: vi.fn(),
   readVoids: vi.fn(),
   readCapability: vi.fn(),
+  postSplit: vi.fn(),
+  readSplits: vi.fn(),
+  reverseSplit: vi.fn(),
 }))
 vi.mock('../lib/draft-cash-ledger.js', () => ({
   postAccountTrade: post,
@@ -70,6 +76,9 @@ vi.mock('../lib/draft-cash-ledger.js', () => ({
   voidLiveManualTrade: voidTrade,
   readLiveManualTradeVoids: readVoids,
   readAccountTradeCapability: readCapability,
+  postAccountSplit: postSplit,
+  readAccountSplitHistory: readSplits,
+  reverseAccountSplit: reverseSplit,
 }))
 vi.mock('../middleware/auth.js', () => ({
   authenticateToken: (req: Request, res: Response, next: NextFunction) => {
@@ -103,6 +112,77 @@ const buy = {
   price: '12.50',
   fees: '1',
 }
+
+describe('stock split routes', () => {
+  beforeEach(() => {
+    postSplit.mockReset()
+    readSplits.mockReset()
+    reverseSplit.mockReset()
+  })
+
+  it('requires authentication and forwards split posting with retry status', async () => {
+    const path = '/api/accounts/a1/splits'
+    await request(app()).post(path).expect(401)
+
+    const input = {
+      idempotencyKey: 'split-1',
+      assetId: 'asset-1',
+      effectiveDate: '2026-10-15',
+      newUnits: '2',
+      oldUnits: '1',
+      sourceReference: 'statement-1',
+      statementConfirmed: true,
+    }
+    postSplit.mockResolvedValueOnce({ created: false, actionId: 'action-1' })
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(200)
+    expect(postSplit).toHaveBeenCalledWith('u1', 'a1', input)
+
+    postSplit.mockResolvedValueOnce({ created: true, actionId: 'action-1' })
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(201)
+  })
+
+  it('reads paginated retained split history', async () => {
+    readSplits.mockResolvedValueOnce({ total: 1, items: [] })
+    await request(app())
+      .get('/api/accounts/a1/splits?limit=20&offset=5')
+      .set('Authorization', 'Bearer test')
+      .expect(200)
+    expect(readSplits).toHaveBeenCalledWith('u1', 'a1', 20, 5)
+  })
+
+  it('matches the path action and forwards terminal reversal', async () => {
+    const input = {
+      idempotencyKey: 'reverse-split-1',
+      actionId: 'action-1',
+      expectedAuditNumber: 4,
+      expectedSourceFingerprint: 'a'.repeat(64),
+      reason: 'Correct statement',
+      reversalConfirmed: true,
+    }
+    await request(app())
+      .post('/api/accounts/a1/splits/action-1/reversal')
+      .set('Authorization', 'Bearer test')
+      .send({ ...input, actionId: 'other-action' })
+      .expect(400)
+    expect(reverseSplit).not.toHaveBeenCalled()
+
+    reverseSplit.mockResolvedValueOnce({ created: true, actionId: 'action-1' })
+    await request(app())
+      .post('/api/accounts/a1/splits/action-1/reversal')
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(201)
+    expect(reverseSplit).toHaveBeenCalledWith('u1', 'a1', input)
+  })
+})
 
 describe('explicit FX posting route', () => {
   it('authenticates and forwards paired reinvestment review/correction with creation and retry status', async () => {
@@ -152,6 +232,41 @@ describe('explicit FX posting route', () => {
       .set('Authorization', 'Bearer test')
       .send(input)
       .expect(409)
+    const message =
+      'This inventory change would remove holdings supporting an active income entitlement. Correct or reverse the income before making the change.'
+    correctReinvestment.mockRejectedValueOnce(
+      Object.assign(new Error(message), {
+        status: 409,
+        name: 'Accounting Conflict',
+      })
+    )
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(409)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({ error: 'Accounting Conflict', message })
+      )
+    const splitMessage =
+      'A retained stock split depends on this reinvestment acquisition; reverse the split before changing its date or quantity or reversing it'
+    correctReinvestment.mockRejectedValueOnce(
+      Object.assign(new Error(splitMessage), {
+        status: 409,
+        name: 'Accounting Conflict',
+      })
+    )
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(input)
+      .expect(409)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({
+          error: 'Accounting Conflict',
+          message: splitMessage,
+        })
+      )
   })
   it('authenticates, validates and forwards atomic reinvestment creation and retry', async () => {
     const input = {
@@ -596,6 +711,27 @@ describe('account trade endpoint', () => {
       .set('Authorization', '******')
       .send(input)
       .expect(422)
+    voidTrade.mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          'This inventory change would remove holdings supporting an active income entitlement. Correct or reverse the income before making the change.'
+        ),
+        {
+          status: 409,
+          name: 'Accounting Conflict',
+        }
+      )
+    )
+    const response = await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(input)
+      .expect(409)
+    expect(response.body).toMatchObject({
+      error: 'Accounting Conflict',
+      message:
+        'This inventory change would remove holdings supporting an active income entitlement. Correct or reverse the income before making the change.',
+    })
   })
 
   it('reads owned paginated retained void audits and rejects invalid pagination', async () => {
@@ -691,6 +827,34 @@ describe('account trade endpoint', () => {
       .set('Authorization', '******')
       .send(buy)
       .expect(200)
+  })
+
+  it('surfaces income entitlement conflicts when posting a sale', async () => {
+    const message =
+      'This inventory change would remove holdings supporting an active income entitlement. Correct or reverse the income before making the change.'
+    post.mockRejectedValueOnce(
+      Object.assign(new Error(message), {
+        status: 409,
+        name: 'Accounting Conflict',
+      })
+    )
+    await request(app())
+      .post('/api/accounts/a1/trades')
+      .set('Authorization', 'Bearer test')
+      .send({
+        kind: 'SELL',
+        positionId: 'position-1',
+        idempotencyKey: 'sell-1',
+        effectiveDate: '2026-10-02',
+        sequence: 2,
+        quantity: '1',
+        price: '12',
+        fees: '0',
+      })
+      .expect(409)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({ error: 'Accounting Conflict', message })
+      )
   })
 
   it('authenticates, validates and forwards exact live capital flows and retries', async () => {
@@ -969,6 +1133,22 @@ describe('account trade endpoint', () => {
       .send(correction)
       .expect(201)
     expect(correct).toHaveBeenCalledWith('u1', 'a1', 'tx1', correction)
+    const message =
+      'This inventory change would remove holdings supporting an active income entitlement. Correct or reverse the income before making the change.'
+    correct.mockRejectedValueOnce(
+      Object.assign(new Error(message), {
+        status: 409,
+        name: 'Accounting Conflict',
+      })
+    )
+    await request(app())
+      .post(path)
+      .set('Authorization', '******')
+      .send(correction)
+      .expect(409)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({ error: 'Accounting Conflict', message })
+      )
   })
 
   it('authenticates and forwards exact acquisition corrections, including retries and failures', async () => {
@@ -1023,6 +1203,29 @@ describe('account trade endpoint', () => {
       .set('Authorization', 'Bearer test')
       .send(correction)
       .expect(409)
+    correctBuy.mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          'This inventory change would remove holdings supporting an active income entitlement. Correct or reverse the income before making the change.'
+        ),
+        {
+          status: 409,
+          name: 'Accounting Conflict',
+        }
+      )
+    )
+    await request(app())
+      .post(path)
+      .set('Authorization', 'Bearer test')
+      .send(correction)
+      .expect(409)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({
+          error: 'Accounting Conflict',
+          message:
+            'This inventory change would remove holdings supporting an active income entitlement. Correct or reverse the income before making the change.',
+        })
+      )
     expect(correct).not.toHaveBeenCalled()
   })
 

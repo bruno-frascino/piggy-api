@@ -137,7 +137,7 @@ router.get(
  * /api/portfolio/snapshot:
  *   post:
  *     summary: Create or update today's portfolio snapshot
- *     description: Upserts a single daily legacy snapshot row under shared-user and owned-account locks. Rereads holdings after locking; a deleted user or account cannot receive a late snapshot. Legacy totals and daily date semantics are unchanged; inactive draft cash is excluded. Call this at end-of-day to record the equity curve.
+ *     description: Upserts a synthetic daily legacy snapshot row under shared-user and owned-account locks. Rereads holdings after locking; a deleted user or account cannot receive a late snapshot. Split-affected open parcels use validated remaining acquisition cost; other legacy totals and daily date semantics are unchanged. Inactive draft cash is excluded. Snapshots are not sourced or verified valuations.
  *     tags: [Portfolio]
  *     security:
  *       - bearerAuth: []
@@ -148,6 +148,8 @@ router.get(
  *         description: Unauthorized
  *       404:
  *         description: Owned account or exchange not found, including an account deleted while waiting for its lock
+ *       500:
+ *         description: Split history cannot be validated; no snapshot is saved
  */ router.post(
   '/snapshot',
   [

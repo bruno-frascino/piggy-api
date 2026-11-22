@@ -23,6 +23,7 @@ import {
   projectStoredParcelCostBasis,
   readAccountAssetQuantityAt,
   readStoredSplitHistory,
+  retainedSplitPriceAdjustments,
   reviewStoredParcelSale,
 } from './stored-parcel-inventory.js'
 
@@ -103,6 +104,56 @@ beforeEach(() => {
   mocks.trades.mockResolvedValue(f.transactions)
   mocks.actions.mockResolvedValue([f.action])
   mocks.effects.mockResolvedValue([f.effect])
+})
+
+describe('retained split price adjustments', () => {
+  it('returns active split ratios on or after acquisition and excludes reversals', () => {
+    const { action } = fixture()
+    const reversed = {
+      ...action,
+      id: 'split-reversed',
+      effectiveDate: new Date('2025-09-01'),
+      reversal: {
+        id: 'reversal1',
+        accountId: 'a1',
+        actionId: 'split-reversed',
+        idempotencyKey: 'reversal-key',
+        payloadHash: 'c'.repeat(64),
+        reason: 'Correct split',
+        auditNumber: 2,
+        previousFingerprint: 'b'.repeat(64),
+        nextFingerprint: 'c'.repeat(64),
+        recordedAt: new Date('2025-09-02'),
+      },
+    }
+
+    expect(
+      retainedSplitPriceAdjustments({
+        accountId: 'a1',
+        openDate: new Date('2025-07-01'),
+        splitEffects: [{ action }],
+        asset: { splitActions: [action, reversed] },
+      })
+    ).toEqual([
+      {
+        effectiveDate: action.effectiveDate,
+        newUnits: '2',
+        oldUnits: '1',
+      },
+    ])
+  })
+
+  it('excludes active account actions effective before acquisition', () => {
+    const { action } = fixture()
+    expect(
+      retainedSplitPriceAdjustments({
+        accountId: 'a1',
+        openDate: new Date('2025-10-01'),
+        splitEffects: [],
+        asset: { splitActions: [action] },
+      })
+    ).toEqual([])
+  })
 })
 
 describe('split source fingerprint stability', () => {

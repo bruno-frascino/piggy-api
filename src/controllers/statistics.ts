@@ -15,6 +15,7 @@ import {
   computeSummary,
   mapTradeRows,
 } from '../lib/statistics-engine.js'
+import { projectStoredParcelCostBasis } from '../lib/stored-parcel-inventory.js'
 
 const router = Router()
 router.use(authenticateToken)
@@ -622,14 +623,16 @@ router.get(
  *         schema:
  *           type: string
  *           enum: [OPEN, PARTIAL, CLOSED]
- *         description: CSV position statuses. Defaults to OPEN,PARTIAL when `metric=marketValue` (closed positions hold nothing); all statuses otherwise. For marketValue, partial positions are prorated to the quantity still held.
+ *         description: CSV position statuses. Defaults to OPEN,PARTIAL when `metric=marketValue` (closed positions hold nothing); all statuses otherwise. For marketValue, acquisition cost is allocated to the quantity still held, including validated split history.
  *     responses:
  *       200:
- *         description: Grouped rows with weights. Rows for `by=exchange` also include the exchange's ISO 4217 `currency`.
+ *         description: Grouped rows with weights. Market value is an estimate based on remaining acquisition cost plus stored unrealized P&L, not a live valuation. Rows for `by=exchange` also include the exchange's ISO 4217 `currency`.
  *       400:
  *         description: Validation error
  *       401:
  *         description: Unauthorized
+ *       500:
+ *         description: Split history cannot be validated for the market-value estimate
  */
 router.get(
   '/breakdowns',
@@ -655,25 +658,20 @@ router.get(
       positionScope.status = { in: ['OPEN', 'PARTIAL'] }
     }
 
+    const positionFields = tradePositionSelect(req.user!.userId)
     const positions = await prisma.position.findMany({
       where: positionScope,
       select: {
-        accountId: true,
+        ...positionFields,
         realizedPnL: true,
         unrealizedPnL: true,
         capitalAllocated: true,
-        quantity: true,
         status: true,
-        // Total bought units: position.quantity is only what remains, so it is needed to prorate capitalAllocated.
-        transactions: {
-          where: { type: 'BUY' as const },
-          select: { quantity: true },
-        },
         asset: {
           select: {
+            ...positionFields.asset.select,
             industry: true,
             assetType: true,
-            exchange: { select: { code: true, currency: true } },
           },
         },
       },
@@ -684,7 +682,8 @@ router.get(
         const realizedPnL = Number(position.realizedPnL ?? 0)
         const unrealizedPnL = Number(position.unrealizedPnL ?? 0)
         const boughtQuantity = position.transactions.reduce(
-          (acc, tx) => acc + Number(tx.quantity ?? 0),
+          (acc, tx) =>
+            tx.type === 'BUY' ? acc + Number(tx.quantity ?? 0) : acc,
           0
         )
         const heldFraction =
@@ -693,8 +692,15 @@ router.get(
             : boughtQuantity > 0
               ? Math.min(Number(position.quantity ?? 0) / boughtQuantity, 1)
               : 1
+        const splitInventory =
+          metric === 'marketValue'
+            ? projectStoredParcelCostBasis(position)
+            : null
         const marketValue =
-          Number(position.capitalAllocated ?? 0) * heldFraction + unrealizedPnL
+          (splitInventory
+            ? Number(splitInventory.remainingCostBasis)
+            : Number(position.capitalAllocated ?? 0) * heldFraction) +
+          unrealizedPnL
         return {
           accountId: position.accountId,
           exchangeCode: position.asset.exchange.code,

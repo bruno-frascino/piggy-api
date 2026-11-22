@@ -178,8 +178,18 @@ describe('portfolio controller', () => {
     findExchangeUniqueMock.mockResolvedValue({ id: 'ex1' })
     findPositionManyMock
       .mockResolvedValueOnce([
-        { capitalAllocated: 1000, unrealizedPnL: 100 },
-        { capitalAllocated: 500, unrealizedPnL: 50 },
+        {
+          capitalAllocated: 1000,
+          unrealizedPnL: 100,
+          splitEffects: [],
+          asset: { splitActions: [] },
+        },
+        {
+          capitalAllocated: 500,
+          unrealizedPnL: 50,
+          splitEffects: [],
+          asset: { splitActions: [] },
+        },
       ])
       .mockResolvedValueOnce([{ realizedPnL: 25 }])
     upsertSnapshotMock.mockResolvedValue({

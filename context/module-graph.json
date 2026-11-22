@@ -63,6 +63,7 @@
         "src/controllers/watchlists.ts",
         "src/controllers/opening-statements.test.ts",
         "src/controllers/positions.test.ts",
+        "src/controllers/tax-reports.integration.test.ts",
         "src/index.ts",
         "src/middleware/validation.test.ts"
       ],
@@ -598,6 +599,7 @@
         "src/controllers/account-trades.ts",
         "src/lib/imports/service.ts",
         "src/controllers/opening-statements.ts",
+        "src/controllers/tax-reports.integration.test.ts",
         "src/lib/cash-revisions.integration.test.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/draft-cash-ledger.test.ts",
@@ -731,6 +733,7 @@
         "src/lib/cash-revisions.ts",
         "src/lib/draft-cash-evidence.ts",
         "src/lib/position-service.ts",
+        "src/lib/position-derived-values.ts",
         "src/lib/opening-statements.ts",
         "src/lib/live-acquisition-corrections.ts",
         "src/lib/cgt-engine.ts",
@@ -763,10 +766,12 @@
         "src/lib/draft-cash-evidence.ts",
         "src/lib/position-service.ts",
         "src/controllers/accounting-preview.test.ts",
+        "src/lib/historical-drawdown.ts",
         "src/lib/live-acquisition-corrections.ts",
         "src/lib/statistics-engine.ts",
         "src/lib/cgt-engine.ts",
         "src/controllers/positions.test.ts",
+        "src/controllers/statistics.test.ts",
         "src/lib/cgt-engine.test.ts",
         "src/lib/position-service.test.ts",
         "src/lib/statistics-engine.test.ts",
@@ -979,7 +984,9 @@
         "src/lib/password-reset.ts",
         "src/controllers/positions.ts",
         "src/lib/position-mutations.ts",
+        "src/controllers/tax-reports.ts",
         "src/controllers/users.ts",
+        "src/controllers/tax-reports.test.ts",
         "src/lib/user-lifecycle.integration.test.ts",
         "src/lib/user-lock.test.ts"
       ],
@@ -1155,6 +1162,7 @@
         "src/lib/stored-parcel-inventory.ts",
         "src/controllers/accounting-preview.test.ts",
         "src/controllers/positions.test.ts",
+        "src/controllers/statistics.test.ts",
         "src/lib/account-split-command.test.ts",
         "src/lib/cgt-engine.test.ts",
         "src/lib/cgt-split.integration.test.ts",
@@ -1284,6 +1292,7 @@
         "src/lib/draft-cash-ledger.ts",
         "src/controllers/accounts.ts",
         "src/lib/opening-statements.ts",
+        "src/controllers/tax-reports.integration.test.ts",
         "src/lib/cash-revisions.integration.test.ts",
         "src/lib/cgt-split.integration.test.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
@@ -1326,6 +1335,7 @@
         "src/lib/cgt-engine.ts",
         "src/controllers/users.ts",
         "src/controllers/watchlists.ts",
+        "src/controllers/tax-reports.integration.test.ts",
         "src/controllers/trading-account-lifecycle.integration.test.ts",
         "src/index.ts",
         "src/lib/cash-revisions.integration.test.ts",
@@ -1334,6 +1344,7 @@
         "src/lib/draft-manual-trades.integration.test.ts",
         "src/lib/imports/service.integration.test.ts",
         "src/lib/opening-statements.integration.test.ts",
+        "src/lib/position-derived-values.test.ts",
         "src/lib/position-mutations.integration.test.ts",
         "src/lib/stored-parcel-inventory.test.ts",
         "src/lib/user-lifecycle.integration.test.ts"
@@ -1434,10 +1445,13 @@
         "src/lib/draft-cash-ledger.ts",
         "src/lib/accounting-preview-service.ts",
         "src/lib/position-service.ts",
+        "src/lib/portfolio-snapshot.ts",
         "src/controllers/positions.ts",
+        "src/controllers/statistics.ts",
         "src/lib/statistics-engine.ts",
         "src/lib/cgt-engine.ts",
         "src/lib/cgt-split.integration.test.ts",
+        "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/stored-parcel-inventory.test.ts"
       ],
       "orphan": false,
@@ -2235,6 +2249,7 @@
       "dependents": [
         "src/middleware/auth.ts",
         "src/controllers/auth.ts",
+        "src/controllers/tax-reports.integration.test.ts",
         "src/lib/jwt.test.ts"
       ],
       "orphan": false,
@@ -3317,6 +3332,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./fmp-client.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/fmp-client.ts",
@@ -3363,6 +3395,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./accounting-preview.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./prisma.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
@@ -3372,6 +3421,8 @@
       "dependents": [
         "src/lib/imports/service.ts",
         "src/controllers/positions.ts",
+        "src/lib/position-mutations.ts",
+        "src/controllers/tax-reports.integration.test.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/position-derived-values.test.ts",
         "src/lib/user-lifecycle.integration.test.ts"
@@ -4012,6 +4063,7 @@
       ],
       "dependents": [
         "src/controllers/opening-statements.ts",
+        "src/controllers/tax-reports.integration.test.ts",
         "src/lib/cash-revisions.integration.test.ts",
         "src/lib/draft-cash-ledger.integration.test.ts",
         "src/lib/draft-manual-trades.integration.test.ts",
@@ -4097,7 +4149,8 @@
       ],
       "dependents": [
         "src/controllers/index.ts",
-        "src/controllers/portfolio.test.ts"
+        "src/controllers/portfolio.test.ts",
+        "src/controllers/tax-reports.integration.test.ts"
       ],
       "orphan": false,
       "source": "src/controllers/portfolio.ts",
@@ -4154,6 +4207,23 @@
           "module": "./prisma.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./stored-parcel-inventory.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/stored-parcel-inventory.ts",
           "valid": true
         }
       ],
@@ -4385,7 +4455,8 @@
       ],
       "dependents": [
         "src/controllers/index.ts",
-        "src/controllers/positions.test.ts"
+        "src/controllers/positions.test.ts",
+        "src/controllers/tax-reports.integration.test.ts"
       ],
       "orphan": false,
       "source": "src/controllers/positions.ts",
@@ -4498,6 +4569,23 @@
           "module": "./account-lock.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/account-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./position-derived-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-derived-values.ts",
           "valid": true
         },
         {
@@ -4710,6 +4798,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/stored-parcel-inventory.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/stored-parcel-inventory.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../middleware/auth.js",
           "moduleSystem": "es6",
           "resolved": "src/middleware/auth.ts",
@@ -4735,7 +4840,8 @@
       ],
       "dependents": [
         "src/controllers/index.ts",
-        "src/controllers/statistics.test.ts"
+        "src/controllers/statistics.test.ts",
+        "src/controllers/tax-reports.integration.test.ts"
       ],
       "orphan": false,
       "source": "src/controllers/statistics.ts",
@@ -4947,6 +5053,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "../middleware/auth.js",
           "moduleSystem": "es6",
           "resolved": "src/middleware/auth.ts",
@@ -4972,6 +5095,7 @@
       ],
       "dependents": [
         "src/controllers/index.ts",
+        "src/controllers/tax-reports.integration.test.ts",
         "src/controllers/tax-reports.test.ts",
         "src/controllers/trading-account-lifecycle.integration.test.ts"
       ],
@@ -5099,6 +5223,7 @@
       ],
       "dependents": [
         "src/controllers/tax-reports.ts",
+        "src/controllers/tax-reports.integration.test.ts",
         "src/lib/pdf-report.test.ts"
       ],
       "orphan": false,
@@ -5512,6 +5637,40 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "../lib/account-split-command.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/account-split-command.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/accounting-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./statistics.js",
           "moduleSystem": "es6",
           "resolved": "src/controllers/statistics.ts",
@@ -5550,6 +5709,235 @@
     },
     {
       "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/accounting-preview-service.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/accounting-preview-service.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/draft-cash-ledger.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/draft-cash-ledger.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/jwt.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/jwt.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/opening-statements.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/opening-statements.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/pdf-report.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/pdf-report.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/position-derived-values.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/position-derived-values.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../middleware/validation.js",
+          "moduleSystem": "es6",
+          "resolved": "src/middleware/validation.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./portfolio.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/portfolio.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./positions.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/positions.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./statistics.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/statistics.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./tax-reports.js",
+          "moduleSystem": "es6",
+          "resolved": "src/controllers/tax-reports.ts",
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "source": "src/controllers/tax-reports.integration.test.ts",
+      "valid": true
+    },
+    {
+      "dependencies": [
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "../lib/user-lock.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/user-lock.ts",
+          "valid": true
+        },
         {
           "circular": false,
           "coreModule": false,
@@ -6902,6 +7290,23 @@
           "exoticallyRequired": false,
           "followable": true,
           "matchesDoNotFollow": false,
+          "module": "./stored-parcel-inventory.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/stored-parcel-inventory.ts",
+          "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
           "module": "./trading-account-mutations.js",
           "moduleSystem": "es6",
           "resolved": "src/lib/trading-account-mutations.ts",
@@ -8073,6 +8478,23 @@
           "moduleSystem": "es6",
           "resolved": "src/lib/position-derived-values.ts",
           "valid": true
+        },
+        {
+          "circular": false,
+          "coreModule": false,
+          "couldNotResolve": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "followable": true,
+          "matchesDoNotFollow": false,
+          "module": "./prisma.js",
+          "moduleSystem": "es6",
+          "resolved": "src/lib/prisma.ts",
+          "valid": true
         }
       ],
       "dependents": [],
@@ -8897,8 +9319,8 @@
         }
       ]
     },
-    "totalCruised": 160,
-    "totalDependenciesCruised": 415,
+    "totalCruised": 161,
+    "totalDependenciesCruised": 438,
     "violations": [],
     "warn": 0
   }

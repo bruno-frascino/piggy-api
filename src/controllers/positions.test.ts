@@ -13,10 +13,24 @@ const importedCorrections = vi.hoisted(() => ({ read: vi.fn() }))
 vi.mock('../lib/live-import-corrections.js', () => ({
   readLiveImportedExecutionCorrections: importedCorrections.read,
 }))
-const derived = vi.hoisted(() => ({ history: vi.fn(), stop: vi.fn() }))
+const derived = vi.hoisted(() => ({
+  history: vi.fn(),
+  stop: vi.fn(),
+  hasSplitHistory: vi.fn(),
+  requireStopHistory: vi.fn(),
+  requirePriceHistory: vi.fn(),
+}))
+const stopLossReview = vi.hoisted(() => ({ review: vi.fn() }))
+vi.mock('../lib/position-mutations.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/position-mutations.js')>()),
+  reviewSplitAffectedStopLoss: stopLossReview.review,
+}))
 vi.mock('../lib/position-derived-values.js', () => ({
+  hasRelevantRetainedSplitHistory: derived.hasSplitHistory,
   savePositionHistory: derived.history,
   savePositionStopLossHit: derived.stop,
+  requireSupportedStopLossHistory: derived.requireStopHistory,
+  requireSupportedPriceHistory: derived.requirePriceHistory,
 }))
 
 const { krakenMarkets } = vi.hoisted(() => ({ krakenMarkets: vi.fn() }))
@@ -156,6 +170,13 @@ describe('positions controller', () => {
     splitFindFirstMock.mockResolvedValue(null)
     derived.history.mockResolvedValue(undefined)
     derived.stop.mockResolvedValue(undefined)
+    derived.requireStopHistory.mockResolvedValue(undefined)
+    derived.requirePriceHistory.mockResolvedValue(undefined)
+    derived.hasSplitHistory.mockResolvedValue(false)
+    stopLossReview.review.mockResolvedValue({
+      stopLossPrice: 3,
+      stopLossSetAt: new Date('2026-11-20T00:00:00.000Z'),
+    })
     positionFindUniqueMock.mockImplementation(async () => {
       const position = await positionFindFirstMock()
       return position
@@ -230,39 +251,45 @@ describe('positions controller', () => {
         afterQuantity: new AccountingDecimal(16),
         action,
       }
-      positionFindManyMock.mockResolvedValue([
-        {
-          id: 'p_split',
-          accountId: 'acc_1',
-          assetId: 'asset1',
-          openDate: new Date('2025-01-01'),
-          quantity: 16,
-          entryPrice: new AccountingDecimal(10),
-          buyFees: new AccountingDecimal(10),
-          transactions: [
-            {
-              id: 'buy1',
-              type: 'BUY',
-              date: new Date('2025-01-01'),
-              quantity: 10,
-              voidedAt: null,
-            },
-            {
-              id: 'sell1',
-              type: 'SELL',
-              date: new Date('2025-07-01'),
-              quantity: 2,
-              voidedAt: null,
-            },
-          ],
-          splitEffects: [effect],
-          asset: {
-            symbol: 'AAA',
-            exchange: { code: 'ASX', currency: 'AUD' },
-            splitActions: [action],
+      const position = {
+        id: 'p_split',
+        accountId: 'acc_1',
+        assetId: 'asset1',
+        openDate: new Date('2025-01-01'),
+        quantity: 16,
+        entryPrice: new AccountingDecimal(10),
+        buyFees: new AccountingDecimal(10),
+        status: 'PARTIAL',
+        positionType: 'LONG',
+        stopLossPrice: new AccountingDecimal(9),
+        stopLossSetAt: null,
+        stopLossReviewedAt: null,
+        maxDrawdownPercent: 45,
+        maxRunUpPercent: 60,
+        transactions: [
+          {
+            id: 'buy1',
+            type: 'BUY',
+            date: new Date('2025-01-01'),
+            quantity: 10,
+            voidedAt: null,
           },
+          {
+            id: 'sell1',
+            type: 'SELL',
+            date: new Date('2025-07-01'),
+            quantity: 2,
+            voidedAt: null,
+          },
+        ],
+        splitEffects: [effect],
+        asset: {
+          symbol: 'AAA',
+          exchange: { code: 'ASX', currency: 'AUD' },
+          splitActions: [action],
         },
-      ])
+      }
+      positionFindManyMock.mockResolvedValue([position])
       positionCountMock.mockResolvedValue(1)
 
       const response = await request(createApp()).get('/api/positions')
@@ -274,6 +301,11 @@ describe('positions controller', () => {
         remainingBuyFees: '8.000000000000',
         averageUnitCost: '5.500000000000',
       })
+      expect(response.body.data[0].stopLossReviewRequired).toBe(true)
+      expect(response.body.data[0]).not.toHaveProperty('stopLossReviewedAt')
+      expect(response.body.data[0].priceHistoryReviewRequired).toBe(true)
+      expect(response.body.data[0].maxDrawdownPercent).toBeNull()
+      expect(response.body.data[0].maxRunUpPercent).toBeNull()
       expect(response.body.data[0]).not.toHaveProperty('splitEffects')
       expect(response.body.data[0].asset).not.toHaveProperty('splitActions')
       expect(positionFindManyMock).toHaveBeenCalledWith(
@@ -293,6 +325,42 @@ describe('positions controller', () => {
           }),
         })
       )
+      positionFindManyMock.mockResolvedValue([
+        { ...position, stopLossReviewedAt: new Date('2025-08-03') },
+      ])
+      const reviewed = await request(createApp()).get('/api/positions')
+      expect(reviewed.status).toBe(200)
+      expect(reviewed.body.data[0].stopLossReviewRequired).toBe(false)
+    })
+
+    it('does not hide price history for a parcel acquired after an earlier split', async () => {
+      positionFindManyMock.mockResolvedValue([
+        {
+          id: 'later',
+          accountId: 'acc_1',
+          openDate: new Date('2025-09-01'),
+          maxDrawdownPercent: 12,
+          maxRunUpPercent: 20,
+          transactions: [],
+          splitEffects: [],
+          asset: {
+            splitActions: [
+              {
+                accountId: 'acc_1',
+                effectiveDate: new Date('2025-08-01'),
+              },
+            ],
+          },
+        },
+      ])
+      positionCountMock.mockResolvedValue(1)
+      const response = await request(createApp()).get('/api/positions')
+      expect(response.status).toBe(200)
+      expect(response.body.data[0]).not.toHaveProperty(
+        'priceHistoryReviewRequired'
+      )
+      expect(response.body.data[0].maxDrawdownPercent).toBe(12)
+      expect(response.body.data[0].maxRunUpPercent).toBe(20)
     })
 
     it('filters by status and accountId', async () => {
@@ -358,6 +426,31 @@ describe('positions controller', () => {
         metadata
       )
       expect(importedCorrections.read).toHaveBeenCalledWith('u_1', ['tx_1'])
+    })
+  })
+
+  describe('POST /api/positions/:id/stop-loss-review', () => {
+    it('requires a positive confirmed stop and records the reviewed value', async () => {
+      const response = await request(createApp())
+        .post('/api/positions/p_1/stop-loss-review')
+        .send({ stopLossPrice: 3, reviewConfirmed: true })
+
+      expect(response.status).toBe(200)
+      expect(response.body.data.stopLossPrice).toBe(3)
+      expect(stopLossReview.review).toHaveBeenCalledWith('u_1', 'p_1', 3)
+    })
+
+    it('rejects invalid values and missing explicit confirmation', async () => {
+      for (const body of [
+        { stopLossPrice: 0, reviewConfirmed: true },
+        { stopLossPrice: 3, reviewConfirmed: false },
+      ]) {
+        const response = await request(createApp())
+          .post('/api/positions/p_1/stop-loss-review')
+          .send(body)
+        expect(response.status).toBe(400)
+      }
+      expect(stopLossReview.review).not.toHaveBeenCalled()
     })
   })
 
@@ -517,6 +610,17 @@ describe('positions controller', () => {
   })
 
   describe('GET /api/positions/close-events', () => {
+    const emptySplitHistory = {
+      accountId: 'acc_1',
+      assetId: 'asset1',
+      openDate: new Date('2025-01-01'),
+      quantity: 0,
+      entryPrice: new AccountingDecimal(10),
+      buyFees: new AccountingDecimal(0),
+      splitEffects: [],
+      asset: { symbol: 'AAA', splitActions: [] },
+    }
+
     it('lists SELL transactions for the authenticated user', async () => {
       transactionFindManyMock.mockResolvedValue([
         {
@@ -525,6 +629,7 @@ describe('positions controller', () => {
           brokerRef: null,
           cashOperation: null,
           position: {
+            ...emptySplitHistory,
             id: 'p_1',
             origin: 'MANUAL',
             transactions: [],
@@ -545,6 +650,7 @@ describe('positions controller', () => {
 
       expect(response.status).toBe(200)
       expect(response.body.data).toHaveLength(1)
+      expect(response.body.data[0]).not.toHaveProperty('splitAdjustedSale')
       expect(response.body.meta).toEqual({ total: 1, limit: 500, offset: 0 })
       expect(transactionFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -576,6 +682,7 @@ describe('positions controller', () => {
           brokerRef: null,
           cashOperation: null,
           position: {
+            ...emptySplitHistory,
             id: 'p_1',
             origin: 'MANUAL',
             transactions: [],
@@ -605,6 +712,7 @@ describe('positions controller', () => {
           brokerRef: 'sell_event',
           cashOperation: null,
           position: {
+            ...emptySplitHistory,
             id: 'p_1',
             origin: 'IMPORT_TRADE',
             account: { status: 'ACTIVE', isDemo: false },
@@ -635,6 +743,139 @@ describe('positions controller', () => {
         'tx_1',
         'buy_tx',
       ])
+    })
+
+    it('allocates original cost and fees to sales before and after a split', async () => {
+      const requestData = {
+        idempotencyKey: 'split-key',
+        assetId: 'asset1',
+        effectiveDate: '2025-08-01',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: 'statement-1',
+        statementConfirmed: true,
+      }
+      const action = {
+        id: 'split1',
+        accountId: 'acc_1',
+        assetId: 'asset1',
+        effectiveDate: new Date(requestData.effectiveDate),
+        newUnits: new AccountingDecimal(2),
+        oldUnits: new AccountingDecimal(1),
+        sourceReference: requestData.sourceReference,
+        idempotencyKey: requestData.idempotencyKey,
+        payloadHash: prepareAccountSplit(requestData, 'acc_1').payloadHash,
+        sourceFingerprint: 'a'.repeat(64),
+        methodology: 'account-split-v1',
+        request: requestData,
+        recordedAt: new Date('2025-08-02'),
+        auditNumber: 1,
+        previousFingerprint: 'a'.repeat(64),
+        nextFingerprint: 'b'.repeat(64),
+      }
+      const position = {
+        ...emptySplitHistory,
+        id: 'p_split',
+        origin: 'MANUAL',
+        quantity: 10,
+        buyFees: new AccountingDecimal(10),
+        maxDrawdownPercent: 45,
+        maxRunUpPercent: 60,
+        account: { id: 'acc_1', status: 'ACTIVE', isDemo: false },
+        asset: {
+          symbol: 'AAA',
+          exchange: { code: 'ASX', currency: 'AUD' },
+          splitActions: [action],
+        },
+        transactions: [
+          {
+            id: 'buy1',
+            type: 'BUY',
+            date: new Date('2025-01-01'),
+            quantity: 10,
+          },
+          {
+            id: 'sell1',
+            type: 'SELL',
+            date: new Date('2025-07-01'),
+            quantity: 2,
+          },
+          {
+            id: 'sell2',
+            type: 'SELL',
+            date: new Date('2025-09-01'),
+            quantity: 6,
+          },
+        ],
+        splitEffects: [
+          {
+            id: 'effect1',
+            actionId: action.id,
+            positionId: 'p_split',
+            beforeQuantity: new AccountingDecimal(8),
+            afterQuantity: new AccountingDecimal(16),
+            action,
+          },
+        ],
+      }
+      const events = ['sell1', 'sell2'].map((id) => ({
+        id,
+        brokerRef: null,
+        cashOperation: null,
+        position,
+      }))
+      transactionFindManyMock.mockResolvedValue(events)
+      transactionCountMock.mockResolvedValue(2)
+
+      const response = await request(createApp()).get(
+        '/api/positions/close-events'
+      )
+      expect(response.status).toBe(200)
+      expect(
+        response.body.data.map(
+          (event: { splitAdjustedSale: unknown }) => event.splitAdjustedSale
+        )
+      ).toEqual([
+        { costBasis: '22.000000000000', buyFees: '2.000000000000' },
+        { costBasis: '33.000000000000', buyFees: '3.000000000000' },
+      ])
+      expect(response.body.data[1].position.entryPrice).toBe('10')
+      expect(response.body.data[1].position.priceHistoryReviewRequired).toBe(
+        true
+      )
+      expect(response.body.data[1].position.maxDrawdownPercent).toBeNull()
+      expect(response.body.data[1].position.maxRunUpPercent).toBeNull()
+      expect(response.body.data[1].position.transactions).toEqual([
+        { id: 'buy1', type: 'BUY', quantity: 10 },
+      ])
+      expect(response.body.data[1].position).not.toHaveProperty('splitEffects')
+      expect(response.body.data[1].position.asset).not.toHaveProperty(
+        'splitActions'
+      )
+
+      transactionFindManyMock.mockResolvedValue([
+        { ...events[1], position: { ...position, splitEffects: [] } },
+      ])
+      const missing = await request(createApp()).get(
+        '/api/positions/close-events'
+      )
+      expect(missing.status).toBe(500)
+
+      transactionFindManyMock.mockResolvedValue([
+        { ...events[1], position: { ...position, quantity: 11 } },
+      ])
+      const inconsistent = await request(createApp()).get(
+        '/api/positions/close-events'
+      )
+      expect(inconsistent.status).toBe(500)
+
+      transactionFindManyMock.mockResolvedValue([
+        { ...events[1], id: 'missing-sale' },
+      ])
+      const missingSale = await request(createApp()).get(
+        '/api/positions/close-events'
+      )
+      expect(missingSale.status).toBe(500)
     })
 
     it('applies inclusive date bounds and pagination', async () => {
@@ -880,6 +1121,27 @@ describe('positions controller', () => {
   })
 
   describe('POST /api/positions/:id/recalculate-drawdown', () => {
+    it('rejects split-affected history before fetching prices', async () => {
+      positionFindFirstMock.mockResolvedValue({
+        id: 'p_1',
+        entryPrice: 10,
+        openDate: new Date('2026-01-01'),
+        asset: { symbol: 'AAPL' },
+      })
+      derived.requirePriceHistory.mockRejectedValueOnce(
+        Object.assign(new Error('Split history requires review'), {
+          status: 409,
+          name: 'Conflict',
+        })
+      )
+      const response = await request(createApp()).post(
+        '/api/positions/p_1/recalculate-drawdown'
+      )
+      expect(response.status).toBe(409)
+      expect(fetchHistoricalMaxDrawdownMock).not.toHaveBeenCalled()
+      expect(fetchHistoricalMaxRunUpMock).not.toHaveBeenCalled()
+      expect(derived.history).not.toHaveBeenCalled()
+    })
     it('returns a conflict instead of publishing stale calculated history', async () => {
       positionFindFirstMock.mockResolvedValue({
         id: 'p_1',
@@ -1105,6 +1367,24 @@ describe('positions controller', () => {
       expect(positionUpdateMock).not.toHaveBeenCalled()
     })
 
+    it('rejects split-affected checks, including previously triggered stops', async () => {
+      positionFindFirstMock.mockResolvedValue(
+        openLong({ stopLossHitAt: new Date('2026-02-03') })
+      )
+      derived.requireStopHistory.mockRejectedValue(
+        Object.assign(new Error('Stop-loss monitoring requires review'), {
+          status: 409,
+          name: 'Conflict',
+        })
+      )
+      const response = await request(createApp())
+        .post('/api/positions/p_1/check-stop-loss')
+        .send({ currentPrice: 1 })
+      expect(response.status).toBe(409)
+      expect(fetchHistoricalStopLossHitMock).not.toHaveBeenCalled()
+      expect(derived.stop).not.toHaveBeenCalled()
+    })
+
     it.each([
       ['no stop loss', { stopLossPrice: null }],
       ['a closed position', { status: 'CLOSED' }],
@@ -1152,6 +1432,7 @@ describe('positions controller', () => {
       const data = positionUpdateMock.mock.calls[0][0].data
       expect(data.stopLossPrice).toBe(90)
       expect(data.stopLossSetAt).toBeInstanceOf(Date)
+      expect(data.stopLossReviewedAt).toBeNull()
       expect(data.stopLossHitAt).toBeNull()
     })
 
@@ -1165,6 +1446,7 @@ describe('positions controller', () => {
 
       const data = positionUpdateMock.mock.calls[0][0].data
       expect(data.stopLossSetAt).toBeNull()
+      expect(data.stopLossReviewedAt).toBeNull()
       expect(data.stopLossHitAt).toBeNull()
     })
 

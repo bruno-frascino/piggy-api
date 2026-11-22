@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const mockHistorical = vi.fn()
+const { mockHistorical, mockFmpHistorical } = vi.hoisted(() => ({
+  mockHistorical: vi.fn(),
+  mockFmpHistorical: vi.fn(),
+}))
 
 // Mock yahoo-finance2 as a class whose instances have a `historical` method
 vi.mock('yahoo-finance2', () => {
@@ -11,20 +14,156 @@ vi.mock('yahoo-finance2', () => {
   }
 })
 
+vi.mock('./fmp-client.js', () => ({
+  getHistoricalPrices: mockFmpHistorical,
+}))
+
 import {
   fetchHistoricalMaxDrawdown,
   fetchHistoricalMaxRunUp,
   fetchHistoricalStopLossHit,
+  normalizeRawOhlcForSplits,
+  splitAdjustedEntryPrice,
+  splitRawOhlcProvider,
 } from './historical-drawdown.js'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  delete process.env.HISTORICAL_OHLC_BASIS
+  delete process.env.HISTORICAL_OHLC_PROVIDER
+  mockFmpHistorical.mockResolvedValue([])
 })
 
 const ENTRY = 3.24
 const OPEN_DATE = new Date('2025-01-10')
 
 describe('fetchHistoricalMaxDrawdown', () => {
+  it('keeps raw-OHLC provider pinning unavailable until a source is verified', () => {
+    process.env.HISTORICAL_OHLC_BASIS = 'raw-unadjusted'
+    process.env.HISTORICAL_OHLC_PROVIDER = 'yahoo'
+    expect(splitRawOhlcProvider()).toBeNull()
+  })
+
+  it('does not mix FMP OHLC into a pinned Yahoo split calculation', async () => {
+    process.env.HISTORICAL_OHLC_BASIS = 'raw-unadjusted'
+    process.env.HISTORICAL_OHLC_PROVIDER = 'yahoo'
+    mockFmpHistorical.mockResolvedValue([
+      { date: '2025-02-01', low: 80, high: 100 },
+    ])
+    mockHistorical.mockResolvedValue([
+      { date: new Date('2025-02-01'), low: 40, high: 50 },
+    ])
+
+    await fetchHistoricalMaxDrawdown('AAPL', 100, new Date('2025-01-10'), [
+      {
+        effectiveDate: '2025-05-01',
+        newUnits: '2',
+        oldUnits: '1',
+      },
+    ])
+
+    expect(mockFmpHistorical).not.toHaveBeenCalled()
+  })
+
+  it('requests Yahoo raw OHLC without adjusted close metadata', async () => {
+    mockHistorical.mockResolvedValue([{ low: 3.1 }])
+
+    await fetchHistoricalMaxDrawdown('LYC.AX', ENTRY, OPEN_DATE)
+
+    expect(mockHistorical).toHaveBeenCalledWith(
+      'LYC.AX',
+      expect.objectContaining({
+        interval: '1d',
+        includeAdjustedClose: false,
+      })
+    )
+  })
+
+  it('normalizes raw bars exactly once for retained splits', () => {
+    const bars = normalizeRawOhlcForSplits(
+      [
+        { date: '2025-02-01', low: 40, high: 50 },
+        { date: '2025-06-01', low: 20, high: 25 },
+      ],
+      [
+        {
+          effectiveDate: '2025-05-01',
+          newUnits: '2',
+          oldUnits: '1',
+        },
+      ]
+    )
+    expect(bars).toEqual([
+      { date: '2025-02-01', low: 20, high: 25 },
+      { date: '2025-06-01', low: 20, high: 25 },
+    ])
+  })
+
+  it('fails closed when a split-adjusted bar has no usable date', () => {
+    expect(
+      normalizeRawOhlcForSplits(
+        [{ low: 40, high: 50 }],
+        [
+          {
+            effectiveDate: '2025-05-01',
+            newUnits: '2',
+            oldUnits: '1',
+          },
+        ]
+      )
+    ).toBeNull()
+  })
+
+  it('uses the split-adjusted entry price as the drawdown base', () => {
+    expect(
+      splitAdjustedEntryPrice(100, new Date('2025-01-10'), [
+        {
+          effectiveDate: '2025-05-01',
+          newUnits: '2',
+          oldUnits: '1',
+        },
+      ])
+    ).toBe(50)
+  })
+
+  it('still suppresses split metrics even if provider env flags are set', async () => {
+    process.env.HISTORICAL_OHLC_BASIS = 'raw-unadjusted'
+    process.env.HISTORICAL_OHLC_PROVIDER = 'yahoo'
+    mockHistorical.mockResolvedValue([
+      { date: new Date('2025-02-01'), low: 80 },
+      { date: new Date('2025-06-01'), low: 40 },
+    ])
+    const result = await fetchHistoricalMaxDrawdown(
+      'AAPL',
+      100,
+      new Date('2025-01-10'),
+      [
+        {
+          effectiveDate: '2025-05-01',
+          newUnits: '2',
+          oldUnits: '1',
+        },
+      ]
+    )
+    expect(result).toBeNull()
+  })
+
+  it('suppresses split-adjusted metrics unless raw OHLC basis is declared', async () => {
+    mockHistorical.mockResolvedValue([{ low: 25 }])
+    const result = await fetchHistoricalMaxDrawdown(
+      'AAPL',
+      100,
+      new Date('2025-01-10'),
+      [
+        {
+          effectiveDate: '2025-06-01',
+          newUnits: '2',
+          oldUnits: '1',
+        },
+      ]
+    )
+    expect(result).toBeNull()
+  })
   it('returns the correct drawdown when the lowest low is below entry price', async () => {
     mockHistorical.mockResolvedValue([
       { low: 3.1 },
@@ -84,6 +223,26 @@ describe('fetchHistoricalMaxDrawdown', () => {
 })
 
 describe('fetchHistoricalMaxRunUp', () => {
+  it('suppresses split-affected run-up without raw OHLC declaration', async () => {
+    mockHistorical.mockResolvedValue([{ high: 150 }])
+
+    const result = await fetchHistoricalMaxRunUp(
+      'AAPL',
+      100,
+      new Date('2025-01-10'),
+      undefined,
+      [
+        {
+          effectiveDate: '2025-05-01',
+          newUnits: '2',
+          oldUnits: '1',
+        },
+      ]
+    )
+
+    expect(result).toBeNull()
+  })
+
   it('returns the peak gain relative to entry from the highest high', async () => {
     mockHistorical.mockResolvedValue([
       { high: 3.4 },

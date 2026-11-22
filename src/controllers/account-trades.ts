@@ -27,6 +27,9 @@ import {
   readAccountTradeCapability,
   voidLiveManualTrade,
   readLiveManualTradeVoids,
+  postAccountSplit,
+  readAccountSplitHistory,
+  reverseAccountSplit,
 } from '../lib/draft-cash-ledger.js'
 
 const router = Router()
@@ -134,7 +137,7 @@ router.get(
  * /api/accounts/{id}/reinvestments/{operationId}/corrections:
  *   post:
  *     summary: Correct or terminally reverse both reinvestment effects atomically
- *     description: Fixed account, asset, currency and statement reference. Requires both current revision heads, audit number, source fingerprint and reason. No effective SELL may remain on the new parcel. Corrections update statement tax figures and acquisition/date/order/residual together, retain all slots and require funded replay; reversal removes the effective income and parcel without a disposal. With validated split history, entitlement uses split-adjusted holdings and acquisition must follow the split date. Issuer-held credits and one-sided changes remain blocked. Exact retained retries survive later activity.
+ *     description: Fixed account, asset, currency and statement reference. Requires both current revision heads, audit number, source fingerprint and reason. No effective SELL may remain on the new parcel. Corrections update statement tax figures and acquisition/date/order/residual together, retain all slots and require funded replay; reversal removes the effective income and parcel without a disposal. Moving the acquisition later or reversing it must preserve historical holdings for other active income and reinvestment entitlements; review is limited to 500 distinct date/parcel checks. With validated split history, entitlement uses split-adjusted holdings. A pre-split correction must preserve the acquisition date and quantity; reverse dependent splits before changing either or reversing the reinvestment. Issuer-held credits and one-sided changes remain blocked. Exact retained retries survive later activity.
  *     tags: [Accounts]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -159,7 +162,7 @@ router.get(
  *       400: { description: Invalid, changed identity or unchanged replacement. }
  *       401: { description: Unauthorized. }
  *       404: { description: Owned reinvestment not found. }
- *       409: { description: Effective sales, stale heads, terminal state, reserved slots or unfunded replay. }
+ *       409: { description: 'Effective sales, dependent split or income entitlement, stale heads, terminal state, reserved slots or unfunded replay.' }
  *       422: { description: Unsupported entitlement or history bounds. }
  */
 router.post(
@@ -955,7 +958,7 @@ router.post(
  * /api/accounts/{id}/trade-capability:
  *   get:
  *     summary: Resolve the server-owned trade-write capability for an account
- *     description: Distinguishes active confirmed ledgers from legacy, demo, archived and blocked accounts. Validated retained split history supports coordinated manual BUY/SELL and correction/void of trades strictly after the latest active split, audited cash-only operations, statement-income receipts/corrections and paired dividend-reinvestment workflows; reinvestment entitlement uses split-adjusted holdings and acquisition must follow the split date. Imports, legacy financial mutations, moves and deletion remain blocked. Cash-completeness certification and opening confirmation remain blocked pending broader historical protections and release review. This read never activates an account.
+ *     description: Distinguishes active confirmed ledgers from legacy, demo, archived and blocked accounts. Validated retained split history supports coordinated manual BUY/SELL; post-split trade corrections/voids; and pre-split price/fee/cash-sequence corrections only when original date and quantity are preserved. Pre-split voids and inventory-changing corrections remain blocked. Audited cash-only operations, statement-income receipts/corrections and paired dividend-reinvestment workflows are also supported; reinvestment entitlement uses split-adjusted holdings and acquisition must follow the split date. Imports, legacy financial mutations, moves and deletion remain blocked. Cash-completeness certification and opening confirmation remain blocked pending broader historical protections and release review. This read never activates an account.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -995,7 +998,7 @@ router.post(
  * /api/accounts/{id}/trades:
  *   post:
  *     summary: Atomically post a BUY or SELL with account cash
- *     description: Available only to accounts with an explicitly confirmed opening statement and active cash ledger. Legacy account posting remains unchanged; no account is activated by this endpoint.
+ *     description: Available only to accounts with an explicitly confirmed opening statement and active cash ledger. SELLs must preserve positive historical holdings for active income and reinvestment entitlements on or after the sale date; review is limited to 500 distinct date/parcel checks. Legacy account posting remains unchanged; no account is activated by this endpoint.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -1044,9 +1047,9 @@ router.post(
  *       400:
  *         description: Invalid trade command.
  *       409:
- *         description: Account is not ledger-enabled, source history drifted, or cash sequence conflicts.
+ *         description: Account is not ledger-enabled, source history drifted, cash sequence conflicts, or a sale would invalidate an income entitlement.
  *       422:
- *         description: Insufficient cash or unsupported account history.
+ *         description: Insufficient cash, unsupported account history, or entitlement review limit exceeded.
  */
 router.get(
   '/:id/trade-capability',
@@ -1641,9 +1644,14 @@ router.post(
  *     description: >
  *       Appends an immutable correction revision for a cash-linked manual SELL.
  *       Only date, stable cash sequence, price and fees may change; quantity,
- *       source identity and imported executions are immutable. With retained split
- *       history, the original and corrected execution must both be strictly after
- *       the latest active split for the asset. Reversal is not supported.
+ *       source identity and imported executions are immutable. Moving the sale earlier
+ *       must preserve positive historical holdings for active income and reinvestment
+ *       entitlements in the affected period; review is limited to 500 distinct
+ *       date/parcel checks. With retained split
+ *       history, a pre-split correction may change price, fees or cash sequence only
+ *       when the execution date is unchanged. A date change requires both original
+ *       and replacement dates to be strictly after the latest active split for the
+ *       asset. Reversal is not supported.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -1684,9 +1692,9 @@ router.post(
  *       404:
  *         description: Live manual sale not found.
  *       409:
- *         description: Stale revision, source drift, reserved sequence or inconsistent cash history.
+ *         description: Stale revision, source drift, reserved sequence, dependent income entitlement or inconsistent cash history.
  *       422:
- *         description: Correction would leave an unsupported or insufficiently funded cash ledger.
+ *         description: Correction would leave an unsupported or insufficiently funded cash ledger, or exceed the entitlement review limit.
  */
 router.post(
   '/:id/trades/:transactionId/corrections',
@@ -1753,10 +1761,15 @@ router.post(
  *       Appends an immutable BUY revision and reversal/replacement cash postings.
  *       Date, stable cash sequence, exact bought quantity, price and fees may change.
  *       All existing sales are preserved; the corrected acquisition must cover them
- *       and precede their dates and cash ordering. Imported executions, moves and
- *       reversal remain unsupported. With retained split history, the original and
- *       corrected acquisition must both be strictly after the latest active split
- *       for the asset. No account is activated.
+ *       and precede their dates and cash ordering. A later acquisition date or reduced
+ *       quantity must preserve positive historical holdings for active income and
+ *       reinvestment entitlements; review is limited to 500 distinct date/parcel checks.
+ *       Imported executions, moves and
+ *       reversal remain unsupported. With retained split history, a pre-split
+ *       correction may change price, fees or cash sequence only when acquisition
+ *       date and quantity are unchanged. A date/quantity-changing correction
+ *       requires both original and replacement dates to be strictly after the latest
+ *       active split for the asset. No account is activated.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -1804,9 +1817,9 @@ router.post(
  *       404:
  *         description: Owned live manual acquisition not found.
  *       409:
- *         description: Stale revision, source drift, reserved sequence, imported allocation or invalid acquisition/sale ordering.
+ *         description: Stale revision, source drift, reserved sequence, imported allocation, dependent income entitlement or invalid acquisition/sale ordering.
  *       422:
- *         description: Correction would leave an unsupported or insufficiently funded ledger.
+ *         description: Correction would leave an unsupported or insufficiently funded ledger, or exceed the entitlement review limit.
  */
 router.post(
   '/:id/trades/:transactionId/acquisition-corrections',
@@ -1928,7 +1941,7 @@ router.post(
  * /api/accounts/{id}/trades/{transactionId}/voids:
  *   post:
  *     summary: Void an audited live manual trade without deleting its records
- *     description: SELL voids restore parcel inventory and remove proceeds from cash replay. BUY voids require no effective sales. Only active real ledgers and manual parcels are supported. With retained split history, the trade must be strictly after the latest active split for its asset. The terminal revision retains original trades, postings and date/sequence reservations. No account is activated.
+ *     description: SELL voids restore parcel inventory and remove proceeds from cash replay. BUY voids require no effective sales and must preserve positive historical holdings for active income and reinvestment entitlements; a reinvestment's own parcel cannot establish its eligibility. Income entitlement review is limited to 500 distinct date/parcel checks. Only active real ledgers and manual parcels are supported. With retained split history, the trade must be strictly after the latest active split for its asset. The terminal revision retains original trades, postings and date/sequence reservations. No account is activated.
  *     tags: [Accounts]
  *     security:
  *       - bearerAuth: []
@@ -1968,8 +1981,8 @@ router.post(
  *       400: { description: Invalid void request. }
  *       401: { description: Unauthorized. }
  *       404: { description: Owned live manual trade not found. }
- *       409: { description: Stale source/revision, terminal trade or unsupported parcel. }
- *       422: { description: Removing the trade would leave insufficient cash or unsupported history. }
+ *       409: { description: Stale source/revision, terminal trade, dependent income entitlement or unsupported parcel. }
+ *       422: { description: Removing the trade would leave insufficient cash, unsupported history or exceed the entitlement review limit. }
  */
 router.post(
   '/:id/trades/:transactionId/voids',
@@ -2078,6 +2091,169 @@ router.get(
       req.query.offset === undefined ? 0 : Number(req.query.offset)
     )
     res.json({ success: true, data: result })
+  })
+)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/splits:
+ *   post:
+ *     summary: Post a statement-supported stock split or consolidation
+ *     description: Requires an owned fresh active real ledger and complete split-aware account source replay. Applies an exact unit ratio to eligible long equity/ETF parcels without changing acquisition dates or cash. Later sales, ambiguous same-day events, missing effects, unsupported imports and stale source heads fail closed. Exact retries retain the original action.
+ *     tags: [Accounts]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: false
+ *             required: [idempotencyKey, assetId, effectiveDate, newUnits, oldUnits, sourceReference, statementConfirmed]
+ *             properties:
+ *               idempotencyKey: { type: string }
+ *               assetId: { type: string }
+ *               effectiveDate: { type: string, format: date }
+ *               newUnits: { type: string, pattern: '^[1-9][0-9]{0,25}$' }
+ *               oldUnits: { type: string, pattern: '^[1-9][0-9]{0,25}$' }
+ *               sourceReference: { type: string }
+ *               statementConfirmed: { type: boolean, enum: [true] }
+ *     responses:
+ *       201: { description: Split action and parcel effects committed. }
+ *       200: { description: Identical retained retry. }
+ *       400: { description: Invalid ratio, date or statement confirmation. }
+ *       401: { description: Unauthorized. }
+ *       404: { description: Account or asset not found. }
+ *       409: { description: Stale source, active conflicting action, later sale or unsupported account state. }
+ *       422: { description: Split history or parcel bounds exceeded. }
+ *   get:
+ *     summary: Read retained stock-split history for an account
+ *     description: Returns bounded action metadata and terminal reversals. Raw parcel effects are not exposed; reversals remain visible as retained audit history.
+ *     tags: [Accounts]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *       - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 100 } }
+ *       - { in: query, name: offset, schema: { type: integer, minimum: 0, maximum: 9007199254740991 } }
+ *     responses:
+ *       200: { description: Retained paginated split history. }
+ *       400: { description: Invalid pagination. }
+ *       401: { description: Unauthorized. }
+ *       404: { description: Owned account not found. }
+ */
+router.post(
+  '/:id/splits',
+  [
+    param('id').isString().trim().notEmpty(),
+    body('idempotencyKey').isString().trim().notEmpty(),
+    body('assetId').isString().trim().notEmpty(),
+    body('effectiveDate').isISO8601({ strict: true }),
+    body('newUnits')
+      .isString()
+      .matches(/^[1-9][0-9]{0,25}$/),
+    body('oldUnits')
+      .isString()
+      .matches(/^[1-9][0-9]{0,25}$/),
+    body('sourceReference').isString().trim().notEmpty(),
+    body('statementConfirmed').custom((value) => value === true),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await postAccountSplit(
+      req.user!.userId,
+      req.params.id,
+      req.body
+    )
+    res.status(result.created ? 201 : 200).json({ success: true, data: result })
+  })
+)
+
+router.get(
+  '/:id/splits',
+  [
+    param('id').isString().trim().notEmpty(),
+    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    query('offset')
+      .optional()
+      .isInt({ min: 0, max: Number.MAX_SAFE_INTEGER })
+      .toInt(),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await readAccountSplitHistory(
+      req.user!.userId,
+      req.params.id,
+      req.query.limit === undefined ? 100 : Number(req.query.limit),
+      req.query.offset === undefined ? 0 : Number(req.query.offset)
+    )
+    res.json({ success: true, data: result })
+  })
+)
+
+/**
+ * @swagger
+ * /api/accounts/{id}/splits/{actionId}/reversal:
+ *   post:
+ *     summary: Terminally reverse a retained stock split
+ *     description: Requires the active account audit head and no dependent split effects, sales or reinvestments. Reversal restores retained parcel quantities and source history atomically; it is terminal and does not support replacement payloads.
+ *     tags: [Accounts]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *       - { in: path, name: actionId, required: true, schema: { type: string } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: false
+ *             required: [idempotencyKey, actionId, expectedAuditNumber, expectedSourceFingerprint, reason, reversalConfirmed]
+ *             properties:
+ *               idempotencyKey: { type: string }
+ *               actionId: { type: string }
+ *               expectedAuditNumber: { type: integer, minimum: 1 }
+ *               expectedSourceFingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+ *               reason: { type: string, minLength: 1, maxLength: 500 }
+ *               reversalConfirmed: { type: boolean, enum: [true] }
+ *     responses:
+ *       201: { description: Terminal reversal committed. }
+ *       200: { description: Identical retained retry. }
+ *       400: { description: Invalid reversal payload or confirmation. }
+ *       401: { description: Unauthorized. }
+ *       404: { description: Action or account not found. }
+ *       409: { description: Dependent sales/actions/reinvestments, stale head or terminal state. }
+ */
+router.post(
+  '/:id/splits/:actionId/reversal',
+  [
+    param('id').isString().trim().notEmpty(),
+    param('actionId').isString().trim().notEmpty(),
+    body('idempotencyKey').isString().trim().notEmpty(),
+    body('actionId').isString().trim().notEmpty(),
+    body('expectedAuditNumber').isInt({ min: 1 }),
+    body('expectedSourceFingerprint')
+      .isString()
+      .matches(/^[a-f0-9]{64}$/),
+    body('reason').isString().isLength({ min: 1, max: 500 }),
+    body('reversalConfirmed').custom((value) => value === true),
+    handleValidationErrors,
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    if (req.params.actionId !== req.body.actionId) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Path actionId must match the reversal actionId',
+      })
+    }
+    const result = await reverseAccountSplit(
+      req.user!.userId,
+      req.params.id,
+      req.body
+    )
+    res.status(result.created ? 201 : 200).json({ success: true, data: result })
   })
 )
 

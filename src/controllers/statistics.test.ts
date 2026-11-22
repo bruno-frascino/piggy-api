@@ -2,6 +2,8 @@ import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { AccountingDecimal } from '../lib/accounting-values.js'
+import { prepareAccountSplit } from '../lib/account-split-command.js'
 
 const {
   transactionFindManyMock,
@@ -447,7 +449,7 @@ describe('statistics controller', () => {
           capitalAllocated: 1000,
           quantity: 10,
           status: 'OPEN',
-          transactions: [{ quantity: 10 }],
+          transactions: [{ type: 'BUY', quantity: 10 }],
           asset: {
             industry: 'Technology',
             assetType: 'EQUITY',
@@ -461,7 +463,7 @@ describe('statistics controller', () => {
           capitalAllocated: 500,
           quantity: 5,
           status: 'OPEN',
-          transactions: [{ quantity: 5 }],
+          transactions: [{ type: 'BUY', quantity: 5 }],
           asset: {
             industry: 'Technology',
             assetType: 'EQUITY',
@@ -490,7 +492,7 @@ describe('statistics controller', () => {
           capitalAllocated: 1000,
           quantity: 10,
           status: 'OPEN',
-          transactions: [{ quantity: 10 }],
+          transactions: [{ type: 'BUY', quantity: 10 }],
           asset: {
             industry: null,
             assetType: 'EQUITY',
@@ -504,7 +506,7 @@ describe('statistics controller', () => {
           capitalAllocated: 500,
           quantity: 5,
           status: 'OPEN',
-          transactions: [{ quantity: 5 }],
+          transactions: [{ type: 'BUY', quantity: 5 }],
           asset: {
             industry: null,
             assetType: 'EQUITY',
@@ -533,8 +535,10 @@ describe('statistics controller', () => {
           capitalAllocated: 1000,
           quantity: 10,
           status: 'OPEN',
-          transactions: [{ quantity: 10 }],
+          transactions: [{ type: 'BUY', quantity: 10 }],
+          splitEffects: [],
           asset: {
+            splitActions: [],
             industry: null,
             assetType: 'EQUITY',
             exchange: { code: 'ASX', currency: 'AUD' },
@@ -547,8 +551,10 @@ describe('statistics controller', () => {
           capitalAllocated: 1000,
           quantity: 4,
           status: 'PARTIAL',
-          transactions: [{ quantity: 10 }],
+          transactions: [{ type: 'BUY', quantity: 10 }],
+          splitEffects: [],
           asset: {
+            splitActions: [],
             industry: null,
             assetType: 'EQUITY',
             exchange: { code: 'ASX', currency: 'AUD' },
@@ -561,8 +567,10 @@ describe('statistics controller', () => {
           capitalAllocated: 700,
           quantity: 0,
           status: 'CLOSED',
-          transactions: [{ quantity: 7 }],
+          transactions: [{ type: 'BUY', quantity: 7 }],
+          splitEffects: [],
           asset: {
+            splitActions: [],
             industry: null,
             assetType: 'EQUITY',
             exchange: { code: 'ASX', currency: 'AUD' },
@@ -580,6 +588,112 @@ describe('statistics controller', () => {
       })
       // 1000 + 50 (open) + 1000 * 0.4 + 10 (partial); closed contributes nothing.
       expect(response.body.data.total).toBe(1460)
+    })
+
+    it('uses the split-adjusted remaining cost for market value and rejects invalid evidence', async () => {
+      const requestData = {
+        idempotencyKey: 'split-key',
+        assetId: 'asset1',
+        effectiveDate: '2025-08-01',
+        newUnits: '2',
+        oldUnits: '1',
+        sourceReference: 'statement-1',
+        statementConfirmed: true,
+      }
+      const action = {
+        id: 'split1',
+        accountId: 'acc_1',
+        assetId: 'asset1',
+        effectiveDate: new Date(requestData.effectiveDate),
+        newUnits: new AccountingDecimal(2),
+        oldUnits: new AccountingDecimal(1),
+        sourceReference: requestData.sourceReference,
+        idempotencyKey: requestData.idempotencyKey,
+        payloadHash: prepareAccountSplit(requestData, 'acc_1').payloadHash,
+        sourceFingerprint: 'a'.repeat(64),
+        methodology: 'account-split-v1',
+        request: requestData,
+        recordedAt: new Date('2025-08-02'),
+        auditNumber: 1,
+        previousFingerprint: 'a'.repeat(64),
+        nextFingerprint: 'b'.repeat(64),
+      }
+      const position = {
+        id: 'p_split',
+        accountId: 'acc_1',
+        assetId: 'asset1',
+        openDate: new Date('2025-01-01'),
+        entryPrice: new AccountingDecimal(10),
+        buyFees: new AccountingDecimal(10),
+        capitalAllocated: new AccountingDecimal(110),
+        quantity: 10,
+        status: 'PARTIAL',
+        realizedPnL: 0,
+        unrealizedPnL: 5,
+        transactions: [
+          {
+            id: 'buy1',
+            type: 'BUY',
+            date: new Date('2025-01-01'),
+            quantity: 10,
+          },
+          {
+            id: 'sell1',
+            type: 'SELL',
+            date: new Date('2025-07-01'),
+            quantity: 2,
+          },
+          {
+            id: 'sell2',
+            type: 'SELL',
+            date: new Date('2025-09-01'),
+            quantity: 6,
+          },
+        ],
+        splitEffects: [
+          {
+            id: 'effect1',
+            actionId: action.id,
+            positionId: 'p_split',
+            beforeQuantity: new AccountingDecimal(8),
+            afterQuantity: new AccountingDecimal(16),
+            action,
+          },
+        ],
+        asset: {
+          industry: null,
+          assetType: 'EQUITY',
+          exchange: { code: 'ASX', currency: 'AUD' },
+          splitActions: [action],
+        },
+      }
+      positionFindManyMock.mockResolvedValue([position])
+      const response = await request(createApp()).get(
+        '/api/statistics/breakdowns?by=assetType&metric=marketValue'
+      )
+      expect(response.status).toBe(200)
+      expect(response.body.data.total).toBe(60)
+      expect(response.body.data.rows[0].value).toBe(60)
+      expect(positionFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            splitEffects: {
+              include: { action: { include: { reversal: true } } },
+            },
+            transactions: expect.objectContaining({
+              where: { type: { in: ['BUY', 'SELL'] }, voidedAt: null },
+            }),
+          }),
+        })
+      )
+
+      positionFindManyMock.mockResolvedValue([
+        { ...position, splitEffects: [] },
+      ])
+      const invalid = await request(createApp()).get(
+        '/api/statistics/breakdowns?by=assetType&metric=marketValue'
+      )
+      expect(invalid.status).toBe(500)
     })
 
     it('does not add a status filter for non-marketValue metrics', async () => {

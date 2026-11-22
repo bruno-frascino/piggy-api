@@ -535,6 +535,7 @@ Constraints: `@@unique([assetId, date])`
 | sellFees | `Decimal?` | @default(0) @db.Decimal(18, 8) |
 | stopLossPrice | `Decimal?` | @db.Decimal(24, 12) |
 | stopLossSetAt | `DateTime?` | — |
+| stopLossReviewedAt | `DateTime?` | — |
 | stopLossHitAt | `DateTime?` | — |
 | takeProfitPrice | `Decimal?` | @db.Decimal(24, 12) |
 | riskAmount | `Decimal?` | @db.Decimal(12, 2) |
@@ -859,3 +860,4 @@ Constraints: `@@unique([userId, source, externalId])`, `@@index([userId, kind, s
 - `20261115105034_defer_split_effect_fk`
 - `20261116093000_split_audit_continuation`
 - `20261117200742_audited_split_reversals`
+- `20261120112203_stop_loss_review_confirmation`
